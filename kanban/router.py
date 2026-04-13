@@ -25,13 +25,18 @@ router = APIRouter(prefix="/api", tags=["kanban"])
 
 
 def _http_from_kanban_error(err: KanbanError) -> NoReturn:
+    status_code = status.HTTP_404_NOT_FOUND
+    if err is KanbanError.INVALID_CARD_MOVE:
+        status_code = status.HTTP_409_CONFLICT
     raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
+        status_code=status_code,
         detail=err.detail,
     )
 
 
-@router.post("/boards", response_model=BoardSummary, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/boards", response_model=BoardSummary, status_code=status.HTTP_201_CREATED
+)
 def create_board(
     body: BoardCreate,
     store: Annotated[KanbanRepository, Depends(get_store)],
@@ -40,7 +45,9 @@ def create_board(
 
 
 @router.get("/boards", response_model=list[BoardSummary])
-def list_boards(store: Annotated[KanbanRepository, Depends(get_store)]) -> list[BoardSummary]:
+def list_boards(
+    store: Annotated[KanbanRepository, Depends(get_store)],
+) -> list[BoardSummary]:
     return store.list_boards()
 
 

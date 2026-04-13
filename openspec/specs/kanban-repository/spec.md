@@ -8,7 +8,7 @@ Define how Kanban data is accessed through a repository abstraction with explici
 
 ### Requirement: Repository exposes board and column operations with explicit failures
 
-The system SHALL provide a `KanbanRepository` protocol. Operations that may fail SHALL return `Result[T, KanbanError]` using `Ok` for success and `Err` for failure. `KanbanError` SHALL be a `StrEnum` of stable reason codes; each member SHALL expose a `detail` string suitable for HTTP error bodies (see `kanban/errors.py`).
+The system SHALL provide a `KanbanRepository` protocol. Operations that may fail SHALL return `Result[T, KanbanError]` using `Ok` for success and `Err` for failure. `KanbanError` SHALL be a `StrEnum` of stable reason codes; each member SHALL expose a `detail` string suitable for HTTP error bodies (see `kanban/errors.py`). The contract SHALL be satisfied by all supported repository backends.
 
 #### Scenario: Missing board returns Err on read
 
@@ -31,9 +31,10 @@ The system SHALL represent an attempt to move a card to a column on a different 
 
 ### Requirement: Backward-compatible entry points remain available
 
-The system SHALL keep module-level accessors (for example `get_store`) so existing tests and dependency injection continue to work, delegating to the repository implementation.
+The system SHALL keep module-level accessors (for example `get_store`) so existing tests and dependency injection continue to work, delegating to the configured repository implementation.
 
 #### Scenario: FastAPI dependency resolves a repository
 
 - **WHEN** routes request the Kanban dependency
 - **THEN** they SHALL receive an object satisfying `KanbanRepository`
+- **THEN** backend selection SHALL follow application configuration

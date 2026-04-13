@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
+from fastapi.testclient import TestClient
+from httpx import Response
 
 pytestmark = pytest.mark.integration
 
 _UNKNOWN_BOARD_ID = "00000000-0000-4000-8000-000000000001"
 
 
-def _assert_problem_json(response) -> dict:
+def _assert_problem_json(response: Response) -> dict[str, Any]:
     ctype = response.headers.get("content-type", "")
     assert ctype.startswith("application/problem+json"), ctype
     body = response.json()
@@ -20,7 +24,7 @@ def _assert_problem_json(response) -> dict:
     return body
 
 
-def test_not_found_uses_problem_details(api_client) -> None:
+def test_not_found_uses_problem_details(api_client: TestClient) -> None:
     r = api_client.get(f"/api/boards/{_UNKNOWN_BOARD_ID}")
     assert r.status_code == 404
     body = _assert_problem_json(r)
@@ -29,7 +33,7 @@ def test_not_found_uses_problem_details(api_client) -> None:
     assert str(api_client.base_url).rstrip("/") in body.get("instance", "")
 
 
-def test_validation_error_includes_errors_array(api_client) -> None:
+def test_validation_error_includes_errors_array(api_client: TestClient) -> None:
     r = api_client.post("/api/boards", json={"title": ""})
     assert r.status_code == 422
     body = _assert_problem_json(r)
@@ -38,7 +42,9 @@ def test_validation_error_includes_errors_array(api_client) -> None:
     assert len(body["errors"]) >= 1
 
 
-def test_application_validation_422_uses_problem_details(api_client) -> None:
+def test_application_validation_422_uses_problem_details(
+    api_client: TestClient,
+) -> None:
     board = api_client.post("/api/boards", json={"title": "x"})
     assert board.status_code == 201
     board_id = board.json()["id"]

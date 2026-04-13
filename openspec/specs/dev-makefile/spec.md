@@ -1,16 +1,19 @@
 # dev-makefile Specification
 
 ## Purpose
-TBD - created by archiving change makefile-dev-workflow. Update Purpose after archive.
+
+Document root `Makefile` targets for installing dependencies, running the API locally with reload, and running quality checks (lint, typecheck, tests) consistently for all contributors.
+
 ## Requirements
+
 ### Requirement: Makefile provides documented development targets
 
-The system SHALL include a `Makefile` at the repository root that defines at least `help`, `sync`, and `dev` targets. The `help` target SHALL print a summary of available targets and what they do.
+The system SHALL include a `Makefile` at the repository root that defines at least `help`, `sync`, `dev`, `lint`, `typecheck`, and `test` targets. The `help` target SHALL print a summary of available targets and what they do.
 
 #### Scenario: Developer lists commands
 
 - **WHEN** a developer runs `make help` or `make` with the default goal set to help
-- **THEN** the output SHALL describe the available targets including sync and dev
+- **THEN** the output SHALL describe the available targets including sync, dev, lint, typecheck, and test
 
 ### Requirement: Sync target installs project dependencies
 
@@ -29,4 +32,3 @@ The system SHALL provide a `dev` target that starts the FastAPI application with
 
 - **WHEN** a developer runs `make dev` after dependencies are installed
 - **THEN** the ASGI server SHALL start serving the application with reload enabled for code changes
-

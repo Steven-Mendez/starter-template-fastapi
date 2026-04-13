@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
-T_co = TypeVar("T_co", covariant=True)
 E = TypeVar("E")
 U = TypeVar("U")
 F = TypeVar("F")
@@ -15,8 +14,8 @@ class UnwrapError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class Ok(Generic[T_co]):
-    value: T_co
+class Ok(Generic[T]):
+    value: T
 
 
 @dataclass(frozen=True, slots=True)

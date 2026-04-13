@@ -7,21 +7,40 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.135.3",
     "pydantic>=2.10",
-    "pytest>=9.0.3",
+    "pydantic-settings>=2.13.1",
     "uvicorn[standard]>=0.44.0",
 ]
 
 [dependency-groups]
 dev = [
     "httpx>=0.28.0",
-    "pytest>=8.0",
+    "mypy>=1.18.2",
+    "pytest>=9.0.3",
+    "ruff>=0.14.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--strict-markers"
 markers = [
     "unit: default for new tests—cheap signal",
     "integration: cross-module wiring without a real port",
     "e2e: expensive; reserve for deployment-shaped checks",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["."]
+exclude = ["^openspec/", "^\\.cursor/"]
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
+from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
 
@@ -13,7 +14,9 @@ _UNKNOWN_BOARD_ID = "00000000-0000-4000-8000-000000000001"
 _UNKNOWN_CARD_ID = "00000000-0000-4000-8000-000000000099"
 
 
-def test_post_card_default_and_explicit_priority_and_patch(api_client) -> None:
+def test_post_card_default_and_explicit_priority_and_patch(
+    api_client: TestClient,
+) -> None:
     board = api_client.post("/api/boards", json={"title": "P"})
     assert board.status_code == 201
     board_id = board.json()["id"]
@@ -41,7 +44,7 @@ def test_post_card_default_and_explicit_priority_and_patch(api_client) -> None:
     assert patched.json()["priority"] == "low"
 
 
-def test_create_card_rejects_invalid_priority(api_client) -> None:
+def test_create_card_rejects_invalid_priority(api_client: TestClient) -> None:
     board = api_client.post("/api/boards", json={"title": "bad-prio"})
     assert board.status_code == 201
     col = api_client.post(
@@ -55,7 +58,7 @@ def test_create_card_rejects_invalid_priority(api_client) -> None:
     assert r.status_code == 422
 
 
-def test_post_card_due_at_and_patch_clear(api_client) -> None:
+def test_post_card_due_at_and_patch_clear(api_client: TestClient) -> None:
     board = api_client.post("/api/boards", json={"title": "Due"})
     assert board.status_code == 201
     board_id = board.json()["id"]
@@ -87,14 +90,12 @@ def test_post_card_due_at_and_patch_clear(api_client) -> None:
     assert patched.status_code == 200
     assert patched.json()["due_at"] is None
 
-    set_again = api_client.patch(
-        f"/api/cards/{cid}", json={"due_at": _ISO_DUE}
-    )
+    set_again = api_client.patch(f"/api/cards/{cid}", json={"due_at": _ISO_DUE})
     assert set_again.status_code == 200
     assert datetime.fromisoformat(set_again.json()["due_at"]) == _WHEN
 
 
-def test_patch_due_at_only_is_valid(api_client) -> None:
+def test_patch_due_at_only_is_valid(api_client: TestClient) -> None:
     board = api_client.post("/api/boards", json={"title": "x"})
     assert board.status_code == 201
     col = api_client.post(
@@ -112,7 +113,7 @@ def test_patch_due_at_only_is_valid(api_client) -> None:
     assert datetime.fromisoformat(r.json()["due_at"]) == _WHEN
 
 
-def test_get_board_includes_due_at_on_nested_cards(api_client) -> None:
+def test_get_board_includes_due_at_on_nested_cards(api_client: TestClient) -> None:
     board = api_client.post("/api/boards", json={"title": "Due nested"})
     assert board.status_code == 201
     board_id = board.json()["id"]
@@ -124,12 +125,10 @@ def test_get_board_includes_due_at_on_nested_cards(api_client) -> None:
         json={"title": "x", "description": None, "due_at": _ISO_DUE},
     )
     detail = api_client.get(f"/api/boards/{board_id}").json()
-    assert datetime.fromisoformat(
-        detail["columns"][0]["cards"][0]["due_at"]
-    ) == _WHEN
+    assert datetime.fromisoformat(detail["columns"][0]["cards"][0]["due_at"]) == _WHEN
 
 
-def test_get_board_includes_priority_on_nested_cards(api_client) -> None:
+def test_get_board_includes_priority_on_nested_cards(api_client: TestClient) -> None:
     board = api_client.post("/api/boards", json={"title": "P"})
     assert board.status_code == 201
     board_id = board.json()["id"]
@@ -144,13 +143,19 @@ def test_get_board_includes_priority_on_nested_cards(api_client) -> None:
     assert detail["columns"][0]["cards"][0]["priority"] == "high"
 
 
-def test_create_board_columns_card_move_and_read_detail(api_client) -> None:
+def test_create_board_columns_card_move_and_read_detail(
+    api_client: TestClient,
+) -> None:
     board_resp = api_client.post("/api/boards", json={"title": "Sprint"})
     assert board_resp.status_code == 201
     board_id = board_resp.json()["id"]
 
-    todo_resp = api_client.post(f"/api/boards/{board_id}/columns", json={"title": "Todo"})
-    done_resp = api_client.post(f"/api/boards/{board_id}/columns", json={"title": "Done"})
+    todo_resp = api_client.post(
+        f"/api/boards/{board_id}/columns", json={"title": "Todo"}
+    )
+    done_resp = api_client.post(
+        f"/api/boards/{board_id}/columns", json={"title": "Done"}
+    )
     assert todo_resp.status_code == 201 and done_resp.status_code == 201
     todo_id = todo_resp.json()["id"]
     done_id = done_resp.json()["id"]
@@ -175,7 +180,7 @@ def test_create_board_columns_card_move_and_read_detail(api_client) -> None:
     assert by_title["Done"]["cards"][0]["title"] == "Done"
 
 
-def test_patch_without_fields_returns_422(api_client) -> None:
+def test_patch_without_fields_returns_422(api_client: TestClient) -> None:
     board = api_client.post("/api/boards", json={"title": "x"})
     assert board.status_code == 201
     board_id = board.json()["id"]
@@ -188,19 +193,23 @@ def test_patch_without_fields_returns_422(api_client) -> None:
         json={"title": "t", "description": None},
     )
     assert card.status_code == 201
-    assert api_client.patch(f"/api/cards/{card.json()['id']}", json={}).status_code == 422
+    assert (
+        api_client.patch(f"/api/cards/{card.json()['id']}", json={}).status_code == 422
+    )
 
 
-def test_unknown_board_or_card_returns_not_found(api_client) -> None:
+def test_unknown_board_or_card_returns_not_found(api_client: TestClient) -> None:
     assert api_client.get(f"/api/boards/{_UNKNOWN_BOARD_ID}").status_code == 404
     assert api_client.get(f"/api/cards/{_UNKNOWN_CARD_ID}").status_code == 404
 
 
-def test_empty_board_title_is_rejected(api_client) -> None:
+def test_empty_board_title_is_rejected(api_client: TestClient) -> None:
     assert api_client.post("/api/boards", json={"title": ""}).status_code == 422
 
 
-def test_create_and_delete_board_use_expected_http_semantics(api_client) -> None:
+def test_create_and_delete_board_use_expected_http_semantics(
+    api_client: TestClient,
+) -> None:
     response = api_client.post("/api/boards", json={"title": "Lifecycle"})
     assert response.status_code == 201
     board_id = response.json()["id"]

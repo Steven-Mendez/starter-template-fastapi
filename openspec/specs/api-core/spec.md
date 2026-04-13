@@ -25,10 +25,15 @@ The system SHALL expose `GET /health` for liveness checks and return JSON indica
 
 ### Requirement: Interactive API documentation
 
-When the application is served with default FastAPI settings, the system SHALL provide interactive OpenAPI-based documentation at `/docs` and alternative documentation at `/redoc` without additional configuration for this change.
+The system SHALL provide interactive OpenAPI-based documentation at `/docs` and alternative documentation at `/redoc` only when documentation exposure is enabled by runtime configuration.
 
-#### Scenario: Developer opens Swagger UI
+#### Scenario: Documentation enabled in development mode
 
-- **WHEN** a client sends `GET /docs`
-- **THEN** the response SHALL succeed (status in the 2xx range) and present the interactive API documentation UI
+- **WHEN** the application runs with docs enabled
+- **THEN** a client request to `/docs` SHALL succeed and present interactive API documentation
+
+#### Scenario: Documentation disabled in production mode
+
+- **WHEN** the application runs with docs disabled
+- **THEN** a client request to `/docs` SHALL return `404`
 

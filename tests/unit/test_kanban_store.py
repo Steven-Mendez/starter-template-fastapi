@@ -31,7 +31,9 @@ def test_find_board_returns_err_when_id_unknown(kanban_store: KanbanStore) -> No
     assert r.error is KanbanError.BOARD_NOT_FOUND
 
 
-def test_board_title_can_be_changed_and_board_can_be_removed(kanban_store: KanbanStore) -> None:
+def test_board_title_can_be_changed_and_board_can_be_removed(
+    kanban_store: KanbanStore,
+) -> None:
     board = kanban_store.create_board("Original")
     updated = kanban_store.update_board(board.id, "Renamed")
     assert isinstance(updated, Ok)
@@ -45,7 +47,9 @@ def test_board_title_can_be_changed_and_board_can_be_removed(kanban_store: Kanba
     assert missing.error is KanbanError.BOARD_NOT_FOUND
 
 
-def test_removing_board_removes_nested_columns_and_cards(kanban_store: KanbanStore) -> None:
+def test_removing_board_removes_nested_columns_and_cards(
+    kanban_store: KanbanStore,
+) -> None:
     board = kanban_store.create_board("With children")
     column = kanban_store.create_column(board.id, "Column")
     assert isinstance(column, Ok)
@@ -56,7 +60,9 @@ def test_removing_board_removes_nested_columns_and_cards(kanban_store: KanbanSto
     assert isinstance(gone, Err)
 
 
-def test_board_detail_lists_columns_in_creation_order(kanban_store: KanbanStore) -> None:
+def test_board_detail_lists_columns_in_creation_order(
+    kanban_store: KanbanStore,
+) -> None:
     board = kanban_store.create_board("Ordered")
     first = kanban_store.create_column(board.id, "Todo")
     second = kanban_store.create_column(board.id, "Done")
@@ -80,13 +86,17 @@ def test_card_is_nested_under_column_in_board_detail(kanban_store: KanbanStore) 
     assert detail_r.value.columns[0].cards[0].id == card.value.id
 
 
-def test_create_column_fails_when_board_does_not_exist(kanban_store: KanbanStore) -> None:
+def test_create_column_fails_when_board_does_not_exist(
+    kanban_store: KanbanStore,
+) -> None:
     r = kanban_store.create_column(_UNKNOWN_BOARD_ID, "Orphan")
     assert isinstance(r, Err)
     assert r.error is KanbanError.BOARD_NOT_FOUND
 
 
-def test_create_card_fails_when_column_does_not_exist(kanban_store: KanbanStore) -> None:
+def test_create_card_fails_when_column_does_not_exist(
+    kanban_store: KanbanStore,
+) -> None:
     r = kanban_store.create_card(_UNKNOWN_COLUMN_ID, "Orphan", None)
     assert isinstance(r, Err)
     assert r.error is KanbanError.COLUMN_NOT_FOUND
@@ -122,7 +132,9 @@ def test_card_cannot_move_to_column_on_another_board(kanban_store: KanbanStore) 
     assert r.error is KanbanError.INVALID_CARD_MOVE
 
 
-def test_move_card_fails_when_target_column_does_not_exist(kanban_store: KanbanStore) -> None:
+def test_move_card_fails_when_target_column_does_not_exist(
+    kanban_store: KanbanStore,
+) -> None:
     board = kanban_store.create_board("Targets")
     column = kanban_store.create_column(board.id, "c")
     assert isinstance(column, Ok)
@@ -133,7 +145,9 @@ def test_move_card_fails_when_target_column_does_not_exist(kanban_store: KanbanS
     assert r.error is KanbanError.COLUMN_NOT_FOUND
 
 
-def test_card_order_within_column_follows_position_updates(kanban_store: KanbanStore) -> None:
+def test_card_order_within_column_follows_position_updates(
+    kanban_store: KanbanStore,
+) -> None:
     board = kanban_store.create_board("Reorder")
     column = kanban_store.create_column(board.id, "c")
     assert isinstance(column, Ok)
@@ -174,7 +188,9 @@ def test_create_card_default_and_explicit_priority(kanban_store: KanbanStore) ->
     high = kanban_store.create_card(
         column.value.id, "h", None, priority=CardPriority.HIGH
     )
-    low = kanban_store.create_card(column.value.id, "l", None, priority=CardPriority.LOW)
+    low = kanban_store.create_card(
+        column.value.id, "l", None, priority=CardPriority.LOW
+    )
     assert isinstance(high, Ok) and isinstance(low, Ok)
     assert high.value.priority is CardPriority.HIGH
     assert low.value.priority is CardPriority.LOW
@@ -201,7 +217,9 @@ def test_update_card_changes_priority(kanban_store: KanbanStore) -> None:
     assert updated.value.priority is CardPriority.LOW
 
 
-def test_priority_preserved_when_moving_between_columns(kanban_store: KanbanStore) -> None:
+def test_priority_preserved_when_moving_between_columns(
+    kanban_store: KanbanStore,
+) -> None:
     board = kanban_store.create_board("Prio")
     col_a = kanban_store.create_column(board.id, "A")
     col_b = kanban_store.create_column(board.id, "B")
@@ -215,7 +233,9 @@ def test_priority_preserved_when_moving_between_columns(kanban_store: KanbanStor
     assert moved.value.priority is CardPriority.HIGH
 
 
-def test_card_title_can_update_without_touching_description(kanban_store: KanbanStore) -> None:
+def test_card_title_can_update_without_touching_description(
+    kanban_store: KanbanStore,
+) -> None:
     board = kanban_store.create_board("Fields")
     column = kanban_store.create_column(board.id, "c")
     assert isinstance(column, Ok)
@@ -280,7 +300,9 @@ def test_board_detail_includes_due_at_on_cards(kanban_store: KanbanStore) -> Non
     assert detail_r.value.columns[0].cards[0].due_at == when
 
 
-def test_due_at_preserved_when_moving_between_columns(kanban_store: KanbanStore) -> None:
+def test_due_at_preserved_when_moving_between_columns(
+    kanban_store: KanbanStore,
+) -> None:
     board = kanban_store.create_board("Due")
     col_a = kanban_store.create_column(board.id, "A")
     col_b = kanban_store.create_column(board.id, "B")

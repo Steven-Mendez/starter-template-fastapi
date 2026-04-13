@@ -43,25 +43,25 @@ def test_is_ok_is_err() -> None:
 
 
 def test_result_map_applies_on_ok() -> None:
-    r = result_map(Ok(2), lambda x: x * 3)
+    r: Ok[int] | Err[str] = result_map(Ok(2), lambda x: x * 3)
     assert unwrap(r) == 6
 
 
 def test_result_map_passes_through_err() -> None:
-    r = result_map(Err("e"), lambda x: x)
+    r: Ok[int] | Err[str] = result_map(Err("e"), lambda x: x)
     assert unwrap_err(r) == "e"
 
 
 def test_result_map_err_transforms_error() -> None:
-    r = result_map_err(Err(1), lambda n: f"err-{n}")
+    r: Ok[int] | Err[str] = result_map_err(Err(1), lambda n: f"err-{n}")
     assert unwrap_err(r) == "err-1"
 
 
 def test_result_and_then_chains_ok() -> None:
-    r = result_and_then(Ok(2), lambda x: Ok(x + 1))
+    r: Ok[int] | Err[str] = result_and_then(Ok(2), lambda x: Ok(x + 1))
     assert unwrap(r) == 3
 
 
 def test_result_and_then_short_circuits_on_err() -> None:
-    r = result_and_then(Err("a"), lambda x: Ok(x))
+    r: Ok[str] | Err[str] = result_and_then(Err("a"), lambda x: Ok(x))
     assert unwrap_err(r) == "a"

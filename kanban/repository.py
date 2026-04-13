@@ -8,6 +8,7 @@ from typing import Protocol, cast
 from kanban.errors import KanbanError
 from kanban.result import Err, Ok, Result
 from kanban.schemas import BoardDetail, BoardSummary, CardPriority, CardRead, ColumnRead
+from settings import AppSettings, get_settings
 
 DUE_AT_UNSET = object()
 
@@ -39,17 +40,23 @@ class _Card:
 
 
 class KanbanRepository(Protocol):
+    def is_ready(self) -> bool: ...
+
     def create_board(self, title: str) -> BoardSummary: ...
 
     def list_boards(self) -> list[BoardSummary]: ...
 
     def get_board(self, board_id: str) -> Result[BoardDetail, KanbanError]: ...
 
-    def update_board(self, board_id: str, title: str) -> Result[BoardSummary, KanbanError]: ...
+    def update_board(
+        self, board_id: str, title: str
+    ) -> Result[BoardSummary, KanbanError]: ...
 
     def delete_board(self, board_id: str) -> Result[None, KanbanError]: ...
 
-    def create_column(self, board_id: str, title: str) -> Result[ColumnRead, KanbanError]: ...
+    def create_column(
+        self, board_id: str, title: str
+    ) -> Result[ColumnRead, KanbanError]: ...
 
     def delete_column(self, column_id: str) -> Result[None, KanbanError]: ...
 
@@ -83,6 +90,9 @@ class InMemoryKanbanRepository:
         self._boards: dict[str, _Board] = {}
         self._columns: dict[str, _Column] = {}
         self._cards: dict[str, _Card] = {}
+
+    def is_ready(self) -> bool:
+        return True
 
     def create_board(self, title: str) -> BoardSummary:
         bid = str(uuid.uuid4())
@@ -135,7 +145,9 @@ class InMemoryKanbanRepository:
             )
         )
 
-    def update_board(self, board_id: str, title: str) -> Result[BoardSummary, KanbanError]:
+    def update_board(
+        self, board_id: str, title: str
+    ) -> Result[BoardSummary, KanbanError]:
         b = self._boards.get(board_id)
         if not b:
             return Err(KanbanError.BOARD_NOT_FOUND)
@@ -151,7 +163,9 @@ class InMemoryKanbanRepository:
         del self._boards[board_id]
         return Ok(None)
 
-    def create_column(self, board_id: str, title: str) -> Result[ColumnRead, KanbanError]:
+    def create_column(
+        self, board_id: str, title: str
+    ) -> Result[ColumnRead, KanbanError]:
         if board_id not in self._boards:
             return Err(KanbanError.BOARD_NOT_FOUND)
         existing = [c for c in self._columns.values() if c.board_id == board_id]
@@ -315,9 +329,7 @@ class InMemoryKanbanRepository:
     def _move_within_column(self, card: _Card, position: int) -> None:
         col_id = card.column_id
         others = [
-            c
-            for c in self._cards.values()
-            if c.column_id == col_id and c.id != card.id
+            c for c in self._cards.values() if c.column_id == col_id and c.id != card.id
         ]
         others.sort(key=lambda c: c.position)
         pos = min(max(0, position), len(others))
@@ -326,8 +338,29 @@ class InMemoryKanbanRepository:
             c.position = i
 
 
-_default_repository = InMemoryKanbanRepository()
+_default_repository: KanbanRepository | None = None
+_default_repository_key: tuple[str, str] | None = None
+
+
+def create_repository_for_settings(settings: AppSettings) -> KanbanRepository:
+    if settings.repository_backend == "sqlite":
+        from kanban.sqlite_repository import SQLiteKanbanRepository
+
+        return SQLiteKanbanRepository(settings.sqlite_path)
+    return InMemoryKanbanRepository()
 
 
 def get_repository() -> KanbanRepository:
+    global _default_repository, _default_repository_key
+    settings = get_settings()
+    key = (settings.repository_backend, settings.sqlite_path)
+    if _default_repository is None or _default_repository_key != key:
+        _default_repository = create_repository_for_settings(settings)
+        _default_repository_key = key
     return _default_repository
+
+
+def set_repository_for_tests(repo: KanbanRepository) -> None:
+    global _default_repository, _default_repository_key
+    _default_repository = repo
+    _default_repository_key = None

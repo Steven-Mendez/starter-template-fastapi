@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from kanban.repository import (
-    DUE_AT_UNSET as REPOSITORY_DUE_AT_UNSET,
-    InMemoryKanbanRepository,
-    KanbanRepository,
-    get_repository,
-)
+from fastapi import Request
 
-KanbanStore = InMemoryKanbanRepository
-DUE_AT_UNSET = REPOSITORY_DUE_AT_UNSET
+from kanban import repository
+
+KanbanStore = repository.InMemoryKanbanRepository
+DUE_AT_UNSET = repository.DUE_AT_UNSET
 
 
-def get_store() -> KanbanRepository:
-    return get_repository()
+def get_store(request: Request) -> repository.KanbanRepository:
+    app_repo = getattr(request.app.state, "repository", None)
+    if app_repo is not None:
+        return app_repo
+    return repository.get_repository()

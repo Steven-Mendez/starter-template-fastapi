@@ -2,7 +2,7 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev test test-unit test-integration test-e2e test-fast
+.PHONY: help sync dev lint typecheck test test-unit test-integration test-e2e test-fast
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -12,6 +12,12 @@ sync: ## Sync dependencies (uv lock + install)
 
 dev: ## Run API with auto-reload
 	uv run uvicorn main:app --reload --host 0.0.0.0 --port $(PORT)
+
+lint: ## Run Ruff lint checks
+	uv run ruff check .
+
+typecheck: ## Run static type checks (mypy)
+	uv run mypy
 
 test: ## Full pytest suite
 	uv run pytest

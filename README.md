@@ -44,6 +44,9 @@ pip install -e .
 make          # list targets (default)
 make sync     # uv sync — install from lockfile
 make dev      # dev server with reload (default port 8000)
+make lint     # ruff checks
+make typecheck
+make test-fast
 PORT=9000 make dev
 ```
 
@@ -73,6 +76,32 @@ Useful URLs (default port 8000):
 - Swagger UI: http://127.0.0.1:8000/docs
 - ReDoc: http://127.0.0.1:8000/redoc
 - Health: http://127.0.0.1:8000/health
+
+## Runtime settings
+
+Environment variables use the `APP_` prefix:
+
+- `APP_ENABLE_DOCS=true|false`
+- `APP_ENVIRONMENT=development|test|production`
+- `APP_CORS_ORIGINS='["https://frontend.example.com"]'`
+- `APP_TRUSTED_HOSTS='["api.example.com"]'`
+- `APP_REPOSITORY_BACKEND=inmemory|sqlite`
+- `APP_SQLITE_PATH=.data/kanban.db`
+
+By default the app runs with in-memory storage. Set `APP_REPOSITORY_BACKEND=sqlite`
+to persist boards/cards in a SQLite file.
+
+`GET /health` now reports persistence readiness:
+
+```json
+{
+  "status": "ok",
+  "persistence": {
+    "backend": "inmemory",
+    "ready": true
+  }
+}
+```
 
 ## Git
 

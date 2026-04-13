@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -10,7 +12,7 @@ from main import app
 
 
 @pytest.fixture
-def api_client(kanban_store: KanbanStore) -> TestClient:
+def api_client(kanban_store: KanbanStore) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_store] = lambda: kanban_store
     with TestClient(app) as client:
         yield client

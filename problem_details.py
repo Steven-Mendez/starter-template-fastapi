@@ -50,6 +50,9 @@ def problem_json_response(
         payload["detail"] = detail
     if extra:
         payload.update(extra)
+    request_id = getattr(request.state, "request_id", None)
+    if request_id is not None and "request_id" not in payload:
+        payload["request_id"] = request_id
     return JSONResponse(
         status_code=status_code,
         content=jsonable_encoder(payload),
@@ -79,4 +82,15 @@ def register_problem_details(app: FastAPI) -> None:
             title=_status_title(status.HTTP_422_UNPROCESSABLE_CONTENT),
             detail="Request validation failed",
             extra={"errors": exc.errors()},
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        return problem_json_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            request=request,
+            title=_status_title(status.HTTP_500_INTERNAL_SERVER_ERROR),
+            detail="Internal Server Error",
         )

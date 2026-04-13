@@ -1,4 +1,4 @@
-"""Live server fixtures; subprocess stays here so unit/integration collection skips it."""
+"""Live server fixtures for e2e tests."""
 
 from __future__ import annotations
 
