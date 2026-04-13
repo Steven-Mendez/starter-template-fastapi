@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.integration
+
+_UNKNOWN_BOARD_ID = "00000000-0000-4000-8000-000000000001"
+_UNKNOWN_CARD_ID = "00000000-0000-4000-8000-000000000099"
+
+
+def test_create_board_columns_card_move_and_read_detail(api_client) -> None:
+    board_resp = api_client.post("/api/boards", json={"title": "Sprint"})
+    assert board_resp.status_code == 201
+    board_id = board_resp.json()["id"]
+
+    todo_resp = api_client.post(f"/api/boards/{board_id}/columns", json={"title": "Todo"})
+    done_resp = api_client.post(f"/api/boards/{board_id}/columns", json={"title": "Done"})
+    assert todo_resp.status_code == 201 and done_resp.status_code == 201
+    todo_id = todo_resp.json()["id"]
+    done_id = done_resp.json()["id"]
+
+    card_resp = api_client.post(
+        f"/api/columns/{todo_id}/cards",
+        json={"title": "Task", "description": None},
+    )
+    assert card_resp.status_code == 201
+    card_id = card_resp.json()["id"]
+
+    move_resp = api_client.patch(
+        f"/api/cards/{card_id}",
+        json={"column_id": done_id, "title": "Done"},
+    )
+    assert move_resp.status_code == 200
+
+    detail = api_client.get(f"/api/boards/{board_id}").json()
+    by_title = {col["title"]: col for col in detail["columns"]}
+    assert len(by_title["Todo"]["cards"]) == 0
+    assert len(by_title["Done"]["cards"]) == 1
+    assert by_title["Done"]["cards"][0]["title"] == "Done"
+
+
+def test_patch_without_fields_returns_422(api_client) -> None:
+    board = api_client.post("/api/boards", json={"title": "x"})
+    assert board.status_code == 201
+    board_id = board.json()["id"]
+    assert api_client.patch(f"/api/boards/{board_id}", json={}).status_code == 422
+
+    col = api_client.post(f"/api/boards/{board_id}/columns", json={"title": "c"})
+    assert col.status_code == 201
+    card = api_client.post(
+        f"/api/columns/{col.json()['id']}/cards",
+        json={"title": "t", "description": None},
+    )
+    assert card.status_code == 201
+    assert api_client.patch(f"/api/cards/{card.json()['id']}", json={}).status_code == 422
+
+
+def test_unknown_board_or_card_returns_not_found(api_client) -> None:
+    assert api_client.get(f"/api/boards/{_UNKNOWN_BOARD_ID}").status_code == 404
+    assert api_client.get(f"/api/cards/{_UNKNOWN_CARD_ID}").status_code == 404
+
+
+def test_empty_board_title_is_rejected(api_client) -> None:
+    assert api_client.post("/api/boards", json={"title": ""}).status_code == 422
+
+
+def test_create_and_delete_board_use_expected_http_semantics(api_client) -> None:
+    response = api_client.post("/api/boards", json={"title": "Lifecycle"})
+    assert response.status_code == 201
+    board_id = response.json()["id"]
+    assert api_client.delete(f"/api/boards/{board_id}").status_code == 204
+    assert api_client.get(f"/api/boards/{board_id}").status_code == 404

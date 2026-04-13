@@ -1,10 +1,14 @@
 from fastapi import FastAPI
 
+from kanban.router import router as kanban_router
+
 app = FastAPI(
     title="starter-template-fastapi",
     description="FastAPI starter service",
     version="0.1.0",
 )
+
+app.include_router(kanban_router)
 
 
 @app.get("/")

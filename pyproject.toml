@@ -6,5 +6,22 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.135.3",
+    "pydantic>=2.10",
+    "pytest>=9.0.3",
     "uvicorn[standard]>=0.44.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "unit: default for new tests—cheap signal",
+    "integration: cross-module wiring without a real port",
+    "e2e: expensive; reserve for deployment-shaped checks",
 ]
