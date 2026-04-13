@@ -65,3 +65,7 @@ logs/
 *.db-wal
 *.sqlite-shm
 *.sqlite-wal
+
+# Runtime data (PostgreSQL local/dev containers)
+.pgdata/
+postgres-data/

@@ -6,7 +6,7 @@ import pytest
 
 from dependencies import build_container
 from kanban.repository import InMemoryKanbanRepository, create_repository_for_settings
-from kanban.sqlite_repository import SQLiteKanbanRepository
+from kanban.sqlite_repository import SQLModelKanbanRepository
 from settings import AppSettings
 
 pytestmark = pytest.mark.unit
@@ -27,7 +27,17 @@ def test_factory_selects_sqlite_repository(tmp_path: Path) -> None:
         sqlite_path=str(tmp_path / "factory-select.sqlite3"),
     )
     repository = create_repository_for_settings(settings)
-    assert isinstance(repository, SQLiteKanbanRepository)
+    assert isinstance(repository, SQLModelKanbanRepository)
+    repository.close()
+
+
+def test_factory_selects_postgresql_repository() -> None:
+    settings = AppSettings(
+        repository_backend="postgresql",
+        postgresql_dsn="postgresql+psycopg://postgres:postgres@localhost:5432/kanban",
+    )
+    repository = create_repository_for_settings(settings)
+    assert isinstance(repository, SQLModelKanbanRepository)
     repository.close()
 
 
@@ -40,14 +50,21 @@ def test_container_uses_selected_repository_backend(tmp_path: Path) -> None:
         repository_backend="inmemory",
         sqlite_path=str(tmp_path / "unused.sqlite3"),
     )
+    postgresql_settings = AppSettings(
+        repository_backend="postgresql",
+        postgresql_dsn="postgresql+psycopg://postgres:postgres@localhost:5432/kanban",
+    )
 
     sqlite_container = build_container(sqlite_settings)
     in_memory_container = build_container(in_memory_settings)
+    postgresql_container = build_container(postgresql_settings)
 
-    assert isinstance(sqlite_container.repository, SQLiteKanbanRepository)
+    assert isinstance(sqlite_container.repository, SQLModelKanbanRepository)
     assert isinstance(in_memory_container.repository, InMemoryKanbanRepository)
+    assert isinstance(postgresql_container.repository, SQLModelKanbanRepository)
     sqlite_container.repository.close()
+    postgresql_container.repository.close()
 
 
-def test_default_settings_backend_is_sqlite() -> None:
-    assert AppSettings().repository_backend == "sqlite"
+def test_default_settings_backend_is_postgresql() -> None:
+    assert AppSettings().repository_backend == "postgresql"

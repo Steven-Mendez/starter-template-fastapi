@@ -86,11 +86,27 @@ Environment variables use the `APP_` prefix:
 - `APP_ENVIRONMENT=development|test|production`
 - `APP_CORS_ORIGINS='["https://frontend.example.com"]'`
 - `APP_TRUSTED_HOSTS='["api.example.com"]'`
-- `APP_REPOSITORY_BACKEND=inmemory|sqlite`
+- `APP_REPOSITORY_BACKEND=inmemory|sqlite|postgresql`
 - `APP_SQLITE_PATH=.data/kanban.db`
+- `APP_POSTGRESQL_DSN=postgresql+psycopg://postgres:postgres@localhost:5432/kanban`
 
-By default the app runs with SQLite storage. Set `APP_REPOSITORY_BACKEND=inmemory`
-if you want ephemeral in-memory behavior for quick local experiments.
+By default the app targets PostgreSQL storage. For quick local experiments without
+PostgreSQL, set `APP_REPOSITORY_BACKEND=sqlite` (plus `APP_SQLITE_PATH`) or
+`APP_REPOSITORY_BACKEND=inmemory`.
+
+## Database migrations (Alembic)
+
+Run migrations:
+
+```bash
+uv run alembic upgrade head
+```
+
+Create a new revision (autogenerate):
+
+```bash
+uv run alembic revision --autogenerate -m "describe-change"
+```
 
 `GET /health` now reports persistence readiness:
 
@@ -98,7 +114,7 @@ if you want ephemeral in-memory behavior for quick local experiments.
 {
   "status": "ok",
   "persistence": {
-    "backend": "sqlite",
+    "backend": "postgresql",
     "ready": true
   }
 }

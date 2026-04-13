@@ -350,7 +350,7 @@ class InMemoryKanbanRepository(KanbanRepository):
 
 
 _default_repository: KanbanRepository | None = None
-_default_repository_key: tuple[str, str] | None = None
+_default_repository_key: tuple[str, str, str] | None = None
 
 
 def create_repository_for_settings(settings: AppSettings) -> KanbanRepository:
@@ -358,13 +358,17 @@ def create_repository_for_settings(settings: AppSettings) -> KanbanRepository:
         from kanban.sqlite_repository import SQLiteKanbanRepository
 
         return SQLiteKanbanRepository(settings.sqlite_path)
+    if settings.repository_backend == "postgresql":
+        from kanban.sqlite_repository import SQLModelKanbanRepository
+
+        return SQLModelKanbanRepository(settings.postgresql_dsn, create_schema=False)
     return InMemoryKanbanRepository()
 
 
 def get_repository() -> KanbanRepository:
     global _default_repository, _default_repository_key
     settings = get_settings()
-    key = (settings.repository_backend, settings.sqlite_path)
+    key = (settings.repository_backend, settings.sqlite_path, settings.postgresql_dsn)
     if _default_repository is None or _default_repository_key != key:
         _default_repository = create_repository_for_settings(settings)
         _default_repository_key = key

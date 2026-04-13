@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import sqlite3
 import uuid
-import weakref
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
 from typing import Self, cast
+
+from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from kanban.card_move_specifications import (
     CardMoveCandidate,
@@ -17,18 +19,34 @@ from kanban.errors import KanbanError
 from kanban.repository import KanbanRepository
 from kanban.result import Err, Ok, Result
 from kanban.schemas import BoardDetail, BoardSummary, CardPriority, CardRead, ColumnRead
+from kanban.sqlmodel_models import BoardTable, CardTable, ColumnTable
 
 
-class SQLiteKanbanRepository(KanbanRepository):
-    def __init__(self, db_path: str) -> None:
-        path = Path(db_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(path, check_same_thread=False)
+def sqlite_url_from_path(db_path: str) -> str:
+    path = Path(db_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{path.resolve()}"
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+class SQLModelKanbanRepository(KanbanRepository):
+    def __init__(self, database_url: str, *, create_schema: bool = True) -> None:
+        connect_args: dict[str, object] = {}
+        if database_url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
+        self._engine = create_engine(
+            database_url,
+            connect_args=connect_args,
+            pool_pre_ping=True,
+        )
         self._closed = False
-        self._finalizer = weakref.finalize(self, sqlite3.Connection.close, self._conn)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA foreign_keys = ON")
-        self._init_schema()
+        if create_schema:
+            SQLModel.metadata.create_all(self._engine)
 
     def __enter__(self) -> Self:
         return self
@@ -44,198 +62,161 @@ class SQLiteKanbanRepository(KanbanRepository):
     def close(self) -> None:
         if self._closed:
             return
-        if self._finalizer.alive:
-            self._finalizer()
+        self._engine.dispose()
         self._closed = True
 
     def _ensure_open(self) -> None:
         if self._closed:
-            raise RuntimeError("SQLiteKanbanRepository is closed")
-
-    def _init_schema(self) -> None:
-        self._conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS boards (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS columns_ (
-                id TEXT PRIMARY KEY,
-                board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
-                title TEXT NOT NULL,
-                position INTEGER NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS cards (
-                id TEXT PRIMARY KEY,
-                column_id TEXT NOT NULL REFERENCES columns_(id) ON DELETE CASCADE,
-                title TEXT NOT NULL,
-                description TEXT,
-                position INTEGER NOT NULL,
-                priority TEXT NOT NULL,
-                due_at TEXT
-            );
-            """
-        )
+            raise RuntimeError("SQLModelKanbanRepository is closed")
 
     def is_ready(self) -> bool:
         if self._closed:
             return False
         try:
-            self._conn.execute("SELECT 1")
+            with Session(self._engine, expire_on_commit=False) as session:
+                session.exec(select(1)).one()
             return True
-        except sqlite3.Error:
+        except SQLAlchemyError:
             return False
 
     def create_board(self, title: str) -> BoardSummary:
         self._ensure_open()
-        board_id = str(uuid.uuid4())
-        created_at = datetime.now(timezone.utc)
-        with self._conn:
-            self._conn.execute(
-                "INSERT INTO boards (id, title, created_at) VALUES (?, ?, ?)",
-                (board_id, title, created_at.isoformat()),
-            )
-        return BoardSummary(id=board_id, title=title, created_at=created_at)
+        board = BoardTable(
+            id=str(uuid.uuid4()),
+            title=title,
+            created_at=datetime.now(timezone.utc),
+        )
+        with Session(self._engine, expire_on_commit=False) as session:
+            session.add(board)
+            session.commit()
+        return BoardSummary(
+            id=board.id,
+            title=board.title,
+            created_at=_ensure_utc(board.created_at),
+        )
 
     def list_boards(self) -> list[BoardSummary]:
         self._ensure_open()
-        rows = self._conn.execute(
-            "SELECT id, title, created_at FROM boards ORDER BY created_at ASC"
-        ).fetchall()
+        with Session(self._engine, expire_on_commit=False) as session:
+            boards = session.exec(select(BoardTable).order_by(BoardTable.created_at)).all()
         return [
             BoardSummary(
-                id=cast(str, row["id"]),
-                title=cast(str, row["title"]),
-                created_at=datetime.fromisoformat(cast(str, row["created_at"])),
+                id=board.id,
+                title=board.title,
+                created_at=_ensure_utc(board.created_at),
             )
-            for row in rows
+            for board in boards
         ]
 
     def get_board(self, board_id: str) -> Result[BoardDetail, KanbanError]:
         self._ensure_open()
-        board = self._conn.execute(
-            "SELECT id, title, created_at FROM boards WHERE id = ?",
-            (board_id,),
-        ).fetchone()
-        if board is None:
-            return Err(KanbanError.BOARD_NOT_FOUND)
+        with Session(self._engine, expire_on_commit=False) as session:
+            board = session.get(BoardTable, board_id)
+            if board is None:
+                return Err(KanbanError.BOARD_NOT_FOUND)
 
-        columns = self._conn.execute(
-            (
-                "SELECT id, board_id, title, position "
-                "FROM columns_ WHERE board_id = ? ORDER BY position ASC"
-            ),
-            (board_id,),
-        ).fetchall()
-
-        out_columns: list[ColumnRead] = []
-        for col in columns:
-            cards = self._conn.execute(
-                (
-                    "SELECT id, column_id, title, description, "
-                    "position, priority, due_at "
-                    "FROM cards WHERE column_id = ? ORDER BY position ASC"
-                ),
-                (cast(str, col["id"]),),
-            ).fetchall()
-            out_columns.append(
-                ColumnRead(
-                    id=cast(str, col["id"]),
-                    board_id=cast(str, col["board_id"]),
-                    title=cast(str, col["title"]),
-                    position=cast(int, col["position"]),
-                    cards=[self._row_to_card(card) for card in cards],
+            columns = session.exec(
+                select(ColumnTable)
+                .where(ColumnTable.board_id == board_id)
+                .order_by(ColumnTable.position)
+            ).all()
+            out_columns: list[ColumnRead] = []
+            for column in columns:
+                cards = session.exec(
+                    select(CardTable)
+                    .where(CardTable.column_id == column.id)
+                    .order_by(CardTable.position)
+                ).all()
+                out_columns.append(
+                    ColumnRead(
+                        id=column.id,
+                        board_id=column.board_id,
+                        title=column.title,
+                        position=column.position,
+                        cards=[self._to_card_read(card) for card in cards],
+                    )
+                )
+            return Ok(
+                BoardDetail(
+                    id=board.id,
+                    title=board.title,
+                    created_at=_ensure_utc(board.created_at),
+                    columns=out_columns,
                 )
             )
-
-        return Ok(
-            BoardDetail(
-                id=cast(str, board["id"]),
-                title=cast(str, board["title"]),
-                created_at=datetime.fromisoformat(cast(str, board["created_at"])),
-                columns=out_columns,
-            )
-        )
 
     def update_board(
         self, board_id: str, title: str
     ) -> Result[BoardSummary, KanbanError]:
         self._ensure_open()
-        with self._conn:
-            updated = self._conn.execute(
-                "UPDATE boards SET title = ? WHERE id = ?",
-                (title, board_id),
+        with Session(self._engine, expire_on_commit=False) as session:
+            board = session.get(BoardTable, board_id)
+            if board is None:
+                return Err(KanbanError.BOARD_NOT_FOUND)
+            board.title = title
+            session.add(board)
+            session.commit()
+            return Ok(
+                BoardSummary(
+                    id=board.id,
+                    title=board.title,
+                    created_at=_ensure_utc(board.created_at),
+                )
             )
-        if updated.rowcount == 0:
-            return Err(KanbanError.BOARD_NOT_FOUND)
-        board = self._conn.execute(
-            "SELECT id, title, created_at FROM boards WHERE id = ?",
-            (board_id,),
-        ).fetchone()
-        assert board is not None
-        return Ok(
-            BoardSummary(
-                id=cast(str, board["id"]),
-                title=cast(str, board["title"]),
-                created_at=datetime.fromisoformat(cast(str, board["created_at"])),
-            )
-        )
 
     def delete_board(self, board_id: str) -> Result[None, KanbanError]:
         self._ensure_open()
-        with self._conn:
-            deleted = self._conn.execute("DELETE FROM boards WHERE id = ?", (board_id,))
-        if deleted.rowcount == 0:
-            return Err(KanbanError.BOARD_NOT_FOUND)
-        return Ok(None)
+        with Session(self._engine, expire_on_commit=False) as session:
+            board = session.get(BoardTable, board_id)
+            if board is None:
+                return Err(KanbanError.BOARD_NOT_FOUND)
+            session.delete(board)
+            session.commit()
+            return Ok(None)
 
     def create_column(
         self, board_id: str, title: str
     ) -> Result[ColumnRead, KanbanError]:
         self._ensure_open()
-        exists = self._conn.execute(
-            "SELECT 1 FROM boards WHERE id = ?",
-            (board_id,),
-        ).fetchone()
-        if exists is None:
-            return Err(KanbanError.BOARD_NOT_FOUND)
-        next_pos = self._conn.execute(
-            "SELECT COALESCE(MAX(position), -1) + 1 FROM columns_ WHERE board_id = ?",
-            (board_id,),
-        ).fetchone()
-        position = int(cast(int, next_pos[0])) if next_pos else 0
-        column_id = str(uuid.uuid4())
-        with self._conn:
-            self._conn.execute(
-                (
-                    "INSERT INTO columns_ "
-                    "(id, board_id, title, position) VALUES (?, ?, ?, ?)"
-                ),
-                (column_id, board_id, title, position),
-            )
-        return Ok(
-            ColumnRead(
-                id=column_id,
+        with Session(self._engine, expire_on_commit=False) as session:
+            board = session.get(BoardTable, board_id)
+            if board is None:
+                return Err(KanbanError.BOARD_NOT_FOUND)
+
+            max_position = session.exec(
+                select(func.max(ColumnTable.position)).where(
+                    ColumnTable.board_id == board_id
+                )
+            ).one()
+            position = (cast(int | None, max_position) or -1) + 1
+
+            column = ColumnTable(
+                id=str(uuid.uuid4()),
                 board_id=board_id,
                 title=title,
                 position=position,
-                cards=[],
             )
-        )
+            session.add(column)
+            session.commit()
+            return Ok(
+                ColumnRead(
+                    id=column.id,
+                    board_id=column.board_id,
+                    title=column.title,
+                    position=column.position,
+                    cards=[],
+                )
+            )
 
     def delete_column(self, column_id: str) -> Result[None, KanbanError]:
         self._ensure_open()
-        with self._conn:
-            deleted = self._conn.execute(
-                "DELETE FROM columns_ WHERE id = ?",
-                (column_id,),
-            )
-        if deleted.rowcount == 0:
-            return Err(KanbanError.COLUMN_NOT_FOUND)
-        return Ok(None)
+        with Session(self._engine, expire_on_commit=False) as session:
+            column = session.get(ColumnTable, column_id)
+            if column is None:
+                return Err(KanbanError.COLUMN_NOT_FOUND)
+            session.delete(column)
+            session.commit()
+            return Ok(None)
 
     def create_card(
         self,
@@ -247,60 +228,36 @@ class SQLiteKanbanRepository(KanbanRepository):
         due_at: datetime | None = None,
     ) -> Result[CardRead, KanbanError]:
         self._ensure_open()
-        col = self._conn.execute(
-            "SELECT id FROM columns_ WHERE id = ?",
-            (column_id,),
-        ).fetchone()
-        if col is None:
-            return Err(KanbanError.COLUMN_NOT_FOUND)
-        next_pos = self._conn.execute(
-            "SELECT COALESCE(MAX(position), -1) + 1 FROM cards WHERE column_id = ?",
-            (column_id,),
-        ).fetchone()
-        position = int(cast(int, next_pos[0])) if next_pos else 0
-        card_id = str(uuid.uuid4())
-        with self._conn:
-            self._conn.execute(
-                """
-                INSERT INTO cards (
-                    id, column_id, title, description, position, priority, due_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    card_id,
-                    column_id,
-                    title,
-                    description,
-                    position,
-                    priority.value,
-                    due_at.isoformat() if due_at else None,
-                ),
-            )
-        return Ok(
-            CardRead(
-                id=card_id,
+        with Session(self._engine, expire_on_commit=False) as session:
+            column = session.get(ColumnTable, column_id)
+            if column is None:
+                return Err(KanbanError.COLUMN_NOT_FOUND)
+
+            max_position = session.exec(
+                select(func.max(CardTable.position)).where(CardTable.column_id == column_id)
+            ).one()
+            position = (cast(int | None, max_position) or -1) + 1
+
+            card = CardTable(
+                id=str(uuid.uuid4()),
                 column_id=column_id,
                 title=title,
                 description=description,
                 position=position,
-                priority=priority,
+                priority=priority.value,
                 due_at=due_at,
             )
-        )
+            session.add(card)
+            session.commit()
+            return Ok(self._to_card_read(card))
 
     def get_card(self, card_id: str) -> Result[CardRead, KanbanError]:
         self._ensure_open()
-        row = self._conn.execute(
-            (
-                "SELECT id, column_id, title, description, position, priority, due_at "
-                "FROM cards WHERE id = ?"
-            ),
-            (card_id,),
-        ).fetchone()
-        if row is None:
-            return Err(KanbanError.CARD_NOT_FOUND)
-        return Ok(self._row_to_card(row))
+        with Session(self._engine, expire_on_commit=False) as session:
+            card = session.get(CardTable, card_id)
+            if card is None:
+                return Err(KanbanError.CARD_NOT_FOUND)
+            return Ok(self._to_card_read(card))
 
     def update_card(
         self,
@@ -314,129 +271,99 @@ class SQLiteKanbanRepository(KanbanRepository):
         due_at: datetime | None | object = ...,
     ) -> Result[CardRead, KanbanError]:
         self._ensure_open()
-        row = self._conn.execute(
-            (
-                "SELECT id, column_id, title, description, position, priority, due_at "
-                "FROM cards WHERE id = ?"
-            ),
-            (card_id,),
-        ).fetchone()
-        if row is None:
-            return Err(KanbanError.CARD_NOT_FOUND)
+        with Session(self._engine, expire_on_commit=False) as session:
+            card = session.get(CardTable, card_id)
+            if card is None:
+                return Err(KanbanError.CARD_NOT_FOUND)
 
-        current = self._row_to_card(row)
-        old_col = current.column_id
-        target_col = column_id or old_col
+            old_col = card.column_id
+            target_col = column_id if column_id is not None else old_col
+            current_column = session.get(ColumnTable, old_col)
+            target_column = session.get(ColumnTable, target_col)
+            candidate = CardMoveCandidate(
+                target_column_exists=target_column is not None,
+                current_board_id=current_column.board_id if current_column else None,
+                target_board_id=target_column.board_id if target_column else None,
+            )
+            if not TargetColumnExistsSpecification().is_satisfied_by(candidate):
+                return Err(KanbanError.COLUMN_NOT_FOUND)
+            if not SameBoardMoveSpecification().is_satisfied_by(candidate):
+                return Err(KanbanError.INVALID_CARD_MOVE)
 
-        target_exists = self._conn.execute(
-            "SELECT board_id FROM columns_ WHERE id = ?",
-            (target_col,),
-        ).fetchone()
-        old_board = self._conn.execute(
-            "SELECT board_id FROM columns_ WHERE id = ?",
-            (old_col,),
-        ).fetchone()
-        candidate = CardMoveCandidate(
-            target_column_exists=target_exists is not None,
-            current_board_id=cast(str, old_board["board_id"]) if old_board else None,
-            target_board_id=(
-                cast(str, target_exists["board_id"]) if target_exists else None
-            ),
-        )
-        if not TargetColumnExistsSpecification().is_satisfied_by(candidate):
-            return Err(KanbanError.COLUMN_NOT_FOUND)
-        if not SameBoardMoveSpecification().is_satisfied_by(candidate):
-            return Err(KanbanError.INVALID_CARD_MOVE)
+            if target_col != old_col:
+                self._remove_card_and_renumber(session, old_col, card.id)
+                if position is None:
+                    target_cards = session.exec(
+                        select(CardTable)
+                        .where(CardTable.column_id == target_col, CardTable.id != card.id)
+                        .order_by(CardTable.position)
+                    ).all()
+                    card.column_id = target_col
+                    card.position = len(target_cards)
+                else:
+                    self._insert_card_at(session, card, target_col, position)
+            elif position is not None:
+                self._move_within_column(session, card, position)
 
-        if target_col != old_col:
-            self._remove_card_and_renumber(old_col, card_id)
-            if position is None:
-                next_pos = self._conn.execute(
-                    (
-                        "SELECT COALESCE(MAX(position), -1) + 1 "
-                        "FROM cards WHERE column_id = ? AND id != ?"
-                    ),
-                    (target_col, card_id),
-                ).fetchone()
-                target_pos = int(cast(int, next_pos[0])) if next_pos else 0
-            else:
-                target_pos = position
-            self._insert_card_at(card_id, target_col, target_pos)
-        elif position is not None:
-            self._insert_card_at(card_id, old_col, position)
+            if title is not None:
+                card.title = title
+            if description is not None:
+                card.description = description
+            if priority is not None:
+                card.priority = priority.value
+            if due_at is None or isinstance(due_at, datetime):
+                card.due_at = due_at
 
-        updates: list[str] = []
-        values: list[object] = []
-        if title is not None:
-            updates.append("title = ?")
-            values.append(title)
-        if description is not None:
-            updates.append("description = ?")
-            values.append(description)
-        if priority is not None:
-            updates.append("priority = ?")
-            values.append(priority.value)
-        if due_at is None or isinstance(due_at, datetime):
-            updates.append("due_at = ?")
-            values.append(due_at.isoformat() if due_at else None)
+            session.add(card)
+            session.commit()
+            session.refresh(card)
+            return Ok(self._to_card_read(card))
 
-        if updates:
-            values.append(card_id)
-            with self._conn:
-                self._conn.execute(
-                    f"UPDATE cards SET {', '.join(updates)} WHERE id = ?",
-                    tuple(values),
-                )
-        return self.get_card(card_id)
+    def _remove_card_and_renumber(
+        self, session: Session, column_id: str, card_id: str
+    ) -> None:
+        remaining = session.exec(
+            select(CardTable)
+            .where(CardTable.column_id == column_id, CardTable.id != card_id)
+            .order_by(CardTable.position)
+        ).all()
+        for index, row in enumerate(remaining):
+            row.position = index
+            session.add(row)
 
     def _insert_card_at(
-        self, card_id: str, column_id: str, requested_position: int
+        self, session: Session, card: CardTable, column_id: str, requested_position: int
     ) -> None:
-        cards = self._conn.execute(
-            (
-                "SELECT id FROM cards "
-                "WHERE column_id = ? AND id != ? ORDER BY position ASC"
-            ),
-            (column_id, card_id),
-        ).fetchall()
-        ordered_ids = [cast(str, row["id"]) for row in cards]
-        pos = min(max(0, requested_position), len(ordered_ids))
-        ordered_ids.insert(pos, card_id)
-        with self._conn:
-            self._conn.execute(
-                "UPDATE cards SET column_id = ? WHERE id = ?",
-                (column_id, card_id),
-            )
-            for index, cid in enumerate(ordered_ids):
-                self._conn.execute(
-                    "UPDATE cards SET position = ? WHERE id = ?",
-                    (index, cid),
-                )
+        others = session.exec(
+            select(CardTable)
+            .where(CardTable.column_id == column_id, CardTable.id != card.id)
+            .order_by(CardTable.position)
+        ).all()
+        position = min(max(0, requested_position), len(others))
+        ordered = others[:position] + [card] + others[position:]
+        for index, row in enumerate(ordered):
+            row.column_id = column_id
+            row.position = index
+            session.add(row)
 
-    def _remove_card_and_renumber(self, column_id: str, card_id: str) -> None:
-        rows = self._conn.execute(
-            (
-                "SELECT id FROM cards "
-                "WHERE column_id = ? AND id != ? ORDER BY position ASC"
-            ),
-            (column_id, card_id),
-        ).fetchall()
-        with self._conn:
-            for index, row in enumerate(rows):
-                self._conn.execute(
-                    "UPDATE cards SET position = ? WHERE id = ?",
-                    (index, cast(str, row["id"])),
-                )
+    def _move_within_column(
+        self, session: Session, card: CardTable, requested_position: int
+    ) -> None:
+        self._insert_card_at(session, card, card.column_id, requested_position)
 
     @staticmethod
-    def _row_to_card(row: sqlite3.Row) -> CardRead:
-        due_raw = cast(str | None, row["due_at"])
+    def _to_card_read(card: CardTable) -> CardRead:
         return CardRead(
-            id=cast(str, row["id"]),
-            column_id=cast(str, row["column_id"]),
-            title=cast(str, row["title"]),
-            description=cast(str | None, row["description"]),
-            position=cast(int, row["position"]),
-            priority=CardPriority(cast(str, row["priority"])),
-            due_at=datetime.fromisoformat(due_raw) if due_raw else None,
+            id=card.id,
+            column_id=card.column_id,
+            title=card.title,
+            description=card.description,
+            position=card.position,
+            priority=CardPriority(card.priority),
+            due_at=_ensure_utc(card.due_at) if card.due_at else None,
         )
+
+
+class SQLiteKanbanRepository(SQLModelKanbanRepository):
+    def __init__(self, db_path: str) -> None:
+        super().__init__(sqlite_url_from_path(db_path))

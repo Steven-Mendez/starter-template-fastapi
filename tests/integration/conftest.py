@@ -8,16 +8,21 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from dependencies import get_kanban_repository
-from kanban.sqlite_repository import SQLiteKanbanRepository
+from dependencies import build_container, get_kanban_repository, set_app_container
 from main import app
+from settings import AppSettings
 
 
 @pytest.fixture
 def api_client(tmp_path: Path) -> Generator[TestClient, None, None]:
-    repo = SQLiteKanbanRepository(str(tmp_path / "integration-kanban.sqlite3"))
-    app.dependency_overrides[get_kanban_repository] = lambda: repo
+    settings = AppSettings(
+        repository_backend="sqlite",
+        sqlite_path=str(tmp_path / "integration-kanban.sqlite3"),
+    )
+    container = build_container(settings)
+    app.dependency_overrides[get_kanban_repository] = lambda: container.repository
     with TestClient(app) as client:
+        set_app_container(app, container)
         yield client
     app.dependency_overrides.clear()
-    repo.close()
+    container.repository.close()

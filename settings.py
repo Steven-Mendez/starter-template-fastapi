@@ -18,8 +18,9 @@ class AppSettings(BaseSettings):
     cors_origins: list[str] = []
     trusted_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     log_level: str = "INFO"
-    repository_backend: Literal["inmemory", "sqlite"] = "sqlite"
+    repository_backend: Literal["inmemory", "sqlite", "postgresql"] = "postgresql"
     sqlite_path: str = ".data/kanban.db"
+    postgresql_dsn: str = "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
 
 
 @lru_cache
