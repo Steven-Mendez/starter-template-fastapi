@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from dependencies import get_kanban_repository
 from kanban.errors import KanbanError
 from kanban.repository import KanbanRepository
 from kanban.result import Err, Ok
@@ -19,7 +20,7 @@ from kanban.schemas import (
     ColumnCreate,
     ColumnRead,
 )
-from kanban.store import DUE_AT_UNSET, get_store
+from kanban.store import DUE_AT_UNSET
 
 router = APIRouter(prefix="/api", tags=["kanban"])
 
@@ -39,14 +40,14 @@ def _http_from_kanban_error(err: KanbanError) -> NoReturn:
 )
 def create_board(
     body: BoardCreate,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> BoardSummary:
     return store.create_board(body.title)
 
 
 @router.get("/boards", response_model=list[BoardSummary])
 def list_boards(
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> list[BoardSummary]:
     return store.list_boards()
 
@@ -54,7 +55,7 @@ def list_boards(
 @router.get("/boards/{board_id}", response_model=BoardDetail)
 def get_board(
     board_id: UUID,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> BoardDetail:
     match store.get_board(str(board_id)):
         case Ok(value):
@@ -67,7 +68,7 @@ def get_board(
 def patch_board(
     board_id: UUID,
     body: BoardUpdate,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> BoardSummary:
     if body.title is None:
         raise HTTPException(
@@ -84,7 +85,7 @@ def patch_board(
 @router.delete("/boards/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_board(
     board_id: UUID,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> None:
     match store.delete_board(str(board_id)):
         case Ok(_):
@@ -101,7 +102,7 @@ def delete_board(
 def create_column(
     board_id: UUID,
     body: ColumnCreate,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> ColumnRead:
     match store.create_column(str(board_id), body.title):
         case Ok(value):
@@ -113,7 +114,7 @@ def create_column(
 @router.delete("/columns/{column_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_column(
     column_id: UUID,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> None:
     match store.delete_column(str(column_id)):
         case Ok(_):
@@ -130,7 +131,7 @@ def delete_column(
 def create_card(
     column_id: UUID,
     body: CardCreate,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> CardRead:
     match store.create_card(
         str(column_id),
@@ -148,7 +149,7 @@ def create_card(
 @router.get("/cards/{card_id}", response_model=CardRead)
 def get_card(
     card_id: UUID,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> CardRead:
     match store.get_card(str(card_id)):
         case Ok(value):
@@ -161,7 +162,7 @@ def get_card(
 def patch_card(
     card_id: UUID,
     body: CardUpdate,
-    store: Annotated[KanbanRepository, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_kanban_repository)],
 ) -> CardRead:
     updates = body.model_dump(exclude_unset=True)
     if not updates:
