@@ -88,5 +88,6 @@ This repo uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) for spec-drive
   - `2026-04-13-makefile-dev-workflow` — root `Makefile` and dev shortcuts
   - `2026-04-13-improve-gitignore` — root `.gitignore` and Git hygiene notes
   - `2026-04-13-kanban-card-priority` — Kanban card `priority` field (`low` / `medium` / `high`)
+  - `2026-04-13-add-optional-due-at-on-cards` — optional nullable `due_at` (ISO 8601) on cards
 
 There are no active in-flight changes under `openspec/changes/` until you add a new one (for example `openspec new change "<name>"`).

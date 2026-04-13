@@ -33,6 +33,7 @@ class CardRead(BaseModel):
     description: str | None
     position: int
     priority: CardPriority
+    due_at: datetime | None
 
 
 class ColumnRead(BaseModel):
@@ -58,6 +59,7 @@ class CardCreate(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     description: str | None = None
     priority: CardPriority = CardPriority.MEDIUM
+    due_at: datetime | None = None
 
 
 class CardUpdate(BaseModel):
@@ -66,3 +68,4 @@ class CardUpdate(BaseModel):
     column_id: str | None = None
     position: int | None = Field(default=None, ge=0)
     priority: CardPriority | None = None
+    due_at: datetime | None = None

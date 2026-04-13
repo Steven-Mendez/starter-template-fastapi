@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from kanban.schemas import CardPriority
-from kanban.store import KanbanStore
+from kanban.store import DUE_AT_UNSET, KanbanStore
 
 pytestmark = pytest.mark.unit
 
@@ -208,3 +210,69 @@ def test_card_title_can_update_without_touching_description(kanban_store: Kanban
     assert updated is not None
     assert updated.title == "new"
     assert updated.description == "d"
+
+
+def test_create_card_default_and_explicit_due_at(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Due")
+    column = kanban_store.create_column(board.id, "c")
+    assert column is not None
+    default_d = kanban_store.create_card(column.id, "d", None)
+    assert default_d is not None
+    assert default_d.due_at is None
+    when = datetime(2030, 6, 1, 9, 30, tzinfo=timezone.utc)
+    scheduled = kanban_store.create_card(column.id, "s", None, due_at=when)
+    assert scheduled is not None
+    assert scheduled.due_at == when
+
+
+def test_update_card_sets_and_clears_due_at(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Due")
+    column = kanban_store.create_column(board.id, "c")
+    assert column is not None
+    card = kanban_store.create_card(column.id, "x", None)
+    assert card is not None
+    when = datetime(2031, 2, 2, 0, 0, tzinfo=timezone.utc)
+    updated = kanban_store.update_card(card.id, due_at=when)
+    assert updated is not None
+    assert updated.due_at == when
+    cleared = kanban_store.update_card(card.id, due_at=None)
+    assert cleared is not None
+    assert cleared.due_at is None
+
+
+def test_omit_due_at_on_update_preserves_value(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Due")
+    column = kanban_store.create_column(board.id, "c")
+    assert column is not None
+    card = kanban_store.create_card(column.id, "x", None)
+    assert card is not None
+    when = datetime(2032, 3, 3, 15, 0, tzinfo=timezone.utc)
+    kanban_store.update_card(card.id, due_at=when)
+    same = kanban_store.update_card(card.id, title="renamed", due_at=DUE_AT_UNSET)
+    assert same is not None
+    assert same.title == "renamed"
+    assert same.due_at == when
+
+
+def test_board_detail_includes_due_at_on_cards(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Due")
+    column = kanban_store.create_column(board.id, "c")
+    assert column is not None
+    when = datetime(2033, 4, 4, 12, 0, tzinfo=timezone.utc)
+    kanban_store.create_card(column.id, "a", None, due_at=when)
+    detail = kanban_store.get_board(board.id)
+    assert detail is not None
+    assert detail.columns[0].cards[0].due_at == when
+
+
+def test_due_at_preserved_when_moving_between_columns(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Due")
+    col_a = kanban_store.create_column(board.id, "A")
+    col_b = kanban_store.create_column(board.id, "B")
+    assert col_a is not None and col_b is not None
+    when = datetime(2034, 5, 5, 8, 0, tzinfo=timezone.utc)
+    card = kanban_store.create_card(col_a.id, "move", None, due_at=when)
+    assert card is not None
+    moved = kanban_store.update_card(card.id, column_id=col_b.id)
+    assert moved is not None
+    assert moved.due_at == when

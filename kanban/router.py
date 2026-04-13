@@ -16,7 +16,7 @@ from kanban.schemas import (
     ColumnCreate,
     ColumnRead,
 )
-from kanban.store import KanbanStore, get_store
+from kanban.store import DUE_AT_UNSET, KanbanStore, get_store
 
 router = APIRouter(prefix="/api", tags=["kanban"])
 
@@ -107,7 +107,11 @@ def create_card(
     store: Annotated[KanbanStore, Depends(get_store)],
 ) -> CardRead:
     card = store.create_card(
-        str(column_id), body.title, body.description, priority=body.priority
+        str(column_id),
+        body.title,
+        body.description,
+        priority=body.priority,
+        due_at=body.due_at,
     )
     if not card:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Column not found")
@@ -131,25 +135,22 @@ def patch_card(
     body: CardUpdate,
     store: Annotated[KanbanStore, Depends(get_store)],
 ) -> CardRead:
-    if (
-        body.title is None
-        and body.description is None
-        and body.column_id is None
-        and body.position is None
-        and body.priority is None
-    ):
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="At least one field must be provided",
         )
-    col_id = str(body.column_id) if body.column_id is not None else None
+    col_id = str(updates["column_id"]) if "column_id" in updates else None
+    pos = updates.get("position")
     out = store.update_card(
         str(card_id),
-        title=body.title,
-        description=body.description,
+        title=updates.get("title"),
+        description=updates.get("description"),
         column_id=col_id,
-        position=body.position,
-        priority=body.priority,
+        position=pos,
+        priority=updates.get("priority"),
+        due_at=updates["due_at"] if "due_at" in updates else DUE_AT_UNSET,
     )
     if not out:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")

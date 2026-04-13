@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 from pydantic import ValidationError
 
@@ -21,3 +23,14 @@ def test_card_create_priority_validation_accepts_enum_and_rejects_garbage() -> N
         c = CardCreate.model_validate({"title": "x", "priority": p.value})
         assert c.priority is p
     assert CardCreate.model_validate({"title": "x"}).priority is CardPriority.MEDIUM
+
+
+def test_card_create_due_at_optional_iso8601() -> None:
+    c = CardCreate.model_validate(
+        {
+            "title": "x",
+            "due_at": "2030-01-15T12:00:00+00:00",
+        }
+    )
+    assert c.due_at == datetime(2030, 1, 15, 12, 0, tzinfo=timezone.utc)
+    assert CardCreate.model_validate({"title": "x"}).due_at is None
