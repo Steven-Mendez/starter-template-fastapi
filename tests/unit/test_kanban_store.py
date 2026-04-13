@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from kanban.schemas import CardPriority
 from kanban.store import KanbanStore
 
 pytestmark = pytest.mark.unit
@@ -144,6 +145,57 @@ def test_removing_column_removes_attached_cards(kanban_store: KanbanStore) -> No
 
 def test_find_card_returns_none_when_id_unknown(kanban_store: KanbanStore) -> None:
     assert kanban_store.get_card(_UNKNOWN_ENTITY_ID) is None
+
+
+def test_create_card_default_and_explicit_priority(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Prio")
+    column = kanban_store.create_column(board.id, "c")
+    assert column is not None
+    default_p = kanban_store.create_card(column.id, "d", None)
+    assert default_p is not None
+    assert default_p.priority is CardPriority.MEDIUM
+    high = kanban_store.create_card(
+        column.id, "h", None, priority=CardPriority.HIGH
+    )
+    low = kanban_store.create_card(column.id, "l", None, priority=CardPriority.LOW)
+    assert high is not None and low is not None
+    assert high.priority is CardPriority.HIGH
+    assert low.priority is CardPriority.LOW
+
+
+def test_board_detail_includes_card_priority(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Prio")
+    column = kanban_store.create_column(board.id, "c")
+    assert column is not None
+    kanban_store.create_card(column.id, "a", None, priority=CardPriority.HIGH)
+    detail = kanban_store.get_board(board.id)
+    assert detail is not None
+    assert detail.columns[0].cards[0].priority is CardPriority.HIGH
+
+
+def test_update_card_changes_priority(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Prio")
+    column = kanban_store.create_column(board.id, "c")
+    assert column is not None
+    card = kanban_store.create_card(column.id, "x", None)
+    assert card is not None
+    updated = kanban_store.update_card(card.id, priority=CardPriority.LOW)
+    assert updated is not None
+    assert updated.priority is CardPriority.LOW
+
+
+def test_priority_preserved_when_moving_between_columns(kanban_store: KanbanStore) -> None:
+    board = kanban_store.create_board("Prio")
+    col_a = kanban_store.create_column(board.id, "A")
+    col_b = kanban_store.create_column(board.id, "B")
+    assert col_a is not None and col_b is not None
+    card = kanban_store.create_card(
+        col_a.id, "move", None, priority=CardPriority.HIGH
+    )
+    assert card is not None
+    moved = kanban_store.update_card(card.id, column_id=col_b.id)
+    assert moved is not None
+    assert moved.priority is CardPriority.HIGH
 
 
 def test_card_title_can_update_without_touching_description(kanban_store: KanbanStore) -> None:

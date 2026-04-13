@@ -87,5 +87,6 @@ This repo uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) for spec-drive
   - `2026-04-13-init-fastapi-project` — FastAPI app, dependencies, docs
   - `2026-04-13-makefile-dev-workflow` — root `Makefile` and dev shortcuts
   - `2026-04-13-improve-gitignore` — root `.gitignore` and Git hygiene notes
+  - `2026-04-13-kanban-card-priority` — Kanban card `priority` field (`low` / `medium` / `high`)
 
 There are no active in-flight changes under `openspec/changes/` until you add a new one (for example `openspec new change "<name>"`).

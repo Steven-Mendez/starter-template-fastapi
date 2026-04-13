@@ -8,6 +8,63 @@ _UNKNOWN_BOARD_ID = "00000000-0000-4000-8000-000000000001"
 _UNKNOWN_CARD_ID = "00000000-0000-4000-8000-000000000099"
 
 
+def test_post_card_default_and_explicit_priority_and_patch(api_client) -> None:
+    board = api_client.post("/api/boards", json={"title": "P"})
+    assert board.status_code == 201
+    board_id = board.json()["id"]
+    col = api_client.post(f"/api/boards/{board_id}/columns", json={"title": "Todo"})
+    assert col.status_code == 201
+    col_id = col.json()["id"]
+
+    default_card = api_client.post(
+        f"/api/columns/{col_id}/cards",
+        json={"title": "d", "description": None},
+    )
+    assert default_card.status_code == 201
+    assert default_card.json()["priority"] == "medium"
+
+    high_card = api_client.post(
+        f"/api/columns/{col_id}/cards",
+        json={"title": "h", "description": None, "priority": "high"},
+    )
+    assert high_card.status_code == 201
+    cid = high_card.json()["id"]
+    assert high_card.json()["priority"] == "high"
+
+    patched = api_client.patch(f"/api/cards/{cid}", json={"priority": "low"})
+    assert patched.status_code == 200
+    assert patched.json()["priority"] == "low"
+
+
+def test_create_card_rejects_invalid_priority(api_client) -> None:
+    board = api_client.post("/api/boards", json={"title": "bad-prio"})
+    assert board.status_code == 201
+    col = api_client.post(
+        f"/api/boards/{board.json()['id']}/columns", json={"title": "c"}
+    )
+    assert col.status_code == 201
+    r = api_client.post(
+        f"/api/columns/{col.json()['id']}/cards",
+        json={"title": "t", "description": None, "priority": "urgent"},
+    )
+    assert r.status_code == 422
+
+
+def test_get_board_includes_priority_on_nested_cards(api_client) -> None:
+    board = api_client.post("/api/boards", json={"title": "P"})
+    assert board.status_code == 201
+    board_id = board.json()["id"]
+    col = api_client.post(f"/api/boards/{board_id}/columns", json={"title": "c"})
+    assert col.status_code == 201
+    col_id = col.json()["id"]
+    api_client.post(
+        f"/api/columns/{col_id}/cards",
+        json={"title": "x", "description": None, "priority": "high"},
+    )
+    detail = api_client.get(f"/api/boards/{board_id}").json()
+    assert detail["columns"][0]["cards"][0]["priority"] == "high"
+
+
 def test_create_board_columns_card_move_and_read_detail(api_client) -> None:
     board_resp = api_client.post("/api/boards", json={"title": "Sprint"})
     assert board_resp.status_code == 201

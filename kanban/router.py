@@ -106,7 +106,9 @@ def create_card(
     body: CardCreate,
     store: Annotated[KanbanStore, Depends(get_store)],
 ) -> CardRead:
-    card = store.create_card(str(column_id), body.title, body.description)
+    card = store.create_card(
+        str(column_id), body.title, body.description, priority=body.priority
+    )
     if not card:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Column not found")
     return card
@@ -134,6 +136,7 @@ def patch_card(
         and body.description is None
         and body.column_id is None
         and body.position is None
+        and body.priority is None
     ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -146,6 +149,7 @@ def patch_card(
         description=body.description,
         column_id=col_id,
         position=body.position,
+        priority=body.priority,
     )
     if not out:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")

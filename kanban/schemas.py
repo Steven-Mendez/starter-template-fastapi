@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
+
+
+class CardPriority(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
 
 
 class BoardCreate(BaseModel):
@@ -25,6 +32,7 @@ class CardRead(BaseModel):
     title: str
     description: str | None
     position: int
+    priority: CardPriority
 
 
 class ColumnRead(BaseModel):
@@ -49,6 +57,7 @@ class ColumnCreate(BaseModel):
 class CardCreate(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     description: str | None = None
+    priority: CardPriority = CardPriority.MEDIUM
 
 
 class CardUpdate(BaseModel):
@@ -56,3 +65,4 @@ class CardUpdate(BaseModel):
     description: str | None = None
     column_id: str | None = None
     position: int | None = Field(default=None, ge=0)
+    priority: CardPriority | None = None

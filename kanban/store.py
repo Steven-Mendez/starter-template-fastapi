@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from kanban.schemas import BoardDetail, BoardSummary, CardRead, ColumnRead
+from kanban.schemas import BoardDetail, BoardSummary, CardPriority, CardRead, ColumnRead
 
 
 @dataclass
@@ -29,6 +29,7 @@ class _Card:
     title: str
     description: str | None
     position: int
+    priority: CardPriority
 
 
 class KanbanStore:
@@ -72,6 +73,7 @@ class KanbanStore:
                             title=card.title,
                             description=card.description,
                             position=card.position,
+                            priority=card.priority,
                         )
                         for card in cards
                     ],
@@ -133,6 +135,8 @@ class KanbanStore:
         column_id: str,
         title: str,
         description: str | None,
+        *,
+        priority: CardPriority = CardPriority.MEDIUM,
     ) -> CardRead | None:
         if column_id not in self._columns:
             return None
@@ -144,6 +148,7 @@ class KanbanStore:
             title=title,
             description=description,
             position=n,
+            priority=priority,
         )
         self._cards[card_id] = card
         return CardRead(
@@ -152,6 +157,7 @@ class KanbanStore:
             title=card.title,
             description=card.description,
             position=card.position,
+            priority=card.priority,
         )
 
     def get_card(self, card_id: str) -> CardRead | None:
@@ -164,6 +170,7 @@ class KanbanStore:
             title=c.title,
             description=c.description,
             position=c.position,
+            priority=c.priority,
         )
 
     def update_card(
@@ -174,6 +181,7 @@ class KanbanStore:
         description: str | None = None,
         column_id: str | None = None,
         position: int | None = None,
+        priority: CardPriority | None = None,
     ) -> CardRead | None:
         card = self._cards.get(card_id)
         if not card:
@@ -183,6 +191,8 @@ class KanbanStore:
             card.title = title
         if description is not None:
             card.description = description
+        if priority is not None:
+            card.priority = priority
 
         if column_id is None and position is None:
             return self.get_card(card_id)
