@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol, cast
 
+from kanban.card_move_specifications import (
+    CardMoveCandidate,
+    SameBoardMoveSpecification,
+    TargetColumnExistsSpecification,
+)
 from kanban.errors import KanbanError
 from kanban.result import Err, Ok, Result
 from kanban.schemas import BoardDetail, BoardSummary, CardPriority, CardRead, ColumnRead
@@ -85,7 +90,7 @@ class KanbanRepository(Protocol):
     ) -> Result[CardRead, KanbanError]: ...
 
 
-class InMemoryKanbanRepository:
+class InMemoryKanbanRepository(KanbanRepository):
     def __init__(self) -> None:
         self._boards: dict[str, _Board] = {}
         self._columns: dict[str, _Column] = {}
@@ -275,10 +280,16 @@ class InMemoryKanbanRepository:
 
         old_col = card.column_id
         target_col = column_id if column_id is not None else old_col
-
-        if target_col not in self._columns:
+        current_column = self._columns.get(old_col)
+        target_column = self._columns.get(target_col)
+        candidate = CardMoveCandidate(
+            target_column_exists=target_column is not None,
+            current_board_id=current_column.board_id if current_column else None,
+            target_board_id=target_column.board_id if target_column else None,
+        )
+        if not TargetColumnExistsSpecification().is_satisfied_by(candidate):
             return Err(KanbanError.COLUMN_NOT_FOUND)
-        if self._columns[old_col].board_id != self._columns[target_col].board_id:
+        if not SameBoardMoveSpecification().is_satisfied_by(candidate):
             return Err(KanbanError.INVALID_CARD_MOVE)
 
         if target_col != old_col:

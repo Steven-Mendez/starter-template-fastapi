@@ -2,7 +2,7 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev lint typecheck test test-unit test-integration test-e2e test-fast
+.PHONY: help sync dev lint typecheck test test-cov test-unit test-integration test-e2e test-fast
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -21,6 +21,9 @@ typecheck: ## Run static type checks (mypy)
 
 test: ## Full pytest suite
 	uv run pytest
+
+test-cov: ## Run non-e2e pytest with coverage report
+	uv run pytest -m "not e2e" --cov=. --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=90
 
 test-fast: ## Skip e2e (no subprocess server)
 	uv run pytest -m "not e2e"

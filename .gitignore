@@ -21,6 +21,7 @@ dist/
 .pytest_cache/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 .tox/
 .nox/
@@ -54,3 +55,13 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Runtime data (SQLite default backend)
+.data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal

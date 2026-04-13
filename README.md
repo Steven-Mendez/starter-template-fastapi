@@ -47,6 +47,7 @@ make dev      # dev server with reload (default port 8000)
 make lint     # ruff checks
 make typecheck
 make test-fast
+make test-cov  # coverage (non-e2e, fail under 90%)
 PORT=9000 make dev
 ```
 
@@ -88,8 +89,8 @@ Environment variables use the `APP_` prefix:
 - `APP_REPOSITORY_BACKEND=inmemory|sqlite`
 - `APP_SQLITE_PATH=.data/kanban.db`
 
-By default the app runs with in-memory storage. Set `APP_REPOSITORY_BACKEND=sqlite`
-to persist boards/cards in a SQLite file.
+By default the app runs with SQLite storage. Set `APP_REPOSITORY_BACKEND=inmemory`
+if you want ephemeral in-memory behavior for quick local experiments.
 
 `GET /health` now reports persistence readiness:
 
@@ -97,7 +98,7 @@ to persist boards/cards in a SQLite file.
 {
   "status": "ok",
   "persistence": {
-    "backend": "inmemory",
+    "backend": "sqlite",
     "ready": true
   }
 }

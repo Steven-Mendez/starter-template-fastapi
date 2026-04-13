@@ -6,12 +6,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
+from kanban.card_move_specifications import (
+    CardMoveCandidate,
+    SameBoardMoveSpecification,
+    TargetColumnExistsSpecification,
+)
 from kanban.errors import KanbanError
+from kanban.repository import KanbanRepository
 from kanban.result import Err, Ok, Result
 from kanban.schemas import BoardDetail, BoardSummary, CardPriority, CardRead, ColumnRead
 
 
-class SQLiteKanbanRepository:
+class SQLiteKanbanRepository(KanbanRepository):
     def __init__(self, db_path: str) -> None:
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -288,15 +294,20 @@ class SQLiteKanbanRepository:
             "SELECT board_id FROM columns_ WHERE id = ?",
             (target_col,),
         ).fetchone()
-        if target_exists is None:
-            return Err(KanbanError.COLUMN_NOT_FOUND)
         old_board = self._conn.execute(
             "SELECT board_id FROM columns_ WHERE id = ?",
             (old_col,),
         ).fetchone()
-        if old_board is None:
+        candidate = CardMoveCandidate(
+            target_column_exists=target_exists is not None,
+            current_board_id=cast(str, old_board["board_id"]) if old_board else None,
+            target_board_id=(
+                cast(str, target_exists["board_id"]) if target_exists else None
+            ),
+        )
+        if not TargetColumnExistsSpecification().is_satisfied_by(candidate):
             return Err(KanbanError.COLUMN_NOT_FOUND)
-        if cast(str, old_board["board_id"]) != cast(str, target_exists["board_id"]):
+        if not SameBoardMoveSpecification().is_satisfied_by(candidate):
             return Err(KanbanError.INVALID_CARD_MOVE)
 
         if target_col != old_col:

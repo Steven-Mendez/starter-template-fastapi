@@ -18,7 +18,7 @@ class AppSettings(BaseSettings):
     cors_origins: list[str] = []
     trusted_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     log_level: str = "INFO"
-    repository_backend: Literal["inmemory", "sqlite"] = "inmemory"
+    repository_backend: Literal["inmemory", "sqlite"] = "sqlite"
     sqlite_path: str = ".data/kanban.db"
 
 

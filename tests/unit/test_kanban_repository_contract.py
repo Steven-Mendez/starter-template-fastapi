@@ -62,3 +62,12 @@ def test_sqlite_repository_persists_data_across_instances(tmp_path: Path) -> Non
     second = SQLiteKanbanRepository(str(db_path))
     boards = second.list_boards()
     assert any(board.id == created.id for board in boards)
+
+
+def test_repository_implementations_conform_to_protocol(tmp_path: Path) -> None:
+    sqlite_repo = SQLiteKanbanRepository(str(tmp_path / "repo-protocol.sqlite3"))
+    in_memory_repo = InMemoryKanbanRepository()
+    typed_sqlite: KanbanRepository = sqlite_repo
+    typed_in_memory: KanbanRepository = in_memory_repo
+    assert typed_sqlite.is_ready() is True
+    assert typed_in_memory.is_ready() is True

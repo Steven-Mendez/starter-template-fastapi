@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_makefile_includes_quality_targets() -> None:
     content = (ROOT / "Makefile").read_text(encoding="utf-8")
-    for target in ("lint:", "typecheck:", "test-fast:"):
+    for target in ("lint:", "typecheck:", "test-fast:", "test-cov:"):
         assert target in content
 
 
