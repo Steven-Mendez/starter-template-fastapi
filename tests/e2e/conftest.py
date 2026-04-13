@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
+import tempfile
 import time
 from collections.abc import Generator
 from pathlib import Path
@@ -25,6 +26,10 @@ def _unused_tcp_port() -> int:
 def api_base_url() -> Generator[str, None, None]:
     port = _unused_tcp_port()
     env = os.environ.copy()
+    with tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False) as tmp_db:
+        sqlite_path = tmp_db.name
+    env["APP_SQLITE_PATH"] = sqlite_path
+    env["APP_REPOSITORY_BACKEND"] = "sqlite"
     proc = subprocess.Popen(
         [
             "uv",
@@ -65,3 +70,5 @@ def api_base_url() -> Generator[str, None, None]:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=5)
+        if os.path.exists(sqlite_path):
+            os.remove(sqlite_path)

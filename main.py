@@ -5,6 +5,8 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +18,24 @@ from problem_details import register_problem_details
 from settings import AppSettings, get_settings
 
 
+def _close_if_supported(resource: object) -> None:
+    close = getattr(resource, "close", None)
+    if callable(close):
+        close()
+
+
 def create_app(settings: AppSettings | None = None) -> FastAPI:
     app_settings = settings or get_settings()
     docs_url = "/docs" if app_settings.enable_docs else None
     redoc_url = "/redoc" if app_settings.enable_docs else None
+
+    @asynccontextmanager
+    async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
+        container = build_container(app_settings)
+        set_app_container(lifespan_app, container)
+        yield
+        _close_if_supported(container.repository)
+        lifespan_app.state.container = None
 
     app = FastAPI(
         title="starter-template-fastapi",
@@ -27,6 +43,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         version="0.1.0",
         docs_url=docs_url,
         redoc_url=redoc_url,
+        lifespan=lifespan,
     )
 
     if app_settings.cors_origins:
@@ -46,7 +63,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     register_problem_details(app)
     app.include_router(kanban_router)
-    set_app_container(app, build_container(app_settings))
     logger = logging.getLogger("api.request")
 
     @app.middleware("http")

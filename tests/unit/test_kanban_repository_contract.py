@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from pathlib import Path
 
 import pytest
@@ -16,16 +16,31 @@ pytestmark = pytest.mark.unit
 @pytest.fixture(params=["inmemory", "sqlite"])
 def repository_factory(
     request: pytest.FixtureRequest, tmp_path: Path
-) -> Callable[[], KanbanRepository]:
+) -> Generator[Callable[[], KanbanRepository], None, None]:
+    created_repositories: list[KanbanRepository] = []
+
     if request.param == "inmemory":
-        return InMemoryKanbanRepository
+        def make_inmemory() -> KanbanRepository:
+            repository = InMemoryKanbanRepository()
+            created_repositories.append(repository)
+            return repository
+
+        yield make_inmemory
+        return
 
     db_path = tmp_path / "kanban-contract.sqlite3"
 
     def make_sqlite() -> KanbanRepository:
-        return SQLiteKanbanRepository(str(db_path))
+        repository = SQLiteKanbanRepository(str(db_path))
+        created_repositories.append(repository)
+        return repository
 
-    return make_sqlite
+    yield make_sqlite
+
+    for repository in created_repositories:
+        close = getattr(repository, "close", None)
+        if callable(close):
+            close()
 
 
 def test_repository_contract_not_found_error(
@@ -62,6 +77,8 @@ def test_sqlite_repository_persists_data_across_instances(tmp_path: Path) -> Non
     second = SQLiteKanbanRepository(str(db_path))
     boards = second.list_boards()
     assert any(board.id == created.id for board in boards)
+    first.close()
+    second.close()
 
 
 def test_repository_implementations_conform_to_protocol(tmp_path: Path) -> None:
@@ -71,3 +88,20 @@ def test_repository_implementations_conform_to_protocol(tmp_path: Path) -> None:
     typed_in_memory: KanbanRepository = in_memory_repo
     assert typed_sqlite.is_ready() is True
     assert typed_in_memory.is_ready() is True
+    sqlite_repo.close()
+
+
+def test_sqlite_repository_close_is_idempotent(tmp_path: Path) -> None:
+    repository = SQLiteKanbanRepository(str(tmp_path / "close-idempotent.sqlite3"))
+    repository.close()
+    repository.close()
+    assert repository.is_ready() is False
+
+
+def test_sqlite_repository_context_manager_closes_connection(tmp_path: Path) -> None:
+    with SQLiteKanbanRepository(
+        str(tmp_path / "context-manager.sqlite3")
+    ) as repository:
+        board = repository.create_board("ctx")
+        assert board.id
+    assert repository.is_ready() is False

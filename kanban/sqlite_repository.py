@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+import weakref
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
+from types import TracebackType
+from typing import Self, cast
 
 from kanban.card_move_specifications import (
     CardMoveCandidate,
@@ -22,9 +24,33 @@ class SQLiteKanbanRepository(KanbanRepository):
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._closed = False
+        self._finalizer = weakref.finalize(self, sqlite3.Connection.close, self._conn)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._init_schema()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        if self._finalizer.alive:
+            self._finalizer()
+        self._closed = True
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("SQLiteKanbanRepository is closed")
 
     def _init_schema(self) -> None:
         self._conn.executescript(
@@ -55,6 +81,8 @@ class SQLiteKanbanRepository(KanbanRepository):
         )
 
     def is_ready(self) -> bool:
+        if self._closed:
+            return False
         try:
             self._conn.execute("SELECT 1")
             return True
@@ -62,6 +90,7 @@ class SQLiteKanbanRepository(KanbanRepository):
             return False
 
     def create_board(self, title: str) -> BoardSummary:
+        self._ensure_open()
         board_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc)
         with self._conn:
@@ -72,6 +101,7 @@ class SQLiteKanbanRepository(KanbanRepository):
         return BoardSummary(id=board_id, title=title, created_at=created_at)
 
     def list_boards(self) -> list[BoardSummary]:
+        self._ensure_open()
         rows = self._conn.execute(
             "SELECT id, title, created_at FROM boards ORDER BY created_at ASC"
         ).fetchall()
@@ -85,6 +115,7 @@ class SQLiteKanbanRepository(KanbanRepository):
         ]
 
     def get_board(self, board_id: str) -> Result[BoardDetail, KanbanError]:
+        self._ensure_open()
         board = self._conn.execute(
             "SELECT id, title, created_at FROM boards WHERE id = ?",
             (board_id,),
@@ -132,6 +163,7 @@ class SQLiteKanbanRepository(KanbanRepository):
     def update_board(
         self, board_id: str, title: str
     ) -> Result[BoardSummary, KanbanError]:
+        self._ensure_open()
         with self._conn:
             updated = self._conn.execute(
                 "UPDATE boards SET title = ? WHERE id = ?",
@@ -153,6 +185,7 @@ class SQLiteKanbanRepository(KanbanRepository):
         )
 
     def delete_board(self, board_id: str) -> Result[None, KanbanError]:
+        self._ensure_open()
         with self._conn:
             deleted = self._conn.execute("DELETE FROM boards WHERE id = ?", (board_id,))
         if deleted.rowcount == 0:
@@ -162,6 +195,7 @@ class SQLiteKanbanRepository(KanbanRepository):
     def create_column(
         self, board_id: str, title: str
     ) -> Result[ColumnRead, KanbanError]:
+        self._ensure_open()
         exists = self._conn.execute(
             "SELECT 1 FROM boards WHERE id = ?",
             (board_id,),
@@ -193,6 +227,7 @@ class SQLiteKanbanRepository(KanbanRepository):
         )
 
     def delete_column(self, column_id: str) -> Result[None, KanbanError]:
+        self._ensure_open()
         with self._conn:
             deleted = self._conn.execute(
                 "DELETE FROM columns_ WHERE id = ?",
@@ -211,6 +246,7 @@ class SQLiteKanbanRepository(KanbanRepository):
         priority: CardPriority = CardPriority.MEDIUM,
         due_at: datetime | None = None,
     ) -> Result[CardRead, KanbanError]:
+        self._ensure_open()
         col = self._conn.execute(
             "SELECT id FROM columns_ WHERE id = ?",
             (column_id,),
@@ -254,6 +290,7 @@ class SQLiteKanbanRepository(KanbanRepository):
         )
 
     def get_card(self, card_id: str) -> Result[CardRead, KanbanError]:
+        self._ensure_open()
         row = self._conn.execute(
             (
                 "SELECT id, column_id, title, description, position, priority, due_at "
@@ -276,6 +313,7 @@ class SQLiteKanbanRepository(KanbanRepository):
         priority: CardPriority | None = None,
         due_at: datetime | None | object = ...,
     ) -> Result[CardRead, KanbanError]:
+        self._ensure_open()
         row = self._conn.execute(
             (
                 "SELECT id, column_id, title, description, position, priority, due_at "

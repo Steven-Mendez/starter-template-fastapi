@@ -28,6 +28,7 @@ def test_factory_selects_sqlite_repository(tmp_path: Path) -> None:
     )
     repository = create_repository_for_settings(settings)
     assert isinstance(repository, SQLiteKanbanRepository)
+    repository.close()
 
 
 def test_container_uses_selected_repository_backend(tmp_path: Path) -> None:
@@ -45,6 +46,7 @@ def test_container_uses_selected_repository_backend(tmp_path: Path) -> None:
 
     assert isinstance(sqlite_container.repository, SQLiteKanbanRepository)
     assert isinstance(in_memory_container.repository, InMemoryKanbanRepository)
+    sqlite_container.repository.close()
 
 
 def test_default_settings_backend_is_sqlite() -> None:
