@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from kanban.router import router as kanban_router
+from problem_details import register_problem_details
 
 app = FastAPI(
     title="starter-template-fastapi",
@@ -9,6 +10,7 @@ app = FastAPI(
 )
 
 app.include_router(kanban_router)
+register_problem_details(app)
 
 
 @app.get("/")

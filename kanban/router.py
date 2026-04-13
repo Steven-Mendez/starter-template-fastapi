@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from kanban.errors import KanbanError
+from kanban.repository import KanbanRepository
+from kanban.result import Err, Ok
 from kanban.schemas import (
     BoardCreate,
     BoardDetail,
@@ -16,59 +19,71 @@ from kanban.schemas import (
     ColumnCreate,
     ColumnRead,
 )
-from kanban.store import DUE_AT_UNSET, KanbanStore, get_store
+from kanban.store import DUE_AT_UNSET, get_store
 
 router = APIRouter(prefix="/api", tags=["kanban"])
+
+
+def _http_from_kanban_error(err: KanbanError) -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=err.detail,
+    )
 
 
 @router.post("/boards", response_model=BoardSummary, status_code=status.HTTP_201_CREATED)
 def create_board(
     body: BoardCreate,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> BoardSummary:
     return store.create_board(body.title)
 
 
 @router.get("/boards", response_model=list[BoardSummary])
-def list_boards(store: Annotated[KanbanStore, Depends(get_store)]) -> list[BoardSummary]:
+def list_boards(store: Annotated[KanbanRepository, Depends(get_store)]) -> list[BoardSummary]:
     return store.list_boards()
 
 
 @router.get("/boards/{board_id}", response_model=BoardDetail)
 def get_board(
     board_id: UUID,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> BoardDetail:
-    b = store.get_board(str(board_id))
-    if not b:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
-    return b
+    match store.get_board(str(board_id)):
+        case Ok(value):
+            return value
+        case Err(err):
+            _http_from_kanban_error(err)
 
 
 @router.patch("/boards/{board_id}", response_model=BoardSummary)
 def patch_board(
     board_id: UUID,
     body: BoardUpdate,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> BoardSummary:
     if body.title is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="At least one field must be provided",
         )
-    out = store.update_board(str(board_id), body.title)
-    if not out:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
-    return out
+    match store.update_board(str(board_id), body.title):
+        case Ok(value):
+            return value
+        case Err(err):
+            _http_from_kanban_error(err)
 
 
 @router.delete("/boards/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_board(
     board_id: UUID,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> None:
-    if not store.delete_board(str(board_id)):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    match store.delete_board(str(board_id)):
+        case Ok(_):
+            return
+        case Err(err):
+            _http_from_kanban_error(err)
 
 
 @router.post(
@@ -79,21 +94,25 @@ def delete_board(
 def create_column(
     board_id: UUID,
     body: ColumnCreate,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> ColumnRead:
-    col = store.create_column(str(board_id), body.title)
-    if not col:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
-    return col
+    match store.create_column(str(board_id), body.title):
+        case Ok(value):
+            return value
+        case Err(err):
+            _http_from_kanban_error(err)
 
 
 @router.delete("/columns/{column_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_column(
     column_id: UUID,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> None:
-    if not store.delete_column(str(column_id)):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Column not found")
+    match store.delete_column(str(column_id)):
+        case Ok(_):
+            return
+        case Err(err):
+            _http_from_kanban_error(err)
 
 
 @router.post(
@@ -104,36 +123,38 @@ def delete_column(
 def create_card(
     column_id: UUID,
     body: CardCreate,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> CardRead:
-    card = store.create_card(
+    match store.create_card(
         str(column_id),
         body.title,
         body.description,
         priority=body.priority,
         due_at=body.due_at,
-    )
-    if not card:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Column not found")
-    return card
+    ):
+        case Ok(value):
+            return value
+        case Err(err):
+            _http_from_kanban_error(err)
 
 
 @router.get("/cards/{card_id}", response_model=CardRead)
 def get_card(
     card_id: UUID,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> CardRead:
-    card = store.get_card(str(card_id))
-    if not card:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
-    return card
+    match store.get_card(str(card_id)):
+        case Ok(value):
+            return value
+        case Err(err):
+            _http_from_kanban_error(err)
 
 
 @router.patch("/cards/{card_id}", response_model=CardRead)
 def patch_card(
     card_id: UUID,
     body: CardUpdate,
-    store: Annotated[KanbanStore, Depends(get_store)],
+    store: Annotated[KanbanRepository, Depends(get_store)],
 ) -> CardRead:
     updates = body.model_dump(exclude_unset=True)
     if not updates:
@@ -143,7 +164,7 @@ def patch_card(
         )
     col_id = str(updates["column_id"]) if "column_id" in updates else None
     pos = updates.get("position")
-    out = store.update_card(
+    match store.update_card(
         str(card_id),
         title=updates.get("title"),
         description=updates.get("description"),
@@ -151,7 +172,8 @@ def patch_card(
         position=pos,
         priority=updates.get("priority"),
         due_at=updates["due_at"] if "due_at" in updates else DUE_AT_UNSET,
-    )
-    if not out:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
-    return out
+    ):
+        case Ok(value):
+            return value
+        case Err(err):
+            _http_from_kanban_error(err)
