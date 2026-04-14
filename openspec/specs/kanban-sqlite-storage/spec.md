@@ -21,4 +21,3 @@ The system SHALL return the same domain-level success and error result patterns 
 
 - **WHEN** a card is moved to a column in a different board
 - **THEN** the repository SHALL return the invalid move error result code
-

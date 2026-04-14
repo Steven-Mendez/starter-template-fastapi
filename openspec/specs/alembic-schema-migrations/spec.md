@@ -16,4 +16,3 @@ The system SHALL provide an initial migration that creates all required tables a
 #### Scenario: Initialize empty database
 - **WHEN** migrations are applied on an empty PostgreSQL database
 - **THEN** required kanban tables and foreign-key relationships SHALL be created successfully
-

@@ -29,4 +29,3 @@ The `.gitignore` SHALL NOT exclude `uv.lock` or `.python-version` so the project
 
 - **WHEN** a maintainer stages `uv.lock` after `uv lock`
 - **THEN** Git SHALL accept the file (it is not matched by ignore patterns)
-

@@ -98,7 +98,7 @@ class SQLModelKanbanRepository(KanbanRepository):
     def list_boards(self) -> list[BoardSummary]:
         self._ensure_open()
         with Session(self._engine, expire_on_commit=False) as session:
-            boards = session.exec(select(BoardTable).order_by(BoardTable.created_at)).all()
+            boards = session.exec(select(BoardTable).order_by("created_at")).all()
         return [
             BoardSummary(
                 id=board.id,
@@ -118,14 +118,14 @@ class SQLModelKanbanRepository(KanbanRepository):
             columns = session.exec(
                 select(ColumnTable)
                 .where(ColumnTable.board_id == board_id)
-                .order_by(ColumnTable.position)
+                .order_by("position")
             ).all()
             out_columns: list[ColumnRead] = []
             for column in columns:
                 cards = session.exec(
                     select(CardTable)
                     .where(CardTable.column_id == column.id)
-                    .order_by(CardTable.position)
+                    .order_by("position")
                 ).all()
                 out_columns.append(
                     ColumnRead(
@@ -234,7 +234,9 @@ class SQLModelKanbanRepository(KanbanRepository):
                 return Err(KanbanError.COLUMN_NOT_FOUND)
 
             max_position = session.exec(
-                select(func.max(CardTable.position)).where(CardTable.column_id == column_id)
+                select(func.max(CardTable.position)).where(
+                    CardTable.column_id == column_id
+                )
             ).one()
             position = (cast(int | None, max_position) or -1) + 1
 
@@ -295,8 +297,10 @@ class SQLModelKanbanRepository(KanbanRepository):
                 if position is None:
                     target_cards = session.exec(
                         select(CardTable)
-                        .where(CardTable.column_id == target_col, CardTable.id != card.id)
-                        .order_by(CardTable.position)
+                        .where(
+                            CardTable.column_id == target_col, CardTable.id != card.id
+                        )
+                        .order_by("position")
                     ).all()
                     card.column_id = target_col
                     card.position = len(target_cards)
@@ -325,7 +329,7 @@ class SQLModelKanbanRepository(KanbanRepository):
         remaining = session.exec(
             select(CardTable)
             .where(CardTable.column_id == column_id, CardTable.id != card_id)
-            .order_by(CardTable.position)
+            .order_by("position")
         ).all()
         for index, row in enumerate(remaining):
             row.position = index
@@ -337,10 +341,10 @@ class SQLModelKanbanRepository(KanbanRepository):
         others = session.exec(
             select(CardTable)
             .where(CardTable.column_id == column_id, CardTable.id != card.id)
-            .order_by(CardTable.position)
+            .order_by("position")
         ).all()
         position = min(max(0, requested_position), len(others))
-        ordered = others[:position] + [card] + others[position:]
+        ordered = list(others[:position]) + [card] + list(others[position:])
         for index, row in enumerate(ordered):
             row.column_id = column_id
             row.position = index

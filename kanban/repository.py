@@ -46,6 +46,7 @@ class _Card:
 
 class KanbanRepository(Protocol):
     def is_ready(self) -> bool: ...
+    def close(self) -> None: ...
 
     def create_board(self, title: str) -> BoardSummary: ...
 
@@ -95,6 +96,9 @@ class InMemoryKanbanRepository(KanbanRepository):
         self._boards: dict[str, _Board] = {}
         self._columns: dict[str, _Column] = {}
         self._cards: dict[str, _Card] = {}
+
+    def close(self) -> None:
+        return None
 
     def is_ready(self) -> bool:
         return True

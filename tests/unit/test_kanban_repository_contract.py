@@ -20,6 +20,7 @@ def repository_factory(
     created_repositories: list[KanbanRepository] = []
 
     if request.param == "inmemory":
+
         def make_inmemory() -> KanbanRepository:
             repository = InMemoryKanbanRepository()
             created_repositories.append(repository)

@@ -44,9 +44,7 @@ def test_card_move_specifications_validate_candidate() -> None:
         current_board_id="board-1",
         target_board_id="board-1",
     )
-    composed = TargetColumnExistsSpecification().and_spec(
-        SameBoardMoveSpecification()
-    )
+    composed = TargetColumnExistsSpecification().and_spec(SameBoardMoveSpecification())
     assert composed.is_satisfied_by(candidate) is True
 
 
@@ -56,7 +54,5 @@ def test_card_move_specification_detects_cross_board() -> None:
         current_board_id="board-1",
         target_board_id="board-2",
     )
-    composed = TargetColumnExistsSpecification().and_spec(
-        SameBoardMoveSpecification()
-    )
+    composed = TargetColumnExistsSpecification().and_spec(SameBoardMoveSpecification())
     assert composed.is_satisfied_by(candidate) is False

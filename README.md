@@ -44,8 +44,14 @@ pip install -e .
 make          # list targets (default)
 make sync     # uv sync — install from lockfile
 make dev      # dev server with reload (default port 8000)
+make format   # ruff formatter
 make lint     # ruff checks
-make typecheck
+make lint-fix # ruff checks + autofix
+make typecheck  # mypy
+make check    # lint + typecheck
+make precommit-install
+make precommit-run
+make precommit-update
 make test-fast
 make test-cov  # coverage (non-e2e, fail under 90%)
 PORT=9000 make dev
@@ -69,6 +75,33 @@ If your FastAPI install exposes the CLI:
 
 ```bash
 fastapi run main.py
+```
+
+## Quality gates
+
+Run linting and type checks directly:
+
+```bash
+uv run ruff check .
+uv run mypy
+```
+
+or with Make:
+
+```bash
+make format
+make lint
+make lint-fix
+make typecheck
+make check
+```
+
+Install and run git hooks:
+
+```bash
+make precommit-install
+make precommit-run
+make precommit-update
 ```
 
 Useful URLs (default port 8000):

@@ -16,4 +16,3 @@ The system SHALL build SQLModel engine/session configuration from application se
 #### Scenario: PostgreSQL URL provided in settings
 - **WHEN** the application starts with a PostgreSQL database URL configured
 - **THEN** repository dependencies SHALL use SQLModel-backed PostgreSQL persistence
-

@@ -36,4 +36,3 @@ The system SHALL provide interactive OpenAPI-based documentation at `/docs` and 
 
 - **WHEN** the application runs with docs disabled
 - **THEN** a client request to `/docs` SHALL return `404`
-
