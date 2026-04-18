@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from kanban.result import (
+from src.domain.shared.result import (
     Err,
     Ok,
     UnwrapError,

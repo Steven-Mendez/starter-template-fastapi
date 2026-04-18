@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from kanban.errors import KanbanError
+from src.domain.shared.errors import KanbanError
 
 pytestmark = pytest.mark.unit
 

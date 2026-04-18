@@ -5,10 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from kanban.errors import KanbanError
-from kanban.repository import InMemoryKanbanRepository, KanbanRepository
-from kanban.result import Err, Ok
-from kanban.sqlite_repository import SQLiteKanbanRepository
+from src.application.ports.repository import KanbanRepository
+from src.domain.shared.errors import KanbanError
+from src.domain.shared.result import Err, Ok
+from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from src.infrastructure.persistence.sqlmodel_repository import SQLiteKanbanRepository
 
 pytestmark = pytest.mark.unit
 

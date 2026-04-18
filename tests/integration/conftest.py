@@ -8,7 +8,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from dependencies import build_container, get_kanban_repository, set_app_container
+from dependencies import (
+    build_container,
+    get_kanban_command_handlers,
+    get_kanban_query_handlers,
+    get_kanban_repository,
+    set_app_container,
+)
 from main import app
 from settings import AppSettings
 
@@ -21,6 +27,12 @@ def api_client(tmp_path: Path) -> Generator[TestClient, None, None]:
     )
     container = build_container(settings)
     app.dependency_overrides[get_kanban_repository] = lambda: container.repository
+    app.dependency_overrides[get_kanban_command_handlers] = (
+        lambda: container.command_handlers
+    )
+    app.dependency_overrides[get_kanban_query_handlers] = (
+        lambda: container.query_handlers
+    )
     with TestClient(app) as client:
         set_app_container(app, container)
         yield client

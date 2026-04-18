@@ -5,9 +5,10 @@ from pathlib import Path
 import pytest
 
 from dependencies import build_container
-from kanban.repository import InMemoryKanbanRepository, create_repository_for_settings
-from kanban.sqlite_repository import SQLModelKanbanRepository
 from settings import AppSettings
+from src.infrastructure.config.di.composition import create_repository_for_settings
+from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 
 pytestmark = pytest.mark.unit
 

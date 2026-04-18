@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from kanban.errors import KanbanError
-from kanban.result import Err, Ok
-from kanban.schemas import CardPriority
-from kanban.store import DUE_AT_UNSET, KanbanStore
+from src.application.ports.repository import DUE_AT_UNSET
+from src.domain.kanban.models import CardPriority
+from src.domain.shared.errors import KanbanError
+from src.domain.shared.result import Err, Ok
+from src.application.ports.repository import KanbanRepository as KanbanStore
 
 pytestmark = pytest.mark.unit
 

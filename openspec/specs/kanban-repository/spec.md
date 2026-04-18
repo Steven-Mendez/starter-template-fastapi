@@ -8,7 +8,7 @@ Define how Kanban data is accessed through a repository abstraction with explici
 
 ### Requirement: Repository exposes board and column operations with explicit failures
 
-The system SHALL provide a `KanbanRepository` protocol. Operations that may fail SHALL return `Result[T, KanbanError]` using `Ok` for success and `Err` for failure. `KanbanError` SHALL be a `StrEnum` of stable reason codes; each member SHALL expose a `detail` string suitable for HTTP error bodies (see `kanban/errors.py`). The contract SHALL be satisfied by all supported repository backends. Repositories that hold external resources MAY expose close/disposal hooks and callers SHALL release those resources in lifecycle teardown.
+The system SHALL provide a `KanbanRepository` protocol as an outbound port. Operations that may fail SHALL return `Result[T, KanbanError]` using `Ok` for success and `Err` for failure. `KanbanError` SHALL be a `StrEnum` of stable reason codes; each member SHALL expose a `detail` string suitable for HTTP error bodies (see `kanban/errors.py`). The contract SHALL be satisfied by all supported repository backends. Repositories that hold external resources MAY expose close/disposal hooks and callers SHALL release those resources in lifecycle teardown. The outbound port definition SHALL remain independent of framework request objects and runtime settings-based adapter selection.
 
 #### Scenario: Missing board returns Err on read
 
@@ -29,12 +29,16 @@ The system SHALL represent an attempt to move a card to a column on a different 
 - **WHEN** `update_card` is asked to set `column_id` to a column that exists but belongs to another board than the card's current column
 - **THEN** the result SHALL be `Err` with an error code for invalid move
 
-### Requirement: Backward-compatible entry points remain available
+### Requirement: Repository contracts SHALL support CQRS-oriented split
 
-The system SHALL keep module-level accessors (for example `get_store`) so existing tests and dependency injection continue to work, delegating to the configured repository implementation.
+The system SHALL allow application-level separation between command-side and query-side contracts while preserving consistent domain invariants and error semantics.
 
-#### Scenario: FastAPI dependency resolves a repository
+#### Scenario: Query contract does not expose write methods
 
-- **WHEN** routes request the Kanban dependency
-- **THEN** they SHALL receive an object satisfying `KanbanRepository`
-- **THEN** backend selection SHALL follow application configuration
+- **WHEN** a query-side application handler is type-checked
+- **THEN** its repository dependency SHALL include read operations only
+
+#### Scenario: Command contract can mutate state
+
+- **WHEN** a command-side application handler is type-checked
+- **THEN** its repository dependency SHALL include write operations required by the command

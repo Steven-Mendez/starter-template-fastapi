@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import pytest
+from typing import Generator
 
-from kanban.store import KanbanStore
+from src.application.ports.repository import KanbanRepository
+from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 
 
-@pytest.fixture
-def kanban_store() -> KanbanStore:
-    return KanbanStore()
+@pytest.fixture(params=["inmemory", "sqlite"])
+def kanban_store(request: pytest.FixtureRequest) -> Generator[KanbanRepository, None, None]:
+    if request.param == "inmemory":
+        yield InMemoryKanbanRepository()
+    elif request.param == "sqlite":
+        # using check_same_thread=False inside the repository implementation for sqlite
+        repo = SQLModelKanbanRepository("sqlite:///:memory:")
+        yield repo
+        repo.close()

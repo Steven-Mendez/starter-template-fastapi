@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from kanban.card_move_specifications import (
+from src.domain.kanban.specifications.base import PredicateSpecification
+from src.domain.kanban.specifications.card_move import (
     CardMoveCandidate,
     SameBoardMoveSpecification,
     TargetColumnExistsSpecification,
 )
-from kanban.specification import PredicateSpecification
 
 pytestmark = pytest.mark.unit
 

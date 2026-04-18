@@ -6,11 +6,11 @@ Define SQLite-backed persistence for the Kanban repository, including durability
 ## Requirements
 ### Requirement: Kanban repository SHALL support durable SQLite storage
 
-The system SHALL provide a PostgreSQL-backed repository implementation, via SQLModel, that persists boards, columns, and cards across application restarts.
+The system SHALL provide a SQLite-backed repository implementation, via SQLModel, that persists boards, columns, and cards across application restarts.
 
 #### Scenario: Data persists after restart
 
-- **WHEN** a board is created using PostgreSQL storage and the app restarts
+- **WHEN** a board is created using SQLite storage and the app restarts
 - **THEN** querying boards SHALL include the previously created board
 
 ### Requirement: SQLite repository SHALL preserve domain error semantics

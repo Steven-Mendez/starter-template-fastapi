@@ -12,10 +12,11 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from dependencies import build_container, get_app_container, set_app_container
-from kanban.router import router as kanban_router
+from dependencies import build_container, set_app_container
 from problem_details import register_problem_details
 from settings import AppSettings, get_settings
+from src.api.kanban_router import kanban_router
+from src.api.root_router import root_router
 
 
 def _close_if_supported(resource: object) -> None:
@@ -62,6 +63,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
     register_problem_details(app)
+    app.include_router(root_router)
     app.include_router(kanban_router)
     logger = logging.getLogger("api.request")
 
@@ -88,25 +90,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             )
         )
         return response
-
-    @app.get("/")
-    def read_root() -> dict[str, str]:
-        return {
-            "name": "starter-template-fastapi",
-            "message": "FastAPI service is running.",
-        }
-
-    @app.get("/health")
-    def health(request: Request) -> dict[str, object]:
-        container = get_app_container(request)
-        ready = container.repository.is_ready()
-        return {
-            "status": "ok" if ready else "degraded",
-            "persistence": {
-                "backend": container.settings.repository_backend,
-                "ready": ready,
-            },
-        }
 
     return app
 
