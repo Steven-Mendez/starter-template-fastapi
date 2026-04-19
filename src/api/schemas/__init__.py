@@ -1,3 +1,4 @@
+from src.api.schemas.health import HealthPersistence, HealthRead
 from src.api.schemas.kanban import (
     BoardCreate,
     BoardDetail,
@@ -20,4 +21,6 @@ __all__ = [
     "CardUpdate",
     "ColumnCreate",
     "ColumnRead",
+    "HealthPersistence",
+    "HealthRead",
 ]

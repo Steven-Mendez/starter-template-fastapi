@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from src.api.schemas.kanban import CardCreate, CardRead, CardUpdate
 from src.domain.kanban.models import Card, CardPriority
@@ -13,7 +13,8 @@ class PatchCardInput(TypedDict):
     column_id: str | None
     position: int | None
     priority: CardPriority | None
-    due_at: object
+    due_at: datetime | None
+    has_due_at: bool
 
 
 def to_create_card_input(
@@ -22,7 +23,7 @@ def to_create_card_input(
     return (body.title, body.description, body.priority, body.due_at)
 
 
-def to_patch_card_input(body: CardUpdate, due_at_unset: object) -> PatchCardInput:
+def to_patch_card_input(body: CardUpdate) -> PatchCardInput:
     updates = body.model_dump(exclude_unset=True)
     return {
         "title": updates.get("title"),
@@ -30,8 +31,25 @@ def to_patch_card_input(body: CardUpdate, due_at_unset: object) -> PatchCardInpu
         "column_id": str(updates["column_id"]) if "column_id" in updates else None,
         "position": updates.get("position"),
         "priority": updates.get("priority"),
-        "due_at": updates["due_at"] if "due_at" in updates else due_at_unset,
+        "due_at": cast(datetime | None, updates.get("due_at")),
+        "has_due_at": "due_at" in updates,
     }
+
+
+def has_patch_card_changes(input_data: PatchCardInput) -> bool:
+    if input_data["has_due_at"]:
+        return True
+
+    return any(
+        value is not None
+        for value in (
+            input_data["title"],
+            input_data["description"],
+            input_data["column_id"],
+            input_data["position"],
+            input_data["priority"],
+        )
+    )
 
 
 def to_card_response(value: Card) -> CardRead:

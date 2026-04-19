@@ -7,6 +7,9 @@ import pytest
 from _pytest.logging import LogCaptureFixture
 from fastapi.testclient import TestClient
 
+from main import create_app
+from src.config.settings import AppSettings
+
 pytestmark = pytest.mark.integration
 
 
@@ -33,3 +36,27 @@ def test_request_logging_emits_structured_fields(
     assert payload["path"] == "/health"
     assert payload["status_code"] == 200
     assert isinstance(payload["duration_ms"], float)
+
+
+def test_unhandled_exception_logging_emits_structured_fields(
+    caplog: LogCaptureFixture,
+) -> None:
+    app = create_app(AppSettings(repository_backend="inmemory"))
+
+    @app.get("/explode")
+    def explode() -> dict[str, str]:
+        raise RuntimeError("boom")
+
+    caplog.set_level(logging.ERROR, logger="api.error")
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/explode", headers={"X-Request-ID": "err-req-1"})
+
+    assert response.status_code == 500
+    records = [r for r in caplog.records if r.name == "api.error"]
+    assert records
+    payload = json.loads(records[-1].message)
+    assert payload["request_id"] == "err-req-1"
+    assert payload["method"] == "GET"
+    assert payload["path"] == "/explode"
+    assert payload["status_code"] == 500
+    assert payload["error_type"] == "RuntimeError"

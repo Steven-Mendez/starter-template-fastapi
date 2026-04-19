@@ -68,4 +68,5 @@ def test_container_uses_selected_repository_backend(tmp_path: Path) -> None:
 
 
 def test_default_settings_backend_is_postgresql() -> None:
-    assert AppSettings().repository_backend == "postgresql"
+    default_backend = AppSettings.model_fields["repository_backend"].default
+    assert default_backend == "postgresql"

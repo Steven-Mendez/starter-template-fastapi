@@ -13,7 +13,11 @@ from src.domain.kanban.models import Board, BoardSummary
 from src.domain.kanban.repository.command import KanbanCommandRepository
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
-from src.infrastructure.persistence.sqlmodel.models import BoardTable, CardTable, ColumnTable
+from src.infrastructure.persistence.sqlmodel.models import (
+    BoardTable,
+    CardTable,
+    ColumnTable,
+)
 
 
 class SqlModelCommandRepository(KanbanCommandRepository):
@@ -71,7 +75,8 @@ class SqlModelCommandRepository(KanbanCommandRepository):
             .order_by("position")
         ).all()
 
-        from src.domain.kanban.models import Column, Card, CardPriority
+        from src.domain.kanban.models import Card, CardPriority, Column
+
         def _ensure_utc(dt: datetime) -> datetime:
             if dt.tzinfo is None:
                 return dt.replace(tzinfo=timezone.utc)
@@ -121,7 +126,9 @@ class SqlModelCommandRepository(KanbanCommandRepository):
         self._session.add(db_board)
 
         # Sync aggregate
-        existing_cols = self._session.exec(select(ColumnTable).where(ColumnTable.board_id == board.id)).all()
+        existing_cols = self._session.exec(
+            select(ColumnTable).where(ColumnTable.board_id == board.id)
+        ).all()
         existing_col_ids = {c.id for c in existing_cols}
         current_col_ids = {c.id for c in board.columns}
         for cid in existing_col_ids - current_col_ids:
@@ -132,26 +139,20 @@ class SqlModelCommandRepository(KanbanCommandRepository):
         for column in board.columns:
             col_tbl = self._session.get(ColumnTable, column.id)
             if not col_tbl:
-                col_tbl = ColumnTable(id=column.id, board_id=board.id, title=column.title, position=column.position)
+                col_tbl = ColumnTable(
+                    id=column.id,
+                    board_id=board.id,
+                    title=column.title,
+                    position=column.position,
+                )
             else:
                 col_tbl.title = column.title
                 col_tbl.position = column.position
             self._session.add(col_tbl)
 
-            existing_cards = self._session.exec(select(CardTable).where(CardTable.column_id == column.id)).all()
-            existing_card_ids = {c.id for c in existing_cards}
-            current_card_ids = {c.id for c in column.cards}
-            # wait, if a card moved to another column, it won't be in this column's cards, so we might delete it!
-            # But the other column will add/update it.
-            # INSTEAD of deleting per-column orphans, we should delete per-board orphans!
-            # If we just do it per column, we might delete a card before it's updated if the other column is processed later.
-            pass # we'll fix orphan cards globally below
-
         # Delete board orphan cards
         existing_board_cards = self._session.exec(
-            select(CardTable)
-            .join(ColumnTable)
-            .where(ColumnTable.board_id == board.id)
+            select(CardTable).join(ColumnTable).where(ColumnTable.board_id == board.id)
         ).all()
         existing_board_card_ids = {c.id for c in existing_board_cards}
 
@@ -172,7 +173,7 @@ class SqlModelCommandRepository(KanbanCommandRepository):
                         description=card.description,
                         position=card.position,
                         priority=card.priority.value,
-                        due_at=card.due_at
+                        due_at=card.due_at,
                     )
                 else:
                     card_tbl.column_id = column.id

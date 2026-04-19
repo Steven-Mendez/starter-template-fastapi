@@ -3,10 +3,9 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import cast
 
-from src.domain.kanban.repository import DUE_AT_UNSET, KanbanRepository
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
+from src.domain.kanban.repository import KanbanRepository
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 
@@ -120,9 +119,7 @@ class InMemoryKanbanRepository(KanbanRepository):
         del self._boards[board_id]
         return Ok(None)
 
-    def create_column(
-        self, board_id: str, title: str
-    ) -> Result[Column, KanbanError]:
+    def create_column(self, board_id: str, title: str) -> Result[Column, KanbanError]:
         if board_id not in self._boards:
             return Err(KanbanError.BOARD_NOT_FOUND)
         existing = [c for c in self._columns.values() if c.board_id == board_id]

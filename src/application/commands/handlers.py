@@ -87,7 +87,9 @@ class KanbanCommandHandlers:
                 return Err(KanbanError.COLUMN_NOT_FOUND)
 
             board.columns.remove(col)
-            board._recalculate_positions() if hasattr(board, "_recalculate_positions") else None
+            board._recalculate_positions() if hasattr(
+                board, "_recalculate_positions"
+            ) else None
 
             save_err = self.uow.kanban.save_board(board)
             if isinstance(save_err, Err):
@@ -118,7 +120,7 @@ class KanbanCommandHandlers:
                 column_id=command.column_id,
                 title=command.title,
                 description=command.description,
-                position=0, # will be recalculated by insert_card
+                position=0,  # will be recalculated by insert_card
                 priority=command.priority,
                 due_at=command.due_at,
             )
@@ -132,7 +134,6 @@ class KanbanCommandHandlers:
             return Ok(card)
 
     def handle_patch_card(self, command: PatchCardCommand) -> Result[Card, KanbanError]:
-        from src.domain.kanban.repository.command import DUE_AT_UNSET
         with self.uow:
             board_id = self.uow.kanban.get_board_id_for_card(command.card_id)
             if not board_id:
@@ -145,10 +146,23 @@ class KanbanCommandHandlers:
 
             # If user wants to move the card
             if command.column_id is not None or command.position is not None:
-                source_col = next((c for c in board.columns if any(ca.id == command.card_id for ca in c.cards)), None)
+                source_col = next(
+                    (
+                        c
+                        for c in board.columns
+                        if any(ca.id == command.card_id for ca in c.cards)
+                    ),
+                    None,
+                )
                 if source_col:
-                    target_col_id = command.column_id if command.column_id is not None else source_col.id
-                    err = board.move_card(command.card_id, source_col.id, target_col_id, command.position)
+                    target_col_id = (
+                        command.column_id
+                        if command.column_id is not None
+                        else source_col.id
+                    )
+                    err = board.move_card(
+                        command.card_id, source_col.id, target_col_id, command.position
+                    )
                     if err:
                         return Err(err)
 
@@ -163,7 +177,7 @@ class KanbanCommandHandlers:
                             card.description = command.description
                         if command.priority is not None:
                             card.priority = command.priority
-                        if command.due_at is not DUE_AT_UNSET:
+                        if command.due_at_provided:
                             card.due_at = command.due_at
                         updated_card = card
                         break

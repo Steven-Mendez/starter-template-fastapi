@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Annotated
+from fastapi import APIRouter
 
-from fastapi import APIRouter, Depends
-
-from dependencies import AppContainer, get_app_container
+from src.api.dependencies import AppContainerDep
+from src.api.schemas import HealthPersistence, HealthRead
 from src.application.queries import HealthCheckQuery
 
 root_router = APIRouter(tags=["root"])
@@ -18,15 +17,15 @@ def read_root() -> dict[str, str]:
     }
 
 
-@root_router.get("/health")
+@root_router.get("/health", response_model=HealthRead)
 def health(
-    container: Annotated[AppContainer, Depends(get_app_container)],
-) -> dict[str, object]:
+    container: AppContainerDep,
+) -> HealthRead:
     ready = container.query_handlers.handle_health_check(HealthCheckQuery())
-    return {
-        "status": "ok" if ready else "degraded",
-        "persistence": {
-            "backend": container.settings.repository_backend,
-            "ready": ready,
-        },
-    }
+    return HealthRead(
+        status="ok" if ready else "degraded",
+        persistence=HealthPersistence(
+            backend=container.settings.repository_backend,
+            ready=ready,
+        ),
+    )

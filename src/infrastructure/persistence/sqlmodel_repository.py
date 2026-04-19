@@ -4,14 +4,15 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
-from typing import Self, cast
+from typing import Any, Self, cast
 
 from sqlalchemy import func
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from src.domain.kanban.repository import DUE_AT_UNSET, KanbanRepository
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
+from src.domain.kanban.repository import DUE_AT_UNSET, KanbanRepository
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.persistence.sqlmodel.models import (
@@ -45,15 +46,22 @@ class SQLModelKanbanRepository(KanbanRepository):
         )
         if database_url.startswith("sqlite"):
             from sqlalchemy import event
+
             @event.listens_for(self._engine, "connect")
-            def set_sqlite_pragma(dbapi_connection: object, connection_record: object) -> None:
-                cursor = getattr(dbapi_connection, "cursor")()
+            def set_sqlite_pragma(
+                dbapi_connection: Any, connection_record: object
+            ) -> None:
+                cursor = dbapi_connection.cursor()
                 cursor.execute("PRAGMA foreign_keys=ON")
                 cursor.close()
 
         self._closed = False
         if create_schema:
             SQLModel.metadata.create_all(self._engine)
+
+    @property
+    def engine(self) -> Engine:
+        return self._engine
 
     def __enter__(self) -> Self:
         return self
@@ -181,9 +189,7 @@ class SQLModelKanbanRepository(KanbanRepository):
             session.commit()
             return Ok(None)
 
-    def create_column(
-        self, board_id: str, title: str
-    ) -> Result[Column, KanbanError]:
+    def create_column(self, board_id: str, title: str) -> Result[Column, KanbanError]:
         self._ensure_open()
         with Session(self._engine, expire_on_commit=False) as session:
             board = session.get(BoardTable, board_id)
@@ -270,6 +276,91 @@ class SQLModelKanbanRepository(KanbanRepository):
                 return Err(KanbanError.CARD_NOT_FOUND)
             return Ok(self._to_card_read(card))
 
+    def get_board_id_for_card(self, card_id: str) -> str | None:
+        self._ensure_open()
+        with Session(self._engine, expire_on_commit=False) as session:
+            card = session.get(CardTable, card_id)
+            if card is None:
+                return None
+            column = session.get(ColumnTable, card.column_id)
+            if column is None:
+                return None
+            return column.board_id
+
+    def save_board(self, board: Board) -> Result[None, KanbanError]:
+        self._ensure_open()
+        with Session(self._engine, expire_on_commit=False) as session:
+            db_board = session.get(BoardTable, board.id)
+            if db_board is None:
+                return Err(KanbanError.BOARD_NOT_FOUND)
+
+            db_board.title = board.title
+            session.add(db_board)
+
+            existing_columns = session.exec(
+                select(ColumnTable).where(ColumnTable.board_id == board.id)
+            ).all()
+            existing_column_ids = {column.id for column in existing_columns}
+            current_column_ids = {column.id for column in board.columns}
+            for column_id in existing_column_ids - current_column_ids:
+                column_to_delete = session.get(ColumnTable, column_id)
+                if column_to_delete is not None:
+                    session.delete(column_to_delete)
+
+            for column in board.columns:
+                db_column = session.get(ColumnTable, column.id)
+                if db_column is None:
+                    db_column = ColumnTable(
+                        id=column.id,
+                        board_id=board.id,
+                        title=column.title,
+                        position=column.position,
+                    )
+                else:
+                    db_column.title = column.title
+                    db_column.position = column.position
+                session.add(db_column)
+
+            existing_board_cards = session.exec(
+                select(CardTable)
+                .join(ColumnTable)
+                .where(ColumnTable.board_id == board.id)
+            ).all()
+            existing_board_card_ids = {card.id for card in existing_board_cards}
+            current_board_card_ids = {
+                card.id for column in board.columns for card in column.cards
+            }
+
+            for card_id in existing_board_card_ids - current_board_card_ids:
+                card_to_delete = session.get(CardTable, card_id)
+                if card_to_delete is not None:
+                    session.delete(card_to_delete)
+
+            for column in board.columns:
+                for card in column.cards:
+                    db_card = session.get(CardTable, card.id)
+                    if db_card is None:
+                        db_card = CardTable(
+                            id=card.id,
+                            column_id=column.id,
+                            title=card.title,
+                            description=card.description,
+                            position=card.position,
+                            priority=card.priority.value,
+                            due_at=card.due_at,
+                        )
+                    else:
+                        db_card.column_id = column.id
+                        db_card.title = card.title
+                        db_card.description = card.description
+                        db_card.position = card.position
+                        db_card.priority = card.priority.value
+                        db_card.due_at = card.due_at
+                    session.add(db_card)
+
+            session.commit()
+            return Ok(None)
+
     def get_board_id_for_column(self, column_id: str) -> str | None:
         """Return the board_id that owns the given column, or None."""
         self._ensure_open()
@@ -290,9 +381,7 @@ class SQLModelKanbanRepository(KanbanRepository):
             ).all()
             return [card.id for card in cards]
 
-    def apply_card_sequence(
-        self, column_id: str, ordered_card_ids: list[str]
-    ) -> None:
+    def apply_card_sequence(self, column_id: str, ordered_card_ids: list[str]) -> None:
         """Persist pre-computed card ordering for a column (pure I/O)."""
         self._ensure_open()
         with Session(self._engine, expire_on_commit=False) as session:

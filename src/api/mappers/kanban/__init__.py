@@ -8,6 +8,7 @@ from src.api.mappers.kanban.board import (
 )
 from src.api.mappers.kanban.card import (
     PatchCardInput,
+    has_patch_card_changes,
     to_card_response,
     to_create_card_input,
     to_patch_card_input,
@@ -16,6 +17,7 @@ from src.api.mappers.kanban.column import to_column_response, to_create_column_i
 
 __all__ = [
     "PatchCardInput",
+    "has_patch_card_changes",
     "to_board_detail_response",
     "to_board_summary_response",
     "to_card_response",

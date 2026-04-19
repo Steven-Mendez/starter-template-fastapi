@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated, NoReturn
+from typing import NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
-from dependencies import get_kanban_command_handlers, get_kanban_query_handlers
+from src.api.dependencies import CommandHandlersDep, QueryHandlersDep
 from src.api.mappers.kanban import (
+    has_patch_card_changes,
     to_board_detail_response,
     to_board_summary_response,
     to_card_response,
@@ -34,15 +35,12 @@ from src.application.commands import (
     CreateColumnCommand,
     DeleteBoardCommand,
     DeleteColumnCommand,
-    KanbanCommandHandlers,
     PatchBoardCommand,
     PatchCardCommand,
 )
-from src.domain.kanban.repository import DUE_AT_UNSET
 from src.application.queries import (
     GetBoardQuery,
     GetCardQuery,
-    KanbanQueryHandlers,
     ListBoardsQuery,
 )
 from src.domain.shared.errors import KanbanError
@@ -63,7 +61,7 @@ def _http_from_kanban_error(err: KanbanError) -> NoReturn:
 )
 def create_board(
     body: BoardCreate,
-    commands: Annotated[KanbanCommandHandlers, Depends(get_kanban_command_handlers)],
+    commands: CommandHandlersDep,
 ) -> BoardSummary:
     return to_board_summary_response(
         commands.handle_create_board(
@@ -74,7 +72,7 @@ def create_board(
 
 @kanban_router.get("/boards", response_model=list[BoardSummary])
 def list_boards(
-    queries: Annotated[KanbanQueryHandlers, Depends(get_kanban_query_handlers)],
+    queries: QueryHandlersDep,
 ) -> list[BoardSummary]:
     return [
         to_board_summary_response(board)
@@ -85,7 +83,7 @@ def list_boards(
 @kanban_router.get("/boards/{board_id}", response_model=BoardDetail)
 def get_board(
     board_id: UUID,
-    queries: Annotated[KanbanQueryHandlers, Depends(get_kanban_query_handlers)],
+    queries: QueryHandlersDep,
 ) -> BoardDetail:
     match queries.handle_get_board(GetBoardQuery(board_id=str(board_id))):
         case Ok(value):
@@ -98,7 +96,7 @@ def get_board(
 def patch_board(
     board_id: UUID,
     body: BoardUpdate,
-    commands: Annotated[KanbanCommandHandlers, Depends(get_kanban_command_handlers)],
+    commands: CommandHandlersDep,
 ) -> BoardSummary:
     title = to_patch_board_input(body)
     if title is None:
@@ -118,7 +116,7 @@ def patch_board(
 @kanban_router.delete("/boards/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_board(
     board_id: UUID,
-    commands: Annotated[KanbanCommandHandlers, Depends(get_kanban_command_handlers)],
+    commands: CommandHandlersDep,
 ) -> None:
     match commands.handle_delete_board(DeleteBoardCommand(board_id=str(board_id))):
         case Ok(_):
@@ -135,7 +133,7 @@ def delete_board(
 def create_column(
     board_id: UUID,
     body: ColumnCreate,
-    commands: Annotated[KanbanCommandHandlers, Depends(get_kanban_command_handlers)],
+    commands: CommandHandlersDep,
 ) -> ColumnRead:
     match commands.handle_create_column(
         CreateColumnCommand(board_id=str(board_id), title=to_create_column_input(body))
@@ -149,7 +147,7 @@ def create_column(
 @kanban_router.delete("/columns/{column_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_column(
     column_id: UUID,
-    commands: Annotated[KanbanCommandHandlers, Depends(get_kanban_command_handlers)],
+    commands: CommandHandlersDep,
 ) -> None:
     match commands.handle_delete_column(DeleteColumnCommand(column_id=str(column_id))):
         case Ok(_):
@@ -166,7 +164,7 @@ def delete_column(
 def create_card(
     column_id: UUID,
     body: CardCreate,
-    commands: Annotated[KanbanCommandHandlers, Depends(get_kanban_command_handlers)],
+    commands: CommandHandlersDep,
 ) -> CardRead:
     title, description, priority, due_at = to_create_card_input(body)
     match commands.handle_create_card(
@@ -187,7 +185,7 @@ def create_card(
 @kanban_router.get("/cards/{card_id}", response_model=CardRead)
 def get_card(
     card_id: UUID,
-    queries: Annotated[KanbanQueryHandlers, Depends(get_kanban_query_handlers)],
+    queries: QueryHandlersDep,
 ) -> CardRead:
     match queries.handle_get_card(GetCardQuery(card_id=str(card_id))):
         case Ok(value):
@@ -200,17 +198,10 @@ def get_card(
 def patch_card(
     card_id: UUID,
     body: CardUpdate,
-    commands: Annotated[KanbanCommandHandlers, Depends(get_kanban_command_handlers)],
+    commands: CommandHandlersDep,
 ) -> CardRead:
-    input_data = to_patch_card_input(body, DUE_AT_UNSET)
-    if (
-        input_data["title"] is None
-        and input_data["description"] is None
-        and input_data["column_id"] is None
-        and input_data["position"] is None
-        and input_data["priority"] is None
-        and input_data["due_at"] is DUE_AT_UNSET
-    ):
+    input_data = to_patch_card_input(body)
+    if not has_patch_card_changes(input_data):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="At least one field must be provided",
@@ -224,6 +215,7 @@ def patch_card(
             position=input_data["position"],
             priority=input_data["priority"],
             due_at=input_data["due_at"],
+            due_at_provided=input_data["has_due_at"],
         )
     ):
         case Ok(value):

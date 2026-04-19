@@ -3,24 +3,19 @@
 ## Purpose
 
 Error responses from the HTTP API use RFC 9457 Problem Details so clients can parse failures consistently.
-
 ## Requirements
-
 ### Requirement: Problem Details media type for errors
-
-The system SHALL use the `application/problem+json` media type for error responses produced by the application’s exception handlers for `HTTPException`, request body/query validation failures, and unexpected server exceptions.
+The system SHALL use the `application/problem+json` media type for error responses produced by exception handlers for HTTP errors, request validation failures, and unexpected server exceptions.
 
 #### Scenario: Client receives a not-found error
-
 - **WHEN** a request results in a `404` response handled as a Problem Detail
 - **THEN** the response `Content-Type` SHALL indicate `application/problem+json`
 - **THEN** the JSON body SHALL include `type`, `title`, and `status`, and SHOULD include `detail` and `instance` when applicable
 
-#### Scenario: Client triggers unexpected server exception
-
+#### Scenario: Unhandled exception returns sanitized payload
 - **WHEN** a request fails with an unhandled exception
-- **THEN** the response SHALL be emitted as Problem Details with status `500`
-- **THEN** the payload SHALL include stable top-level RFC 9457 fields and MAY include correlation extensions
+- **THEN** the response SHALL be a `500` Problem Details payload with non-sensitive generic detail text
+- **THEN** the payload MAY include safe correlation extensions (for example `request_id`) and SHALL NOT expose traceback internals
 
 ### Requirement: Validation errors remain structured
 

@@ -12,11 +12,12 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from dependencies import build_container, set_app_container
 from problem_details import register_problem_details
-from settings import AppSettings, get_settings
+from src.api.dependencies import set_app_container
 from src.api.kanban_router import kanban_router
 from src.api.root_router import root_router
+from src.config.settings import AppSettings, get_settings
+from src.infrastructure.config.di.container import build_container
 
 
 def _close_if_supported(resource: object) -> None:

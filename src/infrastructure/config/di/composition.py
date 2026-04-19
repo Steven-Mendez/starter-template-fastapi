@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from settings import AppSettings
+from collections.abc import Callable
+from typing import TypeAlias
+
+from src.application.shared.unit_of_work import UnitOfWork
+from src.config.settings import AppSettings
 from src.domain.kanban.repository import KanbanRepository
 from src.infrastructure.persistence import (
     InMemoryKanbanRepository,
     SQLiteKanbanRepository,
     SQLModelKanbanRepository,
 )
+from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
+from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork
+
+UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWork]
 
 
 def create_repository_for_settings(settings: AppSettings) -> KanbanRepository:
@@ -15,3 +23,17 @@ def create_repository_for_settings(settings: AppSettings) -> KanbanRepository:
     if settings.repository_backend == "postgresql":
         return SQLModelKanbanRepository(settings.postgresql_dsn, create_schema=False)
     return InMemoryKanbanRepository()
+
+
+def create_uow_factory_for_settings(
+    settings: AppSettings,
+    repository: KanbanRepository,
+) -> UnitOfWorkFactory:
+    if settings.repository_backend == "inmemory":
+        if not isinstance(repository, InMemoryKanbanRepository):
+            raise RuntimeError("Expected InMemoryKanbanRepository for inmemory backend")
+        return lambda: InMemoryUnitOfWork(repository)
+
+    if not isinstance(repository, SQLModelKanbanRepository):
+        raise RuntimeError("Expected SQLModelKanbanRepository for SQL backend")
+    return lambda: SqlModelUnitOfWork(repository.engine)

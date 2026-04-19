@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from src.domain.kanban.models import CardPriority
-from src.domain.kanban.repository import DUE_AT_UNSET
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,4 +14,5 @@ class PatchCardCommand:
     column_id: str | None = None
     position: int | None = None
     priority: CardPriority | None = None
-    due_at: datetime | None | object = DUE_AT_UNSET
+    due_at: datetime | None = None
+    due_at_provided: bool = False

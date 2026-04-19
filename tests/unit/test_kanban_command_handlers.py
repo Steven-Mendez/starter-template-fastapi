@@ -1,231 +1,127 @@
-"""Tests for KanbanCommandHandlers — validation & reorder orchestration.
-
-These tests exercise the business-rule validations and card-movement
-orchestration that now live in the application layer (handle_patch_card),
-ensuring that domain services are invoked correctly and the results are
-propagated back to the caller.
-"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
 import pytest
 
-from src.application.commands import (
-    CreateBoardCommand,
-    CreateCardCommand,
-    CreateColumnCommand,
-    KanbanCommandHandlers,
-    PatchCardCommand,
-)
-from src.application.queries import GetBoardQuery, KanbanQueryHandlers
+from src.application.commands import PatchCardCommand
+from src.application.queries import GetBoardQuery
 from src.domain.kanban.models import CardPriority
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok
-from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from tests.support.kanban_builders import HandlerHarness
 
 pytestmark = pytest.mark.unit
 
-
-def _setup():
-    """Create a fresh in-memory repo and command/query handlers."""
-    repo = InMemoryKanbanRepository()
-    commands = KanbanCommandHandlers(repository=repo)
-    queries = KanbanQueryHandlers(repository=repo)
-    return repo, commands, queries
+_UNKNOWN_COLUMN_ID = "00000000-0000-4000-8000-000000000099"
 
 
-# ---------- Validation: cross-board move ----------
+def test_card_cannot_move_to_column_on_another_board(
+    handler_harness: HandlerHarness,
+) -> None:
+    board_a = handler_harness.board("One")
+    board_b = handler_harness.board("Two")
+    col_a = handler_harness.column(board_a.id, "x")
+    col_b = handler_harness.column(board_b.id, "y")
+    card = handler_harness.card(col_a.id, "c")
 
-
-def test_card_cannot_move_to_column_on_another_board() -> None:
-    _, commands, _ = _setup()
-    board_a = commands.handle_create_board(CreateBoardCommand(title="One"))
-    board_b = commands.handle_create_board(CreateBoardCommand(title="Two"))
-    col_a = commands.handle_create_column(
-        CreateColumnCommand(board_id=board_a.id, title="x")
+    result = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, column_id=col_b.id)
     )
-    col_b = commands.handle_create_column(
-        CreateColumnCommand(board_id=board_b.id, title="y")
-    )
-    assert isinstance(col_a, Ok) and isinstance(col_b, Ok)
-    card = commands.handle_create_card(
-        CreateCardCommand(
-            column_id=col_a.value.id,
-            title="c",
-            description=None,
-            priority=CardPriority.MEDIUM,
-            due_at=None,
-        )
-    )
-    assert isinstance(card, Ok)
-    r = commands.handle_patch_card(
-        PatchCardCommand(card_id=card.value.id, column_id=col_b.value.id)
-    )
-    assert isinstance(r, Err)
-    assert r.error is KanbanError.INVALID_CARD_MOVE
+
+    assert isinstance(result, Err)
+    assert result.error is KanbanError.INVALID_CARD_MOVE
 
 
-# ---------- Validation: nonexistent target ----------
+def test_move_card_fails_when_target_column_does_not_exist(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Targets")
+    column = handler_harness.column(board.id, "c")
+    card = handler_harness.card(column.id, "c")
+
+    result = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, column_id=_UNKNOWN_COLUMN_ID)
+    )
+
+    assert isinstance(result, Err)
+    assert result.error is KanbanError.INVALID_CARD_MOVE
 
 
-def test_move_card_fails_when_target_column_does_not_exist() -> None:
-    _, commands, _ = _setup()
-    board = commands.handle_create_board(CreateBoardCommand(title="Targets"))
-    col = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="c")
-    )
-    assert isinstance(col, Ok)
-    card = commands.handle_create_card(
-        CreateCardCommand(
-            column_id=col.value.id,
-            title="c",
-            description=None,
-            priority=CardPriority.MEDIUM,
-            due_at=None,
-        )
-    )
-    assert isinstance(card, Ok)
-    r = commands.handle_patch_card(
-        PatchCardCommand(
-            card_id=card.value.id,
-            column_id="00000000-0000-4000-8000-000000000099",
-        )
-    )
-    assert isinstance(r, Err)
-    assert r.error is KanbanError.COLUMN_NOT_FOUND
+def test_card_can_move_between_columns_on_same_board(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Move")
+    col_a = handler_harness.column(board.id, "A")
+    col_b = handler_harness.column(board.id, "B")
+    card = handler_harness.card(col_a.id, "Move me")
 
+    moved = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, column_id=col_b.id)
+    )
 
-# ---------- Same-board move ----------
-
-
-def test_card_can_move_between_columns_on_same_board() -> None:
-    _, commands, queries = _setup()
-    board = commands.handle_create_board(CreateBoardCommand(title="Move"))
-    col_a = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="A")
-    )
-    col_b = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="B")
-    )
-    assert isinstance(col_a, Ok) and isinstance(col_b, Ok)
-    card = commands.handle_create_card(
-        CreateCardCommand(
-            column_id=col_a.value.id,
-            title="Move me",
-            description=None,
-            priority=CardPriority.MEDIUM,
-            due_at=None,
-        )
-    )
-    assert isinstance(card, Ok)
-    moved = commands.handle_patch_card(
-        PatchCardCommand(card_id=card.value.id, column_id=col_b.value.id)
-    )
     assert isinstance(moved, Ok)
-    assert moved.value.column_id == col_b.value.id
-    detail = queries.handle_get_board(GetBoardQuery(board_id=board.id))
+    assert moved.value.column_id == col_b.id
+
+    detail = handler_harness.queries.handle_get_board(GetBoardQuery(board_id=board.id))
     assert isinstance(detail, Ok)
-    by_title = {c.title: c for c in detail.value.columns}
+    by_title = {column.title: column for column in detail.value.columns}
     assert len(by_title["A"].cards) == 0
     assert len(by_title["B"].cards) == 1
 
 
-# ---------- Reorder within column ----------
+def test_card_order_within_column_follows_position_updates(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Reorder")
+    column = handler_harness.column(board.id, "c")
+    card_a = handler_harness.card(column.id, "a")
+    handler_harness.card(column.id, "b")
 
+    reordered = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card_a.id, position=1)
+    )
 
-def test_card_order_within_column_follows_position_updates() -> None:
-    _, commands, queries = _setup()
-    board = commands.handle_create_board(CreateBoardCommand(title="Reorder"))
-    col = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="c")
-    )
-    assert isinstance(col, Ok)
-    c1 = commands.handle_create_card(
-        CreateCardCommand(
-            column_id=col.value.id,
-            title="a",
-            description=None,
-            priority=CardPriority.MEDIUM,
-            due_at=None,
-        )
-    )
-    c2 = commands.handle_create_card(
-        CreateCardCommand(
-            column_id=col.value.id,
-            title="b",
-            description=None,
-            priority=CardPriority.MEDIUM,
-            due_at=None,
-        )
-    )
-    assert isinstance(c1, Ok) and isinstance(c2, Ok)
-    reordered = commands.handle_patch_card(
-        PatchCardCommand(card_id=c1.value.id, position=1)
-    )
     assert isinstance(reordered, Ok)
-    detail = queries.handle_get_board(GetBoardQuery(board_id=board.id))
+
+    detail = handler_harness.queries.handle_get_board(GetBoardQuery(board_id=board.id))
     assert isinstance(detail, Ok)
-    titles = [card.title for card in detail.value.columns[0].cards]
-    assert titles == ["b", "a"]
+    detail_column = next(
+        (candidate for candidate in detail.value.columns if candidate.id == column.id),
+        None,
+    )
+    assert detail_column is not None
+    assert [card.title for card in detail_column.cards] == ["b", "a"]
 
 
-# ---------- Preservation: priority is not lost during move ----------
+def test_priority_preserved_when_moving_between_columns(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Prio")
+    col_a = handler_harness.column(board.id, "A")
+    col_b = handler_harness.column(board.id, "B")
+    card = handler_harness.card(col_a.id, "move", priority=CardPriority.HIGH)
 
+    moved = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, column_id=col_b.id)
+    )
 
-def test_priority_preserved_when_moving_between_columns() -> None:
-    _, commands, _ = _setup()
-    board = commands.handle_create_board(CreateBoardCommand(title="Prio"))
-    col_a = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="A")
-    )
-    col_b = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="B")
-    )
-    assert isinstance(col_a, Ok) and isinstance(col_b, Ok)
-    card = commands.handle_create_card(
-        CreateCardCommand(
-            column_id=col_a.value.id,
-            title="move",
-            description=None,
-            priority=CardPriority.HIGH,
-            due_at=None,
-        )
-    )
-    assert isinstance(card, Ok)
-    moved = commands.handle_patch_card(
-        PatchCardCommand(card_id=card.value.id, column_id=col_b.value.id)
-    )
     assert isinstance(moved, Ok)
     assert moved.value.priority is CardPriority.HIGH
 
 
-# ---------- Preservation: due_at is not lost during move ----------
+def test_due_at_preserved_when_moving_between_columns(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Due")
+    col_a = handler_harness.column(board.id, "A")
+    col_b = handler_harness.column(board.id, "B")
+    due_at = datetime(2034, 5, 5, 8, 0, tzinfo=timezone.utc)
+    card = handler_harness.card(col_a.id, "move", due_at=due_at)
 
+    moved = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, column_id=col_b.id)
+    )
 
-def test_due_at_preserved_when_moving_between_columns() -> None:
-    _, commands, _ = _setup()
-    board = commands.handle_create_board(CreateBoardCommand(title="Due"))
-    col_a = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="A")
-    )
-    col_b = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="B")
-    )
-    assert isinstance(col_a, Ok) and isinstance(col_b, Ok)
-    when = datetime(2034, 5, 5, 8, 0, tzinfo=timezone.utc)
-    card = commands.handle_create_card(
-        CreateCardCommand(
-            column_id=col_a.value.id,
-            title="move",
-            description=None,
-            priority=CardPriority.MEDIUM,
-            due_at=when,
-        )
-    )
-    assert isinstance(card, Ok)
-    moved = commands.handle_patch_card(
-        PatchCardCommand(card_id=card.value.id, column_id=col_b.value.id)
-    )
     assert isinstance(moved, Ok)
-    assert moved.value.due_at == when
+    assert moved.value.due_at == due_at

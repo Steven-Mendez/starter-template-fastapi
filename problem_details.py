@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from http import HTTPStatus
 from typing import Any
 
@@ -61,6 +62,8 @@ def problem_json_response(
 
 
 def register_problem_details(app: FastAPI) -> None:
+    logger = logging.getLogger("api.error")
+
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(
         request: Request, exc: StarletteHTTPException
@@ -88,6 +91,18 @@ def register_problem_details(app: FastAPI) -> None:
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        logger.error(
+            json.dumps(
+                {
+                    "request_id": getattr(request.state, "request_id", None),
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    "error_type": type(exc).__name__,
+                }
+            ),
+            exc_info=exc,
+        )
         return problem_json_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             request=request,

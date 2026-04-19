@@ -2,22 +2,18 @@ from __future__ import annotations
 
 import pytest
 
-from src.application.commands import (
-    CreateBoardCommand,
-    CreateCardCommand,
-    CreateColumnCommand,
-    KanbanCommandHandlers,
-)
+from src.application.commands import KanbanCommandHandlers
 from src.application.queries import GetBoardQuery, KanbanQueryHandlers
-from src.domain.kanban.models import CardPriority
 from src.domain.shared.result import Ok
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
+from tests.support.kanban_builders import HandlerHarness
 
 pytestmark = pytest.mark.unit
 
 
 def test_command_handlers_only_expose_mutations() -> None:
-    commands = KanbanCommandHandlers(repository=InMemoryKanbanRepository())
+    commands = KanbanCommandHandlers(uow=InMemoryUnitOfWork(InMemoryKanbanRepository()))
     assert hasattr(commands, "handle_create_board")
     assert hasattr(commands, "handle_patch_card")
     assert not hasattr(commands, "handle_get_board")
@@ -32,27 +28,24 @@ def test_query_handlers_only_expose_reads() -> None:
     assert not hasattr(queries, "handle_patch_card")
 
 
-def test_router_use_case_can_be_done_with_split_handlers() -> None:
-    repository = InMemoryKanbanRepository()
-    commands = KanbanCommandHandlers(repository=repository)
-    queries = KanbanQueryHandlers(repository=repository)
+def test_router_use_case_can_be_done_with_split_handlers(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Roadmap")
+    created_column = handler_harness.column(board.id, "Todo")
+    created_card = handler_harness.card(created_column.id, "Task A")
 
-    board = commands.handle_create_board(CreateBoardCommand(title="Roadmap"))
-    created_column = commands.handle_create_column(
-        CreateColumnCommand(board_id=board.id, title="Todo")
+    fetched_board = handler_harness.queries.handle_get_board(
+        GetBoardQuery(board_id=board.id)
     )
-    assert isinstance(created_column, Ok)
-    created_card = commands.handle_create_card(
-        CreateCardCommand(
-            column_id=created_column.value.id,
-            title="Task A",
-            description=None,
-            priority=CardPriority.MEDIUM,
-            due_at=None,
-        )
-    )
-    assert isinstance(created_card, Ok)
-
-    fetched_board = queries.handle_get_board(GetBoardQuery(board_id=board.id))
     assert isinstance(fetched_board, Ok)
-    assert fetched_board.value.columns[0].cards[0].id == created_card.value.id
+    todo_column = next(
+        (
+            column
+            for column in fetched_board.value.columns
+            if column.id == created_column.id
+        ),
+        None,
+    )
+    assert todo_column is not None
+    assert {card.id for card in todo_column.cards} == {created_card.id}
