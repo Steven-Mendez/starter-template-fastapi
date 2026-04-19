@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.application.ports.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepository
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
@@ -54,22 +54,35 @@ def test_repository_contract_not_found_error(
     assert response.error is KanbanError.BOARD_NOT_FOUND
 
 
-def test_repository_contract_invalid_cross_board_move(
+def test_repository_contract_apply_card_sequence(
+    repository_factory: Callable[[], KanbanRepository],
+) -> None:
+    """Verify that the adapter faithfully persists pre-computed card sequences."""
+    repo = repository_factory()
+    board = repo.create_board("Seq")
+    col = repo.create_column(board.id, "C")
+    assert isinstance(col, Ok)
+    c1 = repo.create_card(col.value.id, "a", None)
+    c2 = repo.create_card(col.value.id, "b", None)
+    assert isinstance(c1, Ok) and isinstance(c2, Ok)
+
+    # Reverse the ordering
+    repo.apply_card_sequence(col.value.id, [c2.value.id, c1.value.id])
+    board_r = repo.get_board(board.id)
+    assert isinstance(board_r, Ok)
+    titles = [card.title for card in board_r.value.columns[0].cards]
+    assert titles == ["b", "a"]
+
+
+def test_repository_contract_get_board_id_for_column(
     repository_factory: Callable[[], KanbanRepository],
 ) -> None:
     repo = repository_factory()
-    board_a = repo.create_board("A")
-    board_b = repo.create_board("B")
-    col_a = repo.create_column(board_a.id, "A1")
-    col_b = repo.create_column(board_b.id, "B1")
-    assert isinstance(col_a, Ok)
-    assert isinstance(col_b, Ok)
-    card = repo.create_card(col_a.value.id, "c", None)
-    assert isinstance(card, Ok)
-
-    moved = repo.update_card(card.value.id, column_id=col_b.value.id)
-    assert isinstance(moved, Err)
-    assert moved.error is KanbanError.INVALID_CARD_MOVE
+    board = repo.create_board("A")
+    col = repo.create_column(board.id, "C")
+    assert isinstance(col, Ok)
+    assert repo.get_board_id_for_column(col.value.id) == board.id
+    assert repo.get_board_id_for_column("nonexistent") is None
 
 
 def test_sqlite_repository_persists_data_across_instances(tmp_path: Path) -> None:

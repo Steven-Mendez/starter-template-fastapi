@@ -38,7 +38,7 @@ from src.application.commands import (
     PatchBoardCommand,
     PatchCardCommand,
 )
-from src.application.ports.repository import DUE_AT_UNSET
+from src.domain.kanban.repository import DUE_AT_UNSET
 from src.application.queries import (
     GetBoardQuery,
     GetCardQuery,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from settings import AppSettings
-from src.application.ports.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepository
 from src.infrastructure.persistence import (
     InMemoryKanbanRepository,
     SQLiteKanbanRepository,

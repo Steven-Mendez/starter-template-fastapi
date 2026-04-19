@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from typing import Generator
 
-from src.application.ports.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepository
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 

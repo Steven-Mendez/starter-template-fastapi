@@ -10,14 +10,8 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from src.application.ports.repository import DUE_AT_UNSET, KanbanRepository
+from src.domain.kanban.repository import DUE_AT_UNSET, KanbanRepository
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
-from src.domain.kanban.services.card_movement import (
-    reorder_between_columns,
-    reorder_within_column,
-    validate_card_move,
-)
-from src.domain.kanban.specifications.card_move import CardMoveCandidate
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.persistence.sqlmodel.models import (
@@ -276,56 +270,56 @@ class SQLModelKanbanRepository(KanbanRepository):
                 return Err(KanbanError.CARD_NOT_FOUND)
             return Ok(self._to_card_read(card))
 
+    def get_board_id_for_column(self, column_id: str) -> str | None:
+        """Return the board_id that owns the given column, or None."""
+        self._ensure_open()
+        with Session(self._engine, expire_on_commit=False) as session:
+            column = session.get(ColumnTable, column_id)
+            if column is None:
+                return None
+            return column.board_id
+
+    def get_ordered_card_ids(self, column_id: str) -> list[str]:
+        """Return card IDs for a column, sorted by position."""
+        self._ensure_open()
+        with Session(self._engine, expire_on_commit=False) as session:
+            cards = session.exec(
+                select(CardTable)
+                .where(CardTable.column_id == column_id)
+                .order_by("position")
+            ).all()
+            return [card.id for card in cards]
+
+    def apply_card_sequence(
+        self, column_id: str, ordered_card_ids: list[str]
+    ) -> None:
+        """Persist pre-computed card ordering for a column (pure I/O)."""
+        self._ensure_open()
+        with Session(self._engine, expire_on_commit=False) as session:
+            for index, card_id in enumerate(ordered_card_ids):
+                row = session.get(CardTable, card_id)
+                if row is None:
+                    continue
+                row.column_id = column_id
+                row.position = index
+                session.add(row)
+            session.commit()
+
     def update_card(
         self,
         card_id: str,
         *,
         title: str | None = None,
         description: str | None = None,
-        column_id: str | None = None,
-        position: int | None = None,
         priority: CardPriority | None = None,
         due_at: datetime | None | object = DUE_AT_UNSET,
     ) -> Result[Card, KanbanError]:
+        """Persist scalar field changes only — no sequencing or validation."""
         self._ensure_open()
         with Session(self._engine, expire_on_commit=False) as session:
             card = session.get(CardTable, card_id)
             if card is None:
                 return Err(KanbanError.CARD_NOT_FOUND)
-
-            old_column_id = card.column_id
-            target_column_id = column_id if column_id is not None else old_column_id
-            current_column = session.get(ColumnTable, old_column_id)
-            target_column = session.get(ColumnTable, target_column_id)
-            candidate = CardMoveCandidate(
-                target_column_exists=target_column is not None,
-                current_board_id=current_column.board_id if current_column else None,
-                target_board_id=target_column.board_id if target_column else None,
-            )
-            move_error = validate_card_move(candidate)
-            if move_error is not None:
-                return Err(move_error)
-
-            if target_column_id != old_column_id:
-                source_order, target_order = reorder_between_columns(
-                    moving_card_id=card.id,
-                    source_ordered_card_ids=self._ordered_card_ids(
-                        session, old_column_id
-                    ),
-                    target_ordered_card_ids=self._ordered_card_ids(
-                        session, target_column_id
-                    ),
-                    requested_position=position,
-                )
-                self._apply_column_order(session, old_column_id, source_order)
-                self._apply_column_order(session, target_column_id, target_order)
-            elif position is not None:
-                ordered_ids = reorder_within_column(
-                    moving_card_id=card.id,
-                    ordered_card_ids=self._ordered_card_ids(session, card.column_id),
-                    requested_position=position,
-                )
-                self._apply_column_order(session, card.column_id, ordered_ids)
 
             if title is not None:
                 card.title = title
@@ -340,25 +334,6 @@ class SQLModelKanbanRepository(KanbanRepository):
             session.commit()
             session.refresh(card)
             return Ok(self._to_card_read(card))
-
-    def _ordered_card_ids(self, session: Session, column_id: str) -> list[str]:
-        cards = session.exec(
-            select(CardTable)
-            .where(CardTable.column_id == column_id)
-            .order_by("position")
-        ).all()
-        return [card.id for card in cards]
-
-    def _apply_column_order(
-        self, session: Session, column_id: str, ordered_card_ids: list[str]
-    ) -> None:
-        for index, card_id in enumerate(ordered_card_ids):
-            row = session.get(CardTable, card_id)
-            if row is None:
-                continue
-            row.column_id = column_id
-            row.position = index
-            session.add(row)
 
     @staticmethod
     def _to_card_read(card: CardTable) -> Card:

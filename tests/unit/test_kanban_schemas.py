@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from src.api.schemas.kanban import BoardCreate, CardCreate, CardPriority
+from src.api.schemas.kanban import BoardCreate, CardCreate
+from src.domain.kanban.models import CardPriority
 
 pytestmark = pytest.mark.unit
 

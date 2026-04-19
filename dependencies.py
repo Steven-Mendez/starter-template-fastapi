@@ -6,9 +6,9 @@ from fastapi import FastAPI, Request
 
 from settings import AppSettings, get_settings
 from src.application.commands import KanbanCommandHandlers
-from src.application.ports.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepository
 from src.application.queries import KanbanQueryHandlers
-from src.application.use_cases import KanbanUseCases
+from src.application.shared.unit_of_work import UnitOfWork
 from src.infrastructure.config.di.composition import create_repository_for_settings
 
 
@@ -16,9 +16,7 @@ from src.infrastructure.config.di.composition import create_repository_for_setti
 class AppContainer:
     settings: AppSettings
     repository: KanbanRepository
-    command_handlers: KanbanCommandHandlers
     query_handlers: KanbanQueryHandlers
-    use_cases: KanbanUseCases
 
 
 def build_container(settings: AppSettings) -> AppContainer:
@@ -26,9 +24,7 @@ def build_container(settings: AppSettings) -> AppContainer:
     return AppContainer(
         settings=settings,
         repository=repository,
-        command_handlers=KanbanCommandHandlers(repository=repository),
         query_handlers=KanbanQueryHandlers(repository=repository),
-        use_cases=KanbanUseCases(repository=repository),
     )
 
 
@@ -52,12 +48,20 @@ def get_kanban_repository(request: Request) -> KanbanRepository:
     return get_app_container(request).repository
 
 
-def get_kanban_use_cases(request: Request) -> KanbanUseCases:
-    return get_app_container(request).use_cases
+def get_kanban_uow(request: Request) -> UnitOfWork:
+    repo = get_kanban_repository(request)
+    if hasattr(repo, "_engine"):
+        from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork
+        return SqlModelUnitOfWork(getattr(repo, "_engine"))
+    else:
+        from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
+        from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+        import typing
+        return InMemoryUnitOfWork(typing.cast(InMemoryKanbanRepository, repo))
 
 
 def get_kanban_command_handlers(request: Request) -> KanbanCommandHandlers:
-    return get_app_container(request).command_handlers
+    return KanbanCommandHandlers(uow=get_kanban_uow(request))
 
 
 def get_kanban_query_handlers(request: Request) -> KanbanQueryHandlers:
