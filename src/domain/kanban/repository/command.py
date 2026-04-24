@@ -8,8 +8,6 @@ from src.domain.shared.result import Result
 
 
 class KanbanCommandRepository(Protocol):
-    def close(self) -> None: ...
-
     def create_board(self, title: str) -> BoardSummary: ...
 
     def update_board(

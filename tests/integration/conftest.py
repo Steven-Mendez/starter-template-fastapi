@@ -25,7 +25,7 @@ def api_client(tmp_path: Path) -> Generator[TestClient, None, None]:
         set_app_container(app, container)
         yield client
     app.dependency_overrides.clear()
-    container.repository.close()
+    container.shutdown()
 
 
 @pytest.fixture

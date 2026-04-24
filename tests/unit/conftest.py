@@ -28,5 +28,5 @@ def handler_harness() -> HandlerHarness:
     repository = InMemoryKanbanRepository()
     return HandlerHarness(
         commands=KanbanCommandHandlers(uow=InMemoryUnitOfWork(repository)),
-        queries=KanbanQueryHandlers(repository=repository),
+        queries=KanbanQueryHandlers(repository=repository, readiness=repository),
     )

@@ -20,12 +20,6 @@ from src.config.settings import AppSettings, get_settings
 from src.infrastructure.config.di.container import build_container
 
 
-def _close_if_supported(resource: object) -> None:
-    close = getattr(resource, "close", None)
-    if callable(close):
-        close()
-
-
 def create_app(settings: AppSettings | None = None) -> FastAPI:
     app_settings = settings or get_settings()
     docs_url = "/docs" if app_settings.enable_docs else None
@@ -36,7 +30,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         container = build_container(app_settings)
         set_app_container(lifespan_app, container)
         yield
-        _close_if_supported(container.repository)
+        container.shutdown()
         lifespan_app.state.container = None
 
     app = FastAPI(

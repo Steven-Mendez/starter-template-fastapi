@@ -63,8 +63,9 @@ def test_container_uses_selected_repository_backend(tmp_path: Path) -> None:
     assert isinstance(sqlite_container.repository, SQLModelKanbanRepository)
     assert isinstance(in_memory_container.repository, InMemoryKanbanRepository)
     assert isinstance(postgresql_container.repository, SQLModelKanbanRepository)
-    sqlite_container.repository.close()
-    postgresql_container.repository.close()
+    sqlite_container.shutdown()
+    in_memory_container.shutdown()
+    postgresql_container.shutdown()
 
 
 def test_default_settings_backend_is_postgresql() -> None:

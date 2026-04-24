@@ -2,26 +2,25 @@ from __future__ import annotations
 
 import pytest
 
-from src.application.commands import KanbanCommandHandlers
-from src.application.queries import GetBoardQuery, KanbanQueryHandlers
+from src.application.queries import GetBoardQuery
 from src.application.shared import AppOk
-from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
-from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
 from tests.support.kanban_builders import HandlerHarness
 
 pytestmark = pytest.mark.unit
 
 
-def test_command_handlers_only_expose_mutations() -> None:
-    commands = KanbanCommandHandlers(uow=InMemoryUnitOfWork(InMemoryKanbanRepository()))
+def test_command_handlers_only_expose_mutations(
+    handler_harness: HandlerHarness,
+) -> None:
+    commands = handler_harness.commands
     assert hasattr(commands, "handle_create_board")
     assert hasattr(commands, "handle_patch_card")
     assert not hasattr(commands, "handle_get_board")
     assert not hasattr(commands, "handle_list_boards")
 
 
-def test_query_handlers_only_expose_reads() -> None:
-    queries = KanbanQueryHandlers(repository=InMemoryKanbanRepository())
+def test_query_handlers_only_expose_reads(handler_harness: HandlerHarness) -> None:
+    queries = handler_harness.queries
     assert hasattr(queries, "handle_list_boards")
     assert hasattr(queries, "handle_get_card")
     assert not hasattr(queries, "handle_create_board")

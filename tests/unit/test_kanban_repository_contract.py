@@ -8,20 +8,18 @@ from typing import Protocol
 
 import pytest
 
+from src.application.shared.readiness import ReadinessProbe
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from src.infrastructure.persistence.lifecycle import ClosableResource
 from src.infrastructure.persistence.sqlmodel_repository import SQLiteKanbanRepository
 
 pytestmark = pytest.mark.unit
 
 
 class RepositoryContract(Protocol):
-    def close(self) -> None: ...
-
-    def is_ready(self) -> bool: ...
-
     def create_board(self, title: str) -> BoardSummary: ...
 
     def list_boards(self) -> list[BoardSummary]: ...
@@ -197,18 +195,38 @@ def test_sqlite_repository_persists_data_across_instances(tmp_path: Path) -> Non
 def test_repository_implementations_conform_to_protocol(tmp_path: Path) -> None:
     sqlite_repo = SQLiteKanbanRepository(str(tmp_path / "repo-protocol.sqlite3"))
     in_memory_repo = InMemoryKanbanRepository()
+
     typed_sqlite: RepositoryContract = sqlite_repo
     typed_in_memory: RepositoryContract = in_memory_repo
-    assert typed_sqlite.is_ready() is True
-    assert typed_in_memory.is_ready() is True
-    sqlite_repo.close()
+
+    created_sqlite = typed_sqlite.create_board("contract-sqlite")
+    assert created_sqlite.id
+    assert any(board.id == created_sqlite.id for board in typed_sqlite.list_boards())
+
+    created_inmemory = typed_in_memory.create_board("contract")
+    assert created_inmemory.id
+    assert any(
+        board.id == created_inmemory.id for board in typed_in_memory.list_boards()
+    )
+
+    sqlite_probe: ReadinessProbe = sqlite_repo
+    in_memory_probe: ReadinessProbe = in_memory_repo
+    assert sqlite_probe.is_ready() is True
+    assert in_memory_probe.is_ready() is True
+
+    sqlite_lifecycle: ClosableResource = sqlite_repo
+    in_memory_lifecycle: ClosableResource = in_memory_repo
+    sqlite_lifecycle.close()
+    in_memory_lifecycle.close()
 
 
 def test_sqlite_repository_close_is_idempotent(tmp_path: Path) -> None:
     repository = SQLiteKanbanRepository(str(tmp_path / "close-idempotent.sqlite3"))
-    repository.close()
-    repository.close()
-    assert repository.is_ready() is False
+    lifecycle: ClosableResource = repository
+    probe: ReadinessProbe = repository
+    lifecycle.close()
+    lifecycle.close()
+    assert probe.is_ready() is False
 
 
 def test_sqlite_repository_context_manager_closes_connection(tmp_path: Path) -> None:

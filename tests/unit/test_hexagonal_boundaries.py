@@ -15,10 +15,12 @@ from src.api.kanban_router import kanban_router
 from src.api.root_router import root_router
 from src.application.commands import KanbanCommandHandlers, KanbanCommandPort
 from src.application.queries import KanbanQueryHandlers, KanbanQueryPort
+from src.application.shared.readiness import ReadinessProbe
 from src.domain.kanban.repository import KanbanRepository
 from src.domain.kanban.repository.command import KanbanCommandRepository
 from src.domain.kanban.repository.query import KanbanQueryRepository
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from src.infrastructure.persistence.lifecycle import ClosableResource
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 
 pytestmark = pytest.mark.unit
@@ -362,15 +364,28 @@ def test_api_schema_modules_do_not_import_application_contracts() -> None:
 
 
 def test_persistence_adapters_match_repository_port_surface() -> None:
-    port_methods = {
-        method_name
-        for method_name, attr in KanbanCommandRepository.__dict__.items()
-        if callable(attr) and not method_name.startswith("_")
-    } | {
-        method_name
-        for method_name, attr in KanbanQueryRepository.__dict__.items()
-        if callable(attr) and not method_name.startswith("_")
-    }
+    port_methods = (
+        {
+            method_name
+            for method_name, attr in KanbanCommandRepository.__dict__.items()
+            if callable(attr) and not method_name.startswith("_")
+        }
+        | {
+            method_name
+            for method_name, attr in KanbanQueryRepository.__dict__.items()
+            if callable(attr) and not method_name.startswith("_")
+        }
+        | {
+            method_name
+            for method_name, attr in ReadinessProbe.__dict__.items()
+            if callable(attr) and not method_name.startswith("_")
+        }
+        | {
+            method_name
+            for method_name, attr in ClosableResource.__dict__.items()
+            if callable(attr) and not method_name.startswith("_")
+        }
+    )
 
     diagnostics: list[str] = []
     for adapter in (InMemoryKanbanRepository, SQLModelKanbanRepository):
