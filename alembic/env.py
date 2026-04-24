@@ -6,7 +6,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from settings import AppSettings
+from src.config.settings import AppSettings
 from src.infrastructure.persistence.sqlmodel.models import get_sqlmodel_metadata
 
 config = context.config

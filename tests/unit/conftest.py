@@ -8,7 +8,7 @@ import pytest
 
 from src.application.commands import KanbanCommandHandlers
 from src.application.queries import KanbanQueryHandlers
-from src.domain.kanban.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepositoryPort
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
 from tests.support.kanban_builders import (
@@ -19,7 +19,7 @@ from tests.support.kanban_builders import (
 
 
 @pytest.fixture
-def store_builder(kanban_store: KanbanRepository) -> StoreBuilder:
+def store_builder(kanban_store: KanbanRepositoryPort) -> StoreBuilder:
     return StoreBuilder(repository=cast(KanbanBuilderRepository, kanban_store))
 
 

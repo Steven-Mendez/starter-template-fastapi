@@ -14,8 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from problem_details import register_problem_details
 from src.api.dependencies import set_app_container
-from src.api.kanban_router import kanban_router
-from src.api.root_router import root_router
+from src.api.routers import api_router
 from src.config.settings import AppSettings, get_settings
 from src.infrastructure.config.di.container import build_container
 
@@ -58,8 +57,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
     register_problem_details(app)
-    app.include_router(root_router)
-    app.include_router(kanban_router)
+    app.include_router(api_router)
     logger = logging.getLogger("api.request")
 
     @app.middleware("http")

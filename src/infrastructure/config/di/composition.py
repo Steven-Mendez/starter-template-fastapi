@@ -6,7 +6,7 @@ from typing import TypeAlias
 from src.application.shared.readiness import ReadinessProbe
 from src.application.shared.unit_of_work import UnitOfWork
 from src.config.settings import AppSettings
-from src.domain.kanban.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepositoryPort
 from src.infrastructure.persistence import (
     InMemoryKanbanRepository,
     SQLiteKanbanRepository,
@@ -19,7 +19,7 @@ UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWork]
 ShutdownHook: TypeAlias = Callable[[], None]
 
 
-def create_repository_for_settings(settings: AppSettings) -> KanbanRepository:
+def create_repository_for_settings(settings: AppSettings) -> KanbanRepositoryPort:
     if settings.repository_backend == "sqlite":
         return SQLiteKanbanRepository(settings.sqlite_path)
     if settings.repository_backend == "postgresql":
@@ -29,7 +29,7 @@ def create_repository_for_settings(settings: AppSettings) -> KanbanRepository:
 
 def create_uow_factory_for_settings(
     settings: AppSettings,
-    repository: KanbanRepository,
+    repository: KanbanRepositoryPort,
 ) -> UnitOfWorkFactory:
     if settings.repository_backend == "inmemory":
         if not isinstance(repository, InMemoryKanbanRepository):
@@ -43,7 +43,7 @@ def create_uow_factory_for_settings(
 
 def create_readiness_probe_for_settings(
     settings: AppSettings,
-    repository: KanbanRepository,
+    repository: KanbanRepositoryPort,
 ) -> ReadinessProbe:
     if settings.repository_backend == "inmemory":
         if not isinstance(repository, InMemoryKanbanRepository):
@@ -57,7 +57,7 @@ def create_readiness_probe_for_settings(
 
 def create_shutdown_for_settings(
     settings: AppSettings,
-    repository: KanbanRepository,
+    repository: KanbanRepositoryPort,
 ) -> ShutdownHook:
     if settings.repository_backend == "inmemory":
         if not isinstance(repository, InMemoryKanbanRepository):

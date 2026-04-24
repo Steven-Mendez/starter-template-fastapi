@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from src.application.commands import KanbanCommandHandlers, KanbanCommandPort
-from src.application.queries import KanbanQueryHandlers, KanbanQueryPort
+from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPort
+from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.config.settings import AppSettings
-from src.domain.kanban.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepositoryPort
 from src.infrastructure.config.di.composition import (
     ShutdownHook,
     create_readiness_probe_for_settings,
@@ -15,14 +15,14 @@ from src.infrastructure.config.di.composition import (
     create_uow_factory_for_settings,
 )
 
-CommandHandlersFactory = Callable[[], KanbanCommandPort]
+CommandHandlersFactory = Callable[[], KanbanCommandInputPort]
 
 
 @dataclass(slots=True)
 class ConfiguredAppContainer:
     settings: AppSettings
-    repository: KanbanRepository
-    query_handlers: KanbanQueryPort
+    repository: KanbanRepositoryPort
+    query_handlers: KanbanQueryInputPort
     command_handlers_factory: CommandHandlersFactory
     shutdown: ShutdownHook
 

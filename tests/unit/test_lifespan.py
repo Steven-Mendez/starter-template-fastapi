@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import create_app
-from settings import AppSettings
+from src.config.settings import AppSettings
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 
 pytestmark = pytest.mark.unit

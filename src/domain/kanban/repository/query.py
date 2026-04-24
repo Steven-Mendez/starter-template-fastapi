@@ -7,7 +7,7 @@ from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result
 
 
-class KanbanQueryRepository(Protocol):
+class KanbanQueryRepositoryPort(Protocol):
     def list_boards(self) -> list[BoardSummary]: ...
 
     def get_board(self, board_id: str) -> Result[Board, KanbanError]: ...

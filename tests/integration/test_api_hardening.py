@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import create_app
-from settings import AppSettings
+from src.config.settings import AppSettings
 
 pytestmark = pytest.mark.integration
 

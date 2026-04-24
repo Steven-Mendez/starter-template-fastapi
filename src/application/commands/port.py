@@ -13,7 +13,7 @@ from src.application.contracts import AppBoardSummary, AppCard, AppColumn
 from src.application.shared import ApplicationError, AppResult
 
 
-class KanbanCommandPort(Protocol):
+class KanbanCommandInputPort(Protocol):
     def handle_create_board(self, command: CreateBoardCommand) -> AppBoardSummary: ...
 
     def handle_patch_board(

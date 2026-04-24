@@ -10,7 +10,7 @@ from src.application.commands.delete_board import DeleteBoardCommand
 from src.application.commands.delete_column import DeleteColumnCommand
 from src.application.commands.patch_board import PatchBoardCommand
 from src.application.commands.patch_card import PatchCardCommand
-from src.application.commands.port import KanbanCommandPort
+from src.application.commands.port import KanbanCommandInputPort
 from src.application.contracts import (
     AppBoardSummary,
     AppCard,
@@ -35,7 +35,7 @@ from src.domain.shared.result import Err, Ok
 
 
 @dataclass(slots=True)
-class KanbanCommandHandlers(KanbanCommandPort):
+class KanbanCommandHandlers(KanbanCommandInputPort):
     uow: UnitOfWork
 
     def handle_create_board(self, command: CreateBoardCommand) -> AppBoardSummary:

@@ -8,9 +8,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from dependencies import build_container, set_app_container
 from main import app
-from settings import AppSettings
+from src.api.dependencies import set_app_container
+from src.config.settings import AppSettings
+from src.infrastructure.config.di.container import build_container
 from tests.support.kanban_builders import ApiBuilder
 
 

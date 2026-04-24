@@ -11,14 +11,13 @@ import pytest
 from fastapi.routing import APIRoute
 
 from src.api import dependencies as api_dependencies
-from src.api.kanban_router import kanban_router
-from src.api.root_router import root_router
-from src.application.commands import KanbanCommandHandlers, KanbanCommandPort
-from src.application.queries import KanbanQueryHandlers, KanbanQueryPort
+from src.api.routers import kanban_router, root_router
+from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPort
+from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.application.shared.readiness import ReadinessProbe
-from src.domain.kanban.repository import KanbanRepository
-from src.domain.kanban.repository.command import KanbanCommandRepository
-from src.domain.kanban.repository.query import KanbanQueryRepository
+from src.domain.kanban.repository import KanbanRepositoryPort
+from src.domain.kanban.repository.command import KanbanCommandRepositoryPort
+from src.domain.kanban.repository.query import KanbanQueryRepositoryPort
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.lifecycle import ClosableResource
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
@@ -28,10 +27,8 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
 RUNTIME_MODULE_FILES = (
-    "dependencies.py",
     "main.py",
     "problem_details.py",
-    "settings.py",
 )
 
 
@@ -124,7 +121,7 @@ def get_layer(module_name: str) -> str:
         return "api"
     if module_name.startswith("src.infrastructure"):
         return "infrastructure"
-    if module_name in {"dependencies", "main", "problem_details", "settings"}:
+    if module_name in {"main", "problem_details"}:
         return "runtime"
     return "other"
 
@@ -297,15 +294,15 @@ def test_api_routes_use_cqrs_handlers() -> None:
 
         for param_name, param in sig.parameters.items():
             annotation = type_hints.get(param_name, param.annotation)
-            if annotation_contains_type(annotation, KanbanQueryPort):
+            if annotation_contains_type(annotation, KanbanQueryInputPort):
                 has_query_port = True
-            if annotation_contains_type(annotation, KanbanCommandPort):
+            if annotation_contains_type(annotation, KanbanCommandInputPort):
                 has_command_port = True
             if annotation_contains_type(annotation, KanbanQueryHandlers):
                 has_concrete_query_handler = True
             if annotation_contains_type(annotation, KanbanCommandHandlers):
                 has_concrete_command_handler = True
-            if annotation_contains_type(annotation, KanbanRepository):
+            if annotation_contains_type(annotation, KanbanRepositoryPort):
                 has_repository = True
 
         assert not has_repository, (
@@ -324,17 +321,18 @@ def test_api_routes_use_cqrs_handlers() -> None:
 
         if "GET" in methods:
             assert has_query_port, (
-                f"Read endpoint {endpoint.__name__} must use KanbanQueryPort."
+                f"Read endpoint {endpoint.__name__} must use KanbanQueryInputPort."
             )
             assert not has_command_port, (
-                f"Read endpoint {endpoint.__name__} must not use KanbanCommandPort."
+                f"Read endpoint {endpoint.__name__} must not use "
+                "KanbanCommandInputPort."
             )
         else:
             assert has_command_port, (
-                f"Write endpoint {endpoint.__name__} must use KanbanCommandPort."
+                f"Write endpoint {endpoint.__name__} must use KanbanCommandInputPort."
             )
             assert not has_query_port, (
-                f"Write endpoint {endpoint.__name__} must not use KanbanQueryPort."
+                f"Write endpoint {endpoint.__name__} must not use KanbanQueryInputPort."
             )
 
 
@@ -367,12 +365,12 @@ def test_persistence_adapters_match_repository_port_surface() -> None:
     port_methods = (
         {
             method_name
-            for method_name, attr in KanbanCommandRepository.__dict__.items()
+            for method_name, attr in KanbanCommandRepositoryPort.__dict__.items()
             if callable(attr) and not method_name.startswith("_")
         }
         | {
             method_name
-            for method_name, attr in KanbanQueryRepository.__dict__.items()
+            for method_name, attr in KanbanQueryRepositoryPort.__dict__.items()
             if callable(attr) and not method_name.startswith("_")
         }
         | {
@@ -527,3 +525,8 @@ def test_routes_do_not_depend_on_container_provider_callable() -> None:
             f"Route {route.path} must not depend on "
             "get_app_container as a route dependency."
         )
+
+
+def test_legacy_root_wrappers_are_removed() -> None:
+    assert not (ROOT / "dependencies.py").exists()
+    assert not (ROOT / "settings.py").exists()

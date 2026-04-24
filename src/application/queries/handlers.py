@@ -16,7 +16,7 @@ from src.application.queries.get_board import GetBoardQuery
 from src.application.queries.get_card import GetCardQuery
 from src.application.queries.health_check import HealthCheckQuery
 from src.application.queries.list_boards import ListBoardsQuery
-from src.application.queries.port import KanbanQueryPort
+from src.application.queries.port import KanbanQueryInputPort
 from src.application.shared import (
     AppErr,
     ApplicationError,
@@ -25,13 +25,13 @@ from src.application.shared import (
     ReadinessProbe,
 )
 from src.application.shared.errors import from_domain_error
-from src.domain.kanban.repository import KanbanQueryRepository
+from src.domain.kanban.repository import KanbanQueryRepositoryPort
 from src.domain.shared.result import Err
 
 
 @dataclass(slots=True)
-class KanbanQueryHandlers(KanbanQueryPort):
-    repository: KanbanQueryRepository
+class KanbanQueryHandlers(KanbanQueryInputPort):
+    repository: KanbanQueryRepositoryPort
     readiness: ReadinessProbe
 
     def handle_health_check(self, query: HealthCheckQuery) -> bool:

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from dependencies import build_container
-from settings import AppSettings
+from src.config.settings import AppSettings
 from src.infrastructure.config.di.composition import create_repository_for_settings
+from src.infrastructure.config.di.container import build_container
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 

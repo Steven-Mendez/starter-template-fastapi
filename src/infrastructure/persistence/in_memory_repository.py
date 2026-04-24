@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
-from src.domain.kanban.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepositoryPort
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 
@@ -36,7 +36,7 @@ class _Card:
     due_at: datetime | None
 
 
-class InMemoryKanbanRepository(KanbanRepository):
+class InMemoryKanbanRepository(KanbanRepositoryPort):
     def __init__(self) -> None:
         self._boards: dict[str, _Board] = {}
         self._columns: dict[str, _Column] = {}

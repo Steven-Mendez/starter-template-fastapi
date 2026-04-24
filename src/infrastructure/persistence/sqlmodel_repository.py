@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
@@ -11,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
-from src.domain.kanban.repository import KanbanRepository
+from src.domain.kanban.repository import KanbanRepositoryPort
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.persistence.sqlmodel.models import (
@@ -33,33 +35,56 @@ def _ensure_utc(dt: datetime) -> datetime:
     return dt
 
 
-class SQLModelKanbanRepository(KanbanRepository):
-    def __init__(self, database_url: str, *, create_schema: bool = True) -> None:
-        connect_args: dict[str, object] = {}
-        if database_url.startswith("sqlite"):
-            connect_args["check_same_thread"] = False
-        self._engine = create_engine(
-            database_url,
-            connect_args=connect_args,
-            pool_pre_ping=True,
-        )
-        if database_url.startswith("sqlite"):
-            from sqlalchemy import event
+class SQLModelKanbanRepository(KanbanRepositoryPort):
+    def __init__(
+        self,
+        database_url: str | None = None,
+        *,
+        create_schema: bool = True,
+        session: Session | None = None,
+        autocommit: bool = True,
+    ) -> None:
+        if session is not None and database_url is not None:
+            raise ValueError("Pass either database_url or session, not both")
+        if session is None and database_url is None:
+            raise ValueError("Either database_url or session must be provided")
 
-            @event.listens_for(self._engine, "connect")
-            def set_sqlite_pragma(
-                dbapi_connection: Any, connection_record: object
-            ) -> None:
-                cursor = dbapi_connection.cursor()
-                cursor.execute("PRAGMA foreign_keys=ON")
-                cursor.close()
+        self._session = session
+        self._autocommit = autocommit
+        self._owns_engine = session is None
+        connect_args: dict[str, object] = {}
+        self._engine: Engine | None = None
+        if database_url is not None:
+            if database_url.startswith("sqlite"):
+                connect_args["check_same_thread"] = False
+            self._engine = create_engine(
+                database_url,
+                connect_args=connect_args,
+                pool_pre_ping=True,
+            )
+            if database_url.startswith("sqlite"):
+                from sqlalchemy import event
+
+                @event.listens_for(self._engine, "connect")
+                def set_sqlite_pragma(
+                    dbapi_connection: Any, connection_record: object
+                ) -> None:
+                    cursor = dbapi_connection.cursor()
+                    cursor.execute("PRAGMA foreign_keys=ON")
+                    cursor.close()
 
         self._closed = False
-        if create_schema:
+        if create_schema and self._engine is not None:
             SQLModel.metadata.create_all(self._engine)
+
+    @classmethod
+    def from_session(cls, session: Session) -> Self:
+        return cls(session=session, autocommit=False)
 
     @property
     def engine(self) -> Engine:
+        if self._engine is None:
+            raise RuntimeError("Repository is session-scoped and has no engine")
         return self._engine
 
     def __enter__(self) -> Self:
@@ -76,18 +101,33 @@ class SQLModelKanbanRepository(KanbanRepository):
     def close(self) -> None:
         if self._closed:
             return
-        self._engine.dispose()
+        if self._owns_engine and self._engine is not None:
+            self._engine.dispose()
         self._closed = True
 
     def _ensure_open(self) -> None:
         if self._closed:
             raise RuntimeError("SQLModelKanbanRepository is closed")
 
+    @contextmanager
+    def _session_scope(self) -> Iterator[Session]:
+        if self._session is not None:
+            yield self._session
+            return
+        if self._engine is None:
+            raise RuntimeError("Repository engine is not configured")
+        with Session(self._engine, expire_on_commit=False) as session:
+            yield session
+
+    def _commit_if_needed(self, session: Session) -> None:
+        if self._session is None and self._autocommit:
+            session.commit()
+
     def is_ready(self) -> bool:
         if self._closed:
             return False
         try:
-            with Session(self._engine, expire_on_commit=False) as session:
+            with self._session_scope() as session:
                 session.exec(select(1)).one()
             return True
         except SQLAlchemyError:
@@ -100,9 +140,9 @@ class SQLModelKanbanRepository(KanbanRepository):
             title=title,
             created_at=datetime.now(timezone.utc),
         )
-        with Session(self._engine, expire_on_commit=False) as session:
+        with self._session_scope() as session:
             session.add(board)
-            session.commit()
+            self._commit_if_needed(session)
         return BoardSummary(
             id=board.id,
             title=board.title,
@@ -111,7 +151,7 @@ class SQLModelKanbanRepository(KanbanRepository):
 
     def list_boards(self) -> list[BoardSummary]:
         self._ensure_open()
-        with Session(self._engine, expire_on_commit=False) as session:
+        with self._session_scope() as session:
             boards = session.exec(select(BoardTable).order_by("created_at")).all()
         return [
             BoardSummary(
@@ -124,7 +164,7 @@ class SQLModelKanbanRepository(KanbanRepository):
 
     def get_board(self, board_id: str) -> Result[Board, KanbanError]:
         self._ensure_open()
-        with Session(self._engine, expire_on_commit=False) as session:
+        with self._session_scope() as session:
             board = session.get(BoardTable, board_id)
             if board is None:
                 return Err(KanbanError.BOARD_NOT_FOUND)
@@ -163,13 +203,13 @@ class SQLModelKanbanRepository(KanbanRepository):
         self, board_id: str, title: str
     ) -> Result[BoardSummary, KanbanError]:
         self._ensure_open()
-        with Session(self._engine, expire_on_commit=False) as session:
+        with self._session_scope() as session:
             board = session.get(BoardTable, board_id)
             if board is None:
                 return Err(KanbanError.BOARD_NOT_FOUND)
             board.title = title
             session.add(board)
-            session.commit()
+            self._commit_if_needed(session)
             return Ok(
                 BoardSummary(
                     id=board.id,
@@ -180,17 +220,17 @@ class SQLModelKanbanRepository(KanbanRepository):
 
     def delete_board(self, board_id: str) -> Result[None, KanbanError]:
         self._ensure_open()
-        with Session(self._engine, expire_on_commit=False) as session:
+        with self._session_scope() as session:
             board = session.get(BoardTable, board_id)
             if board is None:
                 return Err(KanbanError.BOARD_NOT_FOUND)
             session.delete(board)
-            session.commit()
+            self._commit_if_needed(session)
             return Ok(None)
 
     def find_board_id_by_card(self, card_id: str) -> str | None:
         self._ensure_open()
-        with Session(self._engine, expire_on_commit=False) as session:
+        with self._session_scope() as session:
             card = session.get(CardTable, card_id)
             if card is None:
                 return None
@@ -201,7 +241,7 @@ class SQLModelKanbanRepository(KanbanRepository):
 
     def save_board(self, board: Board) -> Result[None, KanbanError]:
         self._ensure_open()
-        with Session(self._engine, expire_on_commit=False) as session:
+        with self._session_scope() as session:
             db_board = session.get(BoardTable, board.id)
             if db_board is None:
                 return Err(KanbanError.BOARD_NOT_FOUND)
@@ -270,13 +310,13 @@ class SQLModelKanbanRepository(KanbanRepository):
                         db_card.due_at = card.due_at
                     session.add(db_card)
 
-            session.commit()
+            self._commit_if_needed(session)
             return Ok(None)
 
     def find_board_id_by_column(self, column_id: str) -> str | None:
         """Return the board_id that owns the given column, or None."""
         self._ensure_open()
-        with Session(self._engine, expire_on_commit=False) as session:
+        with self._session_scope() as session:
             column = session.get(ColumnTable, column_id)
             if column is None:
                 return None

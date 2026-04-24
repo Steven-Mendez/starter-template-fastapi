@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 
 from src.domain.kanban.models import Board, Card, CardPriority, Column
-from src.domain.kanban.repository import KanbanRepository as KanbanStore
+from src.domain.kanban.repository import KanbanRepositoryPort as KanbanStore
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from tests.support.kanban_builders import StoreBuilder
