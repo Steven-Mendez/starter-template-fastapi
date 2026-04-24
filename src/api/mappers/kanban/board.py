@@ -7,8 +7,7 @@ from src.api.schemas.kanban import (
     BoardSummary,
     BoardUpdate,
 )
-from src.domain.kanban.models import Board
-from src.domain.kanban.models import BoardSummary as DomainBoardSummary
+from src.application.contracts import AppBoard, AppBoardSummary
 
 
 def to_create_board_input(body: BoardCreate) -> str:
@@ -19,11 +18,11 @@ def to_patch_board_input(body: BoardUpdate) -> str | None:
     return body.title
 
 
-def to_board_summary_response(value: DomainBoardSummary) -> BoardSummary:
+def to_board_summary_response(value: AppBoardSummary) -> BoardSummary:
     return BoardSummary(id=value.id, title=value.title, created_at=value.created_at)
 
 
-def to_board_detail_response(value: Board) -> BoardDetail:
+def to_board_detail_response(value: AppBoard) -> BoardDetail:
     return BoardDetail(
         id=value.id,
         title=value.title,

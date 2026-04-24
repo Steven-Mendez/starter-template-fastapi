@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Generator
 from datetime import datetime
 from pathlib import Path
@@ -29,21 +30,72 @@ class RepositoryContract(Protocol):
 
     def save_board(self, board: Board) -> Result[None, KanbanError]: ...
 
-    def create_column(
-        self, board_id: str, title: str
-    ) -> Result[Column, KanbanError]: ...
+    def find_board_id_by_column(self, column_id: str) -> str | None: ...
 
-    def create_card(
-        self,
-        column_id: str,
-        title: str,
-        description: str | None,
-        *,
-        priority: CardPriority = CardPriority.MEDIUM,
-        due_at: datetime | None = None,
-    ) -> Result[Card, KanbanError]: ...
 
-    def get_board_id_for_column(self, column_id: str) -> str | None: ...
+def _append_column(
+    repository: RepositoryContract,
+    board_id: str,
+    title: str,
+) -> Result[Column, KanbanError]:
+    board_result = repository.get_board(board_id)
+    if isinstance(board_result, Err):
+        return Err(board_result.error)
+
+    board = board_result.value
+    column = Column(
+        id=str(uuid.uuid4()),
+        board_id=board_id,
+        title=title,
+        position=max((candidate.position for candidate in board.columns), default=-1)
+        + 1,
+        cards=[],
+    )
+    board.columns.append(column)
+    save_result = repository.save_board(board)
+    if isinstance(save_result, Err):
+        return save_result
+    return Ok(column)
+
+
+def _append_card(
+    repository: RepositoryContract,
+    column_id: str,
+    title: str,
+    description: str | None,
+    *,
+    priority: CardPriority = CardPriority.MEDIUM,
+    due_at: datetime | None = None,
+) -> Result[Card, KanbanError]:
+    board_id = repository.find_board_id_by_column(column_id)
+    if board_id is None:
+        return Err(KanbanError.COLUMN_NOT_FOUND)
+
+    board_result = repository.get_board(board_id)
+    if isinstance(board_result, Err):
+        return board_result
+    board = board_result.value
+
+    column = next(
+        (candidate for candidate in board.columns if candidate.id == column_id), None
+    )
+    if column is None:
+        return Err(KanbanError.COLUMN_NOT_FOUND)
+
+    card = Card(
+        id=str(uuid.uuid4()),
+        column_id=column_id,
+        title=title,
+        description=description,
+        position=0,
+        priority=priority,
+        due_at=due_at,
+    )
+    column.insert_card(card)
+    save_result = repository.save_board(board)
+    if isinstance(save_result, Err):
+        return save_result
+    return Ok(card)
 
 
 @pytest.fixture(params=["inmemory", "sqlite"])
@@ -92,26 +144,22 @@ def test_repository_contract_persists_card_sequence(
     """Verify that adapters persist card ordering updates."""
     repo = repository_factory()
     board = repo.create_board("Seq")
-    col = repo.create_column(board.id, "C")
+    col = _append_column(repo, board.id, "C")
     assert isinstance(col, Ok)
-    c1 = repo.create_card(col.value.id, "a", None)
-    c2 = repo.create_card(col.value.id, "b", None)
+    c1 = _append_card(repo, col.value.id, "a", None)
+    c2 = _append_card(repo, col.value.id, "b", None)
     assert isinstance(c1, Ok) and isinstance(c2, Ok)
 
-    apply_sequence = getattr(repo, "apply_card_sequence", None)
-    if callable(apply_sequence):
-        apply_sequence(col.value.id, [c2.value.id, c1.value.id])
-    else:
-        board_result = repo.get_board(board.id)
-        assert isinstance(board_result, Ok)
-        move_error = board_result.value.move_card(
-            c1.value.id,
-            source_column_id=col.value.id,
-            target_column_id=col.value.id,
-            requested_position=1,
-        )
-        assert move_error is None
-        assert isinstance(repo.save_board(board_result.value), Ok)
+    board_result = repo.get_board(board.id)
+    assert isinstance(board_result, Ok)
+    move_error = board_result.value.move_card(
+        c1.value.id,
+        source_column_id=col.value.id,
+        target_column_id=col.value.id,
+        requested_position=1,
+    )
+    assert move_error is None
+    assert isinstance(repo.save_board(board_result.value), Ok)
 
     board_r = repo.get_board(board.id)
     assert isinstance(board_r, Ok)
@@ -124,15 +172,15 @@ def test_repository_contract_persists_card_sequence(
     assert titles == ["b", "a"]
 
 
-def test_repository_contract_get_board_id_for_column(
+def test_repository_contract_find_board_id_by_column(
     repository_factory: Callable[[], RepositoryContract],
 ) -> None:
     repo = repository_factory()
     board = repo.create_board("A")
-    col = repo.create_column(board.id, "C")
+    col = _append_column(repo, board.id, "C")
     assert isinstance(col, Ok)
-    assert repo.get_board_id_for_column(col.value.id) == board.id
-    assert repo.get_board_id_for_column("nonexistent") is None
+    assert repo.find_board_id_by_column(col.value.id) == board.id
+    assert repo.find_board_id_by_column("nonexistent") is None
 
 
 def test_sqlite_repository_persists_data_across_instances(tmp_path: Path) -> None:

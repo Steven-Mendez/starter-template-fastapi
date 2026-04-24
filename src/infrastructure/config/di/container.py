@@ -1,30 +1,34 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from src.application.queries import KanbanQueryHandlers
+from src.application.commands import KanbanCommandHandlers, KanbanCommandPort
+from src.application.queries import KanbanQueryHandlers, KanbanQueryPort
 from src.config.settings import AppSettings
 from src.domain.kanban.repository import KanbanRepository
 from src.infrastructure.config.di.composition import (
-    UnitOfWorkFactory,
     create_repository_for_settings,
     create_uow_factory_for_settings,
 )
+
+CommandHandlersFactory = Callable[[], KanbanCommandPort]
 
 
 @dataclass(slots=True)
 class ConfiguredAppContainer:
     settings: AppSettings
     repository: KanbanRepository
-    query_handlers: KanbanQueryHandlers
-    uow_factory: UnitOfWorkFactory
+    query_handlers: KanbanQueryPort
+    command_handlers_factory: CommandHandlersFactory
 
 
 def build_container(settings: AppSettings) -> ConfiguredAppContainer:
     repository = create_repository_for_settings(settings)
+    uow_factory = create_uow_factory_for_settings(settings, repository)
     return ConfiguredAppContainer(
         settings=settings,
         repository=repository,
         query_handlers=KanbanQueryHandlers(repository=repository),
-        uow_factory=create_uow_factory_for_settings(settings, repository),
+        command_handlers_factory=lambda: KanbanCommandHandlers(uow=uow_factory()),
     )

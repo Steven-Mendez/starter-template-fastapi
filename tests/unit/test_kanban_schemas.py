@@ -5,8 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from src.api.schemas.kanban import BoardCreate, CardCreate
-from src.domain.kanban.models import CardPriority
+from src.api.schemas.kanban import BoardCreate, CardCreate, CardPrioritySchema
 
 pytestmark = pytest.mark.unit
 
@@ -20,10 +19,12 @@ def test_card_create_priority_validation_accepts_enum_and_rejects_garbage() -> N
     for raw in ("urgent", "P1", ""):
         with pytest.raises(ValidationError):
             CardCreate.model_validate({"title": "x", "priority": raw})
-    for p in CardPriority:
+    for p in CardPrioritySchema:
         c = CardCreate.model_validate({"title": "x", "priority": p.value})
         assert c.priority is p
-    assert CardCreate.model_validate({"title": "x"}).priority is CardPriority.MEDIUM
+    assert (
+        CardCreate.model_validate({"title": "x"}).priority is CardPrioritySchema.MEDIUM
+    )
 
 
 def test_card_create_due_at_optional_iso8601() -> None:

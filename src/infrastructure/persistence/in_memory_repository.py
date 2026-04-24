@@ -119,35 +119,6 @@ class InMemoryKanbanRepository(KanbanRepository):
         del self._boards[board_id]
         return Ok(None)
 
-    def create_column(self, board_id: str, title: str) -> Result[Column, KanbanError]:
-        if board_id not in self._boards:
-            return Err(KanbanError.BOARD_NOT_FOUND)
-        existing = [c for c in self._columns.values() if c.board_id == board_id]
-        position = max((c.position for c in existing), default=-1) + 1
-        column_id = str(uuid.uuid4())
-        column = _Column(
-            id=column_id,
-            board_id=board_id,
-            title=title,
-            position=position,
-        )
-        self._columns[column_id] = column
-        return Ok(
-            Column(
-                id=column.id,
-                board_id=column.board_id,
-                title=column.title,
-                position=column.position,
-                cards=[],
-            )
-        )
-
-    def delete_column(self, column_id: str) -> Result[None, KanbanError]:
-        if column_id not in self._columns:
-            return Err(KanbanError.COLUMN_NOT_FOUND)
-        self._delete_column_internal(column_id)
-        return Ok(None)
-
     def _delete_column_internal(self, column_id: str) -> None:
         to_delete = [
             key for key, card in self._cards.items() if card.column_id == column_id
@@ -156,58 +127,7 @@ class InMemoryKanbanRepository(KanbanRepository):
             del self._cards[card_id]
         self._columns.pop(column_id, None)
 
-    def create_card(
-        self,
-        column_id: str,
-        title: str,
-        description: str | None,
-        *,
-        priority: CardPriority = CardPriority.MEDIUM,
-        due_at: datetime | None = None,
-    ) -> Result[Card, KanbanError]:
-        if column_id not in self._columns:
-            return Err(KanbanError.COLUMN_NOT_FOUND)
-        position = len([c for c in self._cards.values() if c.column_id == column_id])
-        card_id = str(uuid.uuid4())
-        card = _Card(
-            id=card_id,
-            column_id=column_id,
-            title=title,
-            description=description,
-            position=position,
-            priority=priority,
-            due_at=due_at,
-        )
-        self._cards[card_id] = card
-        return Ok(
-            Card(
-                id=card.id,
-                column_id=card.column_id,
-                title=card.title,
-                description=card.description,
-                position=card.position,
-                priority=card.priority,
-                due_at=card.due_at,
-            )
-        )
-
-    def get_card(self, card_id: str) -> Result[Card, KanbanError]:
-        card = self._cards.get(card_id)
-        if not card:
-            return Err(KanbanError.CARD_NOT_FOUND)
-        return Ok(
-            Card(
-                id=card.id,
-                column_id=card.column_id,
-                title=card.title,
-                description=card.description,
-                position=card.position,
-                priority=card.priority,
-                due_at=card.due_at,
-            )
-        )
-
-    def get_board_id_for_card(self, card_id: str) -> str | None:
+    def find_board_id_by_card(self, card_id: str) -> str | None:
         card = self._cards.get(card_id)
         if not card:
             return None
@@ -216,7 +136,7 @@ class InMemoryKanbanRepository(KanbanRepository):
             return None
         return col.board_id
 
-    def get_board_id_for_column(self, column_id: str) -> str | None:
+    def find_board_id_by_column(self, column_id: str) -> str | None:
         column = self._columns.get(column_id)
         if column is None:
             return None
@@ -226,6 +146,16 @@ class InMemoryKanbanRepository(KanbanRepository):
         if board.id not in self._boards:
             return Err(KanbanError.BOARD_NOT_FOUND)
         self._boards[board.id].title = board.title
+
+        existing_column_ids = {
+            column.id
+            for column in self._columns.values()
+            if column.board_id == board.id
+        }
+        current_column_ids = {column.id for column in board.columns}
+        for column_id in existing_column_ids - current_column_ids:
+            self._delete_column_internal(column_id)
+
         for col in board.columns:
             if col.id not in self._columns:
                 self._columns[col.id] = _Column(
@@ -254,6 +184,18 @@ class InMemoryKanbanRepository(KanbanRepository):
                     c_model.position = card.position
                     c_model.priority = card.priority
                     c_model.due_at = card.due_at
+
+        existing_card_ids = {
+            card.id
+            for card in self._cards.values()
+            if card.column_id in current_column_ids
+        }
+        current_card_ids = {
+            card.id for column in board.columns for card in column.cards
+        }
+        for card_id in existing_card_ids - current_card_ids:
+            self._cards.pop(card_id, None)
+
         return Ok(None)
 
     def _cards_for_column_sorted(self, column_id: str) -> list[_Card]:

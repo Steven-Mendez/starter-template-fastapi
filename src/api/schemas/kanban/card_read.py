@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from src.domain.kanban.models import CardPriority
+from src.api.schemas.kanban.card_priority import CardPrioritySchema
 
 
 class CardRead(BaseModel):
@@ -13,5 +13,5 @@ class CardRead(BaseModel):
     title: str
     description: str | None
     position: int
-    priority: CardPriority
+    priority: CardPrioritySchema
     due_at: datetime | None

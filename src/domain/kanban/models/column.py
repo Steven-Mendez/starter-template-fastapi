@@ -16,7 +16,9 @@ class Column:
     def extract_card(self, card_id: str) -> Card | None:
         for i, card in enumerate(self.cards):
             if card.id == card_id:
-                return self.cards.pop(i)
+                extracted = self.cards.pop(i)
+                self._recalculate_positions()
+                return extracted
         return None
 
     def insert_card(self, card: Card, requested_position: int | None = None) -> None:

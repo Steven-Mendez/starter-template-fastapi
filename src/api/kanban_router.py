@@ -43,15 +43,14 @@ from src.application.queries import (
     GetCardQuery,
     ListBoardsQuery,
 )
-from src.domain.shared.errors import KanbanError
-from src.domain.shared.result import Err, Ok
+from src.application.shared import AppErr, ApplicationError, AppOk
 
 kanban_router = APIRouter(prefix="/api", tags=["kanban"])
 
 
-def _http_from_kanban_error(err: KanbanError) -> NoReturn:
+def _http_from_kanban_error(err: ApplicationError) -> NoReturn:
     status_code = status.HTTP_404_NOT_FOUND
-    if err is KanbanError.INVALID_CARD_MOVE:
+    if err is ApplicationError.INVALID_CARD_MOVE:
         status_code = status.HTTP_409_CONFLICT
     raise HTTPException(status_code=status_code, detail=err.detail)
 
@@ -86,9 +85,9 @@ def get_board(
     queries: QueryHandlersDep,
 ) -> BoardDetail:
     match queries.handle_get_board(GetBoardQuery(board_id=str(board_id))):
-        case Ok(value):
+        case AppOk(value):
             return to_board_detail_response(value)
-        case Err(err):
+        case AppErr(err):
             _http_from_kanban_error(err)
 
 
@@ -107,9 +106,9 @@ def patch_board(
     match commands.handle_patch_board(
         PatchBoardCommand(board_id=str(board_id), title=title)
     ):
-        case Ok(value):
+        case AppOk(value):
             return to_board_summary_response(value)
-        case Err(err):
+        case AppErr(err):
             _http_from_kanban_error(err)
 
 
@@ -119,9 +118,9 @@ def delete_board(
     commands: CommandHandlersDep,
 ) -> None:
     match commands.handle_delete_board(DeleteBoardCommand(board_id=str(board_id))):
-        case Ok(_):
+        case AppOk(_):
             return
-        case Err(err):
+        case AppErr(err):
             _http_from_kanban_error(err)
 
 
@@ -138,9 +137,9 @@ def create_column(
     match commands.handle_create_column(
         CreateColumnCommand(board_id=str(board_id), title=to_create_column_input(body))
     ):
-        case Ok(value):
+        case AppOk(value):
             return to_column_response(value)
-        case Err(err):
+        case AppErr(err):
             _http_from_kanban_error(err)
 
 
@@ -150,9 +149,9 @@ def delete_column(
     commands: CommandHandlersDep,
 ) -> None:
     match commands.handle_delete_column(DeleteColumnCommand(column_id=str(column_id))):
-        case Ok(_):
+        case AppOk(_):
             return
-        case Err(err):
+        case AppErr(err):
             _http_from_kanban_error(err)
 
 
@@ -176,9 +175,9 @@ def create_card(
             due_at=due_at,
         )
     ):
-        case Ok(value):
+        case AppOk(value):
             return to_card_response(value)
-        case Err(err):
+        case AppErr(err):
             _http_from_kanban_error(err)
 
 
@@ -188,9 +187,9 @@ def get_card(
     queries: QueryHandlersDep,
 ) -> CardRead:
     match queries.handle_get_card(GetCardQuery(card_id=str(card_id))):
-        case Ok(value):
+        case AppOk(value):
             return to_card_response(value)
-        case Err(err):
+        case AppErr(err):
             _http_from_kanban_error(err)
 
 
@@ -218,7 +217,7 @@ def patch_card(
             due_at_provided=input_data["has_due_at"],
         )
     ):
-        case Ok(value):
+        case AppOk(value):
             return to_card_response(value)
-        case Err(err):
+        case AppErr(err):
             _http_from_kanban_error(err)

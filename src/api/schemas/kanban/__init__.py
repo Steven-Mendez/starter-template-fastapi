@@ -5,6 +5,7 @@ from src.api.schemas.kanban.board_detail import BoardDetail
 from src.api.schemas.kanban.board_summary import BoardSummary
 from src.api.schemas.kanban.board_update import BoardUpdate
 from src.api.schemas.kanban.card_create import CardCreate
+from src.api.schemas.kanban.card_priority import CardPrioritySchema
 from src.api.schemas.kanban.card_read import CardRead
 from src.api.schemas.kanban.card_update import CardUpdate
 from src.api.schemas.kanban.column_create import ColumnCreate
@@ -16,6 +17,7 @@ __all__ = [
     "BoardSummary",
     "BoardUpdate",
     "CardCreate",
+    "CardPrioritySchema",
     "CardRead",
     "CardUpdate",
     "ColumnCreate",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from src.domain.kanban.models import Board, BoardSummary, Card
+from src.domain.kanban.models import Board, BoardSummary
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result
 
@@ -14,4 +14,4 @@ class KanbanQueryRepository(Protocol):
 
     def get_board(self, board_id: str) -> Result[Board, KanbanError]: ...
 
-    def get_card(self, card_id: str) -> Result[Card, KanbanError]: ...
+    def find_board_id_by_card(self, card_id: str) -> str | None: ...

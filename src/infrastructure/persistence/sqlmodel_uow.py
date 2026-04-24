@@ -185,7 +185,7 @@ class SqlModelCommandRepository(KanbanCommandRepository):
                 self._session.add(card_tbl)
         return Ok(None)
 
-    def get_board_id_for_card(self, card_id: str) -> str | None:
+    def find_board_id_by_card(self, card_id: str) -> str | None:
         card = self._session.get(CardTable, card_id)
         if not card:
             return None
@@ -194,7 +194,7 @@ class SqlModelCommandRepository(KanbanCommandRepository):
             return None
         return col.board_id
 
-    def get_board_id_for_column(self, column_id: str) -> str | None:
+    def find_board_id_by_column(self, column_id: str) -> str | None:
         col = self._session.get(ColumnTable, column_id)
         if not col:
             return None

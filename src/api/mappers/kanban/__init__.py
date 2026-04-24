@@ -1,4 +1,4 @@
-"""Kanban API mappers — schema ↔ domain conversions."""
+"""Kanban API mappers — transport schemas ↔ application contracts."""
 
 from src.api.mappers.kanban.board import (
     to_board_detail_response,

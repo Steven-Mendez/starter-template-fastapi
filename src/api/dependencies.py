@@ -5,13 +5,11 @@ from typing import Annotated, Protocol, TypeAlias, cast
 
 from fastapi import Depends, FastAPI, Request
 
-from src.application.commands import KanbanCommandHandlers
-from src.application.queries import KanbanQueryHandlers
-from src.application.shared.unit_of_work import UnitOfWork
+from src.application.commands import KanbanCommandPort
+from src.application.queries import KanbanQueryPort
 from src.config.settings import AppSettings
-from src.domain.kanban.repository import KanbanRepository
 
-UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWork]
+CommandHandlersFactory: TypeAlias = Callable[[], KanbanCommandPort]
 
 
 class AppContainer(Protocol):
@@ -19,13 +17,10 @@ class AppContainer(Protocol):
     def settings(self) -> AppSettings: ...
 
     @property
-    def repository(self) -> KanbanRepository: ...
+    def query_handlers(self) -> KanbanQueryPort: ...
 
     @property
-    def query_handlers(self) -> KanbanQueryHandlers: ...
-
-    @property
-    def uow_factory(self) -> UnitOfWorkFactory: ...
+    def command_handlers_factory(self) -> CommandHandlersFactory: ...
 
 
 def set_app_container(app: FastAPI, container: AppContainer) -> None:
@@ -43,25 +38,21 @@ def get_app_settings(request: Request) -> AppSettings:
     return get_app_container(request).settings
 
 
-def get_kanban_repository(request: Request) -> KanbanRepository:
-    return get_app_container(request).repository
-
-
-def get_kanban_command_handlers(request: Request) -> KanbanCommandHandlers:
+def get_kanban_command_handlers(request: Request) -> KanbanCommandPort:
     container = get_app_container(request)
-    return KanbanCommandHandlers(uow=container.uow_factory())
+    return container.command_handlers_factory()
 
 
-def get_kanban_query_handlers(request: Request) -> KanbanQueryHandlers:
+def get_kanban_query_handlers(request: Request) -> KanbanQueryPort:
     return get_app_container(request).query_handlers
 
 
-AppContainerDep: TypeAlias = Annotated[AppContainer, Depends(get_app_container)]
+AppSettingsDep: TypeAlias = Annotated[AppSettings, Depends(get_app_settings)]
 CommandHandlersDep: TypeAlias = Annotated[
-    KanbanCommandHandlers,
+    KanbanCommandPort,
     Depends(get_kanban_command_handlers),
 ]
 QueryHandlersDep: TypeAlias = Annotated[
-    KanbanQueryHandlers,
+    KanbanQueryPort,
     Depends(get_kanban_query_handlers),
 ]

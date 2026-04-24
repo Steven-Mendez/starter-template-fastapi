@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+from src.domain.shared.errors import KanbanError
+
+
+class ApplicationError(StrEnum):
+    """Application-level failures exposed to inbound adapters."""
+
+    BOARD_NOT_FOUND = ("board_not_found", "Board not found")
+    COLUMN_NOT_FOUND = ("column_not_found", "Column not found")
+    CARD_NOT_FOUND = ("card_not_found", "Card not found")
+    INVALID_CARD_MOVE = ("invalid_card_move", "Invalid card move")
+
+    _detail: str
+
+    def __new__(cls, value: str, detail: str) -> ApplicationError:
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member._detail = detail
+        return member
+
+    @property
+    def detail(self) -> str:
+        return self._detail
+
+
+_ERROR_MAP = {
+    KanbanError.BOARD_NOT_FOUND: ApplicationError.BOARD_NOT_FOUND,
+    KanbanError.COLUMN_NOT_FOUND: ApplicationError.COLUMN_NOT_FOUND,
+    KanbanError.CARD_NOT_FOUND: ApplicationError.CARD_NOT_FOUND,
+    KanbanError.INVALID_CARD_MOVE: ApplicationError.INVALID_CARD_MOVE,
+}
+
+
+def from_domain_error(error: KanbanError) -> ApplicationError:
+    return _ERROR_MAP[error]

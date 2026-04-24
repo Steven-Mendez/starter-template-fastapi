@@ -4,11 +4,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from src.domain.kanban.models import CardPriority
+from src.api.schemas.kanban.card_priority import CardPrioritySchema
 
 
 class CardCreate(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     description: str | None = None
-    priority: CardPriority = CardPriority.MEDIUM
+    priority: CardPrioritySchema = CardPrioritySchema.MEDIUM
     due_at: datetime | None = None

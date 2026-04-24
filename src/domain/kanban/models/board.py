@@ -17,6 +17,15 @@ class Board:
     def get_column(self, column_id: str) -> Column | None:
         return next((c for c in self.columns if c.id == column_id), None)
 
+    def delete_column(self, column_id: str) -> KanbanError | None:
+        column = self.get_column(column_id)
+        if column is None:
+            return KanbanError.COLUMN_NOT_FOUND
+
+        self.columns.remove(column)
+        self._recalculate_column_positions()
+        return None
+
     def move_card(
         self,
         card_id: str,
@@ -40,6 +49,8 @@ class Board:
             return KanbanError.CARD_NOT_FOUND
 
         target_col.insert_card(card, requested_position)
-        # update positions of source column
-        source_col._recalculate_positions()
         return None
+
+    def _recalculate_column_positions(self) -> None:
+        for i, column in enumerate(self.columns):
+            column.position = i

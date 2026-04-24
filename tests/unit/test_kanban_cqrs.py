@@ -4,7 +4,7 @@ import pytest
 
 from src.application.commands import KanbanCommandHandlers
 from src.application.queries import GetBoardQuery, KanbanQueryHandlers
-from src.domain.shared.result import Ok
+from src.application.shared import AppOk
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
 from tests.support.kanban_builders import HandlerHarness
@@ -38,7 +38,7 @@ def test_router_use_case_can_be_done_with_split_handlers(
     fetched_board = handler_harness.queries.handle_get_board(
         GetBoardQuery(board_id=board.id)
     )
-    assert isinstance(fetched_board, Ok)
+    assert isinstance(fetched_board, AppOk)
     todo_column = next(
         (
             column

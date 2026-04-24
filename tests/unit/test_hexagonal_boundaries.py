@@ -10,10 +10,16 @@ from typing import Dict, List, Set, get_args, get_origin, get_type_hints
 import pytest
 from fastapi.routing import APIRoute
 
+from src.api import dependencies as api_dependencies
 from src.api.kanban_router import kanban_router
-from src.application.commands import KanbanCommandHandlers
-from src.application.queries import KanbanQueryHandlers
+from src.api.root_router import root_router
+from src.application.commands import KanbanCommandHandlers, KanbanCommandPort
+from src.application.queries import KanbanQueryHandlers, KanbanQueryPort
 from src.domain.kanban.repository import KanbanRepository
+from src.domain.kanban.repository.command import KanbanCommandRepository
+from src.domain.kanban.repository.query import KanbanQueryRepository
+from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 
 pytestmark = pytest.mark.unit
 
@@ -146,6 +152,7 @@ DENY_MATRIX = {
         "src.config",
     ],
     "api": [
+        "src.domain",
         "src.infrastructure",
         "dependencies",
         "settings",
@@ -154,6 +161,17 @@ DENY_MATRIX = {
         "src.api",
         "dependencies",
     ],
+}
+
+TRANSITIVE_DENY_MATRIX = {
+    "domain": DENY_MATRIX["domain"],
+    "application": DENY_MATRIX["application"],
+    "api": [
+        "src.infrastructure",
+        "dependencies",
+        "settings",
+    ],
+    "infrastructure": DENY_MATRIX["infrastructure"],
 }
 
 
@@ -217,7 +235,7 @@ def check_transitive_import_violations(
         if layer in {"other", "runtime"}:
             continue
 
-        for denied in DENY_MATRIX.get(layer, []):
+        for denied in TRANSITIVE_DENY_MATRIX.get(layer, []):
             path = shortest_path_to_denied_prefix(module_name, denied, graph)
             if path is None or len(path) <= 2:
                 continue
@@ -269,36 +287,228 @@ def test_api_routes_use_cqrs_handlers() -> None:
         sig = inspect.signature(endpoint)
         type_hints = get_type_hints(endpoint, include_extras=True)
 
-        has_query_handler = False
-        has_command_handler = False
+        has_query_port = False
+        has_command_port = False
+        has_concrete_query_handler = False
+        has_concrete_command_handler = False
         has_repository = False
 
         for param_name, param in sig.parameters.items():
             annotation = type_hints.get(param_name, param.annotation)
+            if annotation_contains_type(annotation, KanbanQueryPort):
+                has_query_port = True
+            if annotation_contains_type(annotation, KanbanCommandPort):
+                has_command_port = True
             if annotation_contains_type(annotation, KanbanQueryHandlers):
-                has_query_handler = True
+                has_concrete_query_handler = True
             if annotation_contains_type(annotation, KanbanCommandHandlers):
-                has_command_handler = True
+                has_concrete_command_handler = True
             if annotation_contains_type(annotation, KanbanRepository):
                 has_repository = True
 
         assert not has_repository, (
             f"Endpoint {endpoint.__name__} must not depend on a repository directly."
         )
+        assert not has_concrete_query_handler, (
+            f"Endpoint {endpoint.__name__} must depend on query ports, "
+            "not concrete handlers."
+        )
+        assert not has_concrete_command_handler, (
+            f"Endpoint {endpoint.__name__} must depend on command ports, "
+            "not concrete handlers."
+        )
 
         methods = route.methods or set()
 
         if "GET" in methods:
-            assert has_query_handler, (
-                f"Read endpoint {endpoint.__name__} must use KanbanQueryHandlers."
+            assert has_query_port, (
+                f"Read endpoint {endpoint.__name__} must use KanbanQueryPort."
             )
-            assert not has_command_handler, (
-                f"Read endpoint {endpoint.__name__} must not use KanbanCommandHandlers."
+            assert not has_command_port, (
+                f"Read endpoint {endpoint.__name__} must not use KanbanCommandPort."
             )
         else:
-            assert has_command_handler, (
-                f"Write endpoint {endpoint.__name__} must use KanbanCommandHandlers."
+            assert has_command_port, (
+                f"Write endpoint {endpoint.__name__} must use KanbanCommandPort."
             )
-            assert not has_query_handler, (
-                f"Write endpoint {endpoint.__name__} must not use KanbanQueryHandlers."
+            assert not has_query_port, (
+                f"Write endpoint {endpoint.__name__} must not use KanbanQueryPort."
             )
+
+
+def test_api_schema_modules_do_not_import_application_contracts() -> None:
+    modules = get_module_imports()
+    diagnostics: list[str] = []
+
+    for module_name, imports in modules.items():
+        if not module_name.startswith("src.api.schemas"):
+            continue
+
+        leaked_imports = sorted(
+            imp
+            for imp in imports
+            if imp == "src.application.contracts"
+            or imp.startswith("src.application.contracts.")
+        )
+        diagnostics.extend(
+            f"{module_name} imports {target}" for target in leaked_imports
+        )
+
+    if diagnostics:
+        pytest.fail(
+            "API schema modules must remain transport-owned:\n"
+            + "\n".join(f" - {item}" for item in diagnostics)
+        )
+
+
+def test_persistence_adapters_match_repository_port_surface() -> None:
+    port_methods = {
+        method_name
+        for method_name, attr in KanbanCommandRepository.__dict__.items()
+        if callable(attr) and not method_name.startswith("_")
+    } | {
+        method_name
+        for method_name, attr in KanbanQueryRepository.__dict__.items()
+        if callable(attr) and not method_name.startswith("_")
+    }
+
+    diagnostics: list[str] = []
+    for adapter in (InMemoryKanbanRepository, SQLModelKanbanRepository):
+        adapter_methods = {
+            method_name
+            for method_name, attr in adapter.__dict__.items()
+            if callable(attr) and not method_name.startswith("_")
+        }
+        extra_methods = sorted(adapter_methods - port_methods)
+        if extra_methods:
+            diagnostics.append(
+                f"{adapter.__name__} exposes non-port methods: "
+                f"{', '.join(extra_methods)}"
+            )
+
+    if diagnostics:
+        pytest.fail(
+            "Persistence adapters must not expose public methods "
+            "outside driven ports:\n" + "\n".join(f" - {item}" for item in diagnostics)
+        )
+
+
+def test_api_dependencies_do_not_expose_repository_provider() -> None:
+    assert not hasattr(api_dependencies, "get_kanban_repository")
+
+
+def test_domain_aggregates_do_not_call_private_entity_methods() -> None:
+    domain_models_dir = SRC_DIR / "domain" / "kanban" / "models"
+    violations: list[str] = []
+
+    for py_file in sorted(domain_models_dir.glob("*.py")):
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        module_name = str(py_file.relative_to(ROOT).with_suffix("")).replace("/", ".")
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute):
+                continue
+            if not node.func.attr.startswith("_"):
+                continue
+            if isinstance(node.func.value, ast.Name) and node.func.value.id == "self":
+                continue
+
+            receiver = ast.unparse(node.func.value)
+            violations.append(
+                f"{module_name}:{node.lineno} calls private method "
+                f"{receiver}.{node.func.attr}()"
+            )
+
+    if violations:
+        pytest.fail(
+            "Domain aggregates/entities must not call private methods "
+            "on other objects:\n" + "\n".join(f" - {item}" for item in violations)
+        )
+
+
+def test_api_dependencies_do_not_import_concrete_handler_classes() -> None:
+    deps_file = SRC_DIR / "api" / "dependencies.py"
+    tree = ast.parse(deps_file.read_text(encoding="utf-8"), filename=str(deps_file))
+
+    violations: list[str] = []
+    module_aliases: dict[str, str] = {}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            if node.module == "src.application.commands":
+                if any(alias.name == "KanbanCommandHandlers" for alias in node.names):
+                    violations.append("src.application.commands.KanbanCommandHandlers")
+            if node.module == "src.application.queries":
+                if any(alias.name == "KanbanQueryHandlers" for alias in node.names):
+                    violations.append("src.application.queries.KanbanQueryHandlers")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                module_aliases[alias.asname or alias.name] = alias.name
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in {
+            "KanbanCommandHandlers",
+            "KanbanQueryHandlers",
+        }:
+            violations.append(node.id)
+
+        if isinstance(node, ast.Attribute) and node.attr in {
+            "KanbanCommandHandlers",
+            "KanbanQueryHandlers",
+        }:
+            if isinstance(node.value, ast.Name):
+                imported_module = module_aliases.get(node.value.id)
+                if imported_module in {
+                    "src.application.commands",
+                    "src.application.queries",
+                    "src.application.commands.handlers",
+                    "src.application.queries.handlers",
+                }:
+                    violations.append(f"{imported_module}.{node.attr}")
+
+    assert not violations, (
+        "API dependencies must consume ports/factories, not concrete handlers: "
+        + ", ".join(violations)
+    )
+
+
+def test_routes_do_not_inject_app_container_directly() -> None:
+    for route in [*kanban_router.routes, *root_router.routes]:
+        if not isinstance(route, APIRoute):
+            continue
+
+        endpoint = route.endpoint
+        sig = inspect.signature(endpoint)
+        type_hints = get_type_hints(endpoint, include_extras=True)
+
+        for param_name, param in sig.parameters.items():
+            annotation = type_hints.get(param_name, param.annotation)
+            assert not annotation_contains_type(
+                annotation, api_dependencies.AppContainer
+            ), f"Endpoint {endpoint.__name__} must not inject AppContainer directly."
+
+
+def _iter_route_dependency_calls(route: APIRoute) -> set[object]:
+    calls: set[object] = set()
+    stack = list(route.dependant.dependencies)
+
+    while stack:
+        dependency = stack.pop()
+        calls.add(dependency.call)
+        stack.extend(dependency.dependencies)
+
+    return calls
+
+
+def test_routes_do_not_depend_on_container_provider_callable() -> None:
+    for route in [*kanban_router.routes, *root_router.routes]:
+        if not isinstance(route, APIRoute):
+            continue
+
+        calls = _iter_route_dependency_calls(route)
+        assert api_dependencies.get_app_container not in calls, (
+            f"Route {route.path} must not depend on "
+            "get_app_container as a route dependency."
+        )
