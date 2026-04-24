@@ -58,6 +58,7 @@ logs/
 
 # Runtime data (SQLite default backend)
 .data/
+:memory:
 *.db
 *.sqlite
 *.sqlite3
