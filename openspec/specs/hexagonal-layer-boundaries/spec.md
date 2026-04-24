@@ -20,24 +20,22 @@ The system SHALL separate Kanban code into domain, application, and infrastructu
 - **THEN** the transitive import chain from that API module SHALL NOT depend on infrastructure modules
 
 ### Requirement: Inbound adapters SHALL be transport-only
-The system SHALL ensure HTTP route handlers act as primary adapters that translate requests/responses and delegate orchestration to command/query handlers in the application layer.
+The system SHALL ensure API routes depend on focused handler/settings dependencies and SHALL forbid direct coupling to container-provider internals.
 
-#### Scenario: Route handler orchestration is delegated
-- **WHEN** a route performs a Kanban command or query
-- **THEN** the route SHALL call an application handler dependency and SHALL NOT call persistence adapters directly
-
-#### Scenario: Handler dependencies stay adapter-edge and typed
-- **WHEN** FastAPI dependencies are declared by route handlers
-- **THEN** the adapter SHALL depend on typed command/query handler contracts and SHALL NOT depend on infrastructure adapter implementations
+#### Scenario: Route does not depend on container provider callable
+- **WHEN** route dependency metadata is inspected
+- **THEN** no route SHALL depend directly on `get_app_container` (or equivalent container provider) as a route-level dependency
 
 ### Requirement: Infrastructure Adapters SHALL NOT contain domain orchestration logic
-
-The system SHALL ensure that adapters implementing driven ports (e.g. database repositories) function purely as I/O mechanisms without invoking domain validation or calculating sequence logic.
+The system SHALL ensure that adapters implementing driven ports (for example database repositories) remain pure I/O components that persist pre-validated state and SHALL NOT execute business orchestration decisions.
 
 #### Scenario: Infrastructure orchestration is avoided
-
 - **WHEN** a state change is persisted to a database
 - **THEN** the adapter SHALL purely persist the values and SHALL NOT invoke domain services like `validate_card_move`
+
+#### Scenario: Sequence decisions are application/domain owned
+- **WHEN** card movement state is saved
+- **THEN** adapters SHALL persist pre-computed target columns and positions and SHALL NOT calculate movement decisions internally
 
 ### Requirement: Driven Repository Ports SHALL reside in the Domain layer
 

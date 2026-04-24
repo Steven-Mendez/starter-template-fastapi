@@ -1,9 +1,5 @@
-# repository-aggregate-compliance Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Enforce the aggregate root repository pattern for the Kanban bounded context, ensuring sub-entities are managed through their aggregate root.
-## Requirements
 ### Requirement: Repositories SHALL manage Data implicitly through the Aggregate Root
 The system SHALL enforce aggregate-consistent persistence semantics when saving `Board` state, including normalized ordering for child collections after add/remove/move operations.
 

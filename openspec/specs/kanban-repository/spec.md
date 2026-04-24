@@ -1,8 +1,14 @@
-## MODIFIED Requirements
+# kanban-repository Specification
+
+## Purpose
+
+Define a stable outbound repository port for Kanban aggregates that preserves domain invariants, explicit error semantics, and command/query separation without leaking transport or framework concerns.
+
+## Requirements
 
 ### Requirement: Repository exposes board and column operations with explicit failures
 
-The system SHALL provide a `KanbanRepository` protocol as an outbound port. Operations that may fail SHALL return `Result[T, KanbanError]` using `Ok` for success and `Err` for failure. `KanbanError` SHALL be a `StrEnum` of stable reason codes; each member SHALL expose a `detail` string suitable for HTTP error bodies (see `kanban/errors.py`). The contract SHALL be satisfied by all supported repository backends. Repositories that hold external resources MAY expose close/disposal hooks and callers SHALL release those resources in lifecycle teardown. The outbound port definition SHALL remain independent of framework request objects and runtime settings-based adapter selection.
+The system SHALL provide a `KanbanRepository` protocol as an outbound port. Operations that may fail SHALL return `Result[T, KanbanError]` using `Ok` for success and `Err` for failure. `KanbanError` SHALL be a `StrEnum` of stable reason codes; each member SHALL expose a `detail` string suitable for HTTP error bodies. The contract SHALL be satisfied by all supported repository backends. Repositories that hold external resources MAY expose close/disposal hooks and callers SHALL release those resources in lifecycle teardown. The outbound port definition SHALL remain independent of framework request objects and runtime settings-based adapter selection.
 
 #### Scenario: Missing board returns Err on read
 
@@ -20,7 +26,7 @@ The system SHALL represent an attempt to move a card to a column on a different 
 
 #### Scenario: Cross-board column target yields invalid-move error
 
-- **WHEN** `update_card` is asked to set `column_id` to a column that exists but belongs to another board than the card's current column
+- **WHEN** card movement targets a column that belongs to another board than the card's current board
 - **THEN** the result SHALL be `Err` with an error code for invalid move
 
 ### Requirement: Repository contracts SHALL support CQRS-oriented split
@@ -37,12 +43,11 @@ The system SHALL allow application-level separation between command-side and que
 - **WHEN** a command-side application handler is type-checked
 - **THEN** its repository dependency SHALL include write operations required by the command
 
-## ADDED Requirements
-
 ### Requirement: Repositories SHALL persist through Aggregates
 
-The system SHALL limit repository interfaces to persist entire Aggregates (e.g., `Board`), effectively discouraging direct CRUD manipulation of sub-entities outside of the Aggregate boundary concept.
+The system SHALL limit repository interfaces to persist entire aggregates (for example `Board`), effectively discouraging direct CRUD manipulation of sub-entities outside of the aggregate boundary concept.
 
 #### Scenario: Board operates as the persistence aggregate boundary
+
 - **WHEN** the repository is tasked with persisting a modified board state
-- **THEN** the application SHALL NOT issue raw granular table-level updates bypassing the domain aggregate root logic
+- **THEN** the application SHALL NOT issue raw granular table-level updates bypassing aggregate-root logic

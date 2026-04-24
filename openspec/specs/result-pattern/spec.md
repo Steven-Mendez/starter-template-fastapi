@@ -4,7 +4,7 @@
 
 Provide an explicit success-or-failure type for domain code so failures are values, not ambiguous sentinels, and can be composed and mapped to HTTP responses.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Result distinguishes success from failure
 

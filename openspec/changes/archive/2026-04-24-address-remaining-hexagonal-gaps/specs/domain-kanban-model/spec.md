@@ -1,17 +1,4 @@
-# domain-kanban-model Specification
-
-## Purpose
-
-Define Kanban aggregate behavior in the domain layer so business invariants (ordering, movement, and consistency constraints) are enforced independently of API and persistence concerns.
-## Requirements
-### Requirement: Domain model SHALL define Kanban entities independently of HTTP schemas
-
-The system SHALL define explicit domain entities/value objects for board, column, and card behavior without importing FastAPI or API schema modules.
-
-#### Scenario: Domain entity imports stay infrastructure-free
-
-- **WHEN** domain model modules are inspected
-- **THEN** they SHALL NOT import FastAPI, Pydantic API schemas, SQLModel table classes, or application settings
+## MODIFIED Requirements
 
 ### Requirement: Domain model SHALL represent business invariants directly
 The system SHALL represent card movement and board-column ordering invariants through explicit domain behaviors on aggregate roots and entities, without fallback runtime introspection.

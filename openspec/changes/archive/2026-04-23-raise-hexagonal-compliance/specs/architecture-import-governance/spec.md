@@ -1,9 +1,5 @@
-# architecture-import-governance Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Define and enforce import-boundary governance so clean/hexagonal dependency rules are validated continuously, including direct and transitive checks across application layers.
-## Requirements
 ### Requirement: Import governance SHALL enforce direct and transitive boundaries
 The system SHALL enforce architecture boundaries using source import analysis over governed modules and SHALL fail when a forbidden dependency is present directly or through transitive import paths, including API-to-domain contract leakage.
 
@@ -16,12 +12,12 @@ The system SHALL enforce architecture boundaries using source import analysis ov
 - **THEN** import governance SHALL fail and report the violating source and target modules
 
 ### Requirement: Governance mode SHALL be zero-exception in CI
-The system SHALL enforce architecture and spec-governance checks in CI without skip paths, including catalog-level OpenSpec structural validation.
+The system SHALL run architecture boundary checks in zero-exception mode in CI, without temporary allowlist bypasses for forbidden dependencies.
 
-#### Scenario: OpenSpec catalog structure violations exist
-- **WHEN** CI runs `openspec validate --all`
-- **THEN** the pipeline SHALL fail if any spec lacks canonical `## Purpose` and `## Requirements` sections
+#### Scenario: Violation exists in pull request
+- **WHEN** CI runs architecture tests for a branch containing a forbidden dependency edge
+- **THEN** the pipeline SHALL fail until the violating dependency is removed
 
-#### Scenario: Placeholder spec purpose text is present
-- **WHEN** a main spec uses placeholder intent text (for example `TBD`)
-- **THEN** governance checks SHALL fail until concrete purpose text is provided
+#### Scenario: Boundary policy has no bypass switches
+- **WHEN** CI configuration is evaluated for architecture checks
+- **THEN** the governance check SHALL run without exception allowlists or environment-based skip flags

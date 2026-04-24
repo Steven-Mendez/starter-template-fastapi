@@ -1,4 +1,10 @@
-## ADDED Requirements
+# domain-result Specification
+
+## Purpose
+
+Represent fallible domain operations explicitly so Kanban domain behavior exposes deterministic success and failure outcomes without relying on implicit sentinels.
+
+## Requirements
 
 ### Requirement: Kanban store exposes explicit Result outcomes
 
