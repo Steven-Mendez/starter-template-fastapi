@@ -7,7 +7,9 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
 from src.application.shared.unit_of_work import UnitOfWork
-from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
+from src.infrastructure.persistence.sqlmodel_repository import (
+    SessionSQLModelKanbanRepository,
+)
 
 
 class SqlModelUnitOfWork(UnitOfWork):
@@ -17,7 +19,7 @@ class SqlModelUnitOfWork(UnitOfWork):
 
     def __enter__(self) -> Self:
         self._session = Session(self._engine, expire_on_commit=False)
-        self.kanban = SQLModelKanbanRepository.from_session(self._session)
+        self.kanban = SessionSQLModelKanbanRepository(self._session)
         return self
 
     def __exit__(

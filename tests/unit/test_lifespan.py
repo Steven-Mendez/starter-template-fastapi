@@ -17,6 +17,6 @@ def test_lifespan_closes_repository() -> None:
         assert container is not None
         repo = container.repository
         assert isinstance(repo, SQLModelKanbanRepository)
-        assert not repo._closed
+        assert repo.is_ready()
 
-    assert repo._closed
+    assert not repo.is_ready()

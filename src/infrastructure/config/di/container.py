@@ -6,13 +6,10 @@ from dataclasses import dataclass
 from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPort
 from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.config.settings import AppSettings
-from src.domain.kanban.repository import KanbanRepositoryPort
 from src.infrastructure.config.di.composition import (
+    ManagedKanbanRepositoryPort,
     ShutdownHook,
-    create_readiness_probe_for_settings,
-    create_repository_for_settings,
-    create_shutdown_for_settings,
-    create_uow_factory_for_settings,
+    compose_runtime_dependencies,
 )
 
 CommandHandlersFactory = Callable[[], KanbanCommandInputPort]
@@ -21,24 +18,23 @@ CommandHandlersFactory = Callable[[], KanbanCommandInputPort]
 @dataclass(slots=True)
 class ConfiguredAppContainer:
     settings: AppSettings
-    repository: KanbanRepositoryPort
+    repository: ManagedKanbanRepositoryPort
     query_handlers: KanbanQueryInputPort
     command_handlers_factory: CommandHandlersFactory
     shutdown: ShutdownHook
 
 
 def build_container(settings: AppSettings) -> ConfiguredAppContainer:
-    repository = create_repository_for_settings(settings)
-    uow_factory = create_uow_factory_for_settings(settings, repository)
-    readiness_probe = create_readiness_probe_for_settings(settings, repository)
-    shutdown = create_shutdown_for_settings(settings, repository)
+    runtime = compose_runtime_dependencies(settings)
     return ConfiguredAppContainer(
         settings=settings,
-        repository=repository,
+        repository=runtime.repository,
         query_handlers=KanbanQueryHandlers(
-            repository=repository,
-            readiness=readiness_probe,
+            repository=runtime.repository,
+            readiness=runtime.readiness_probe,
         ),
-        command_handlers_factory=lambda: KanbanCommandHandlers(uow=uow_factory()),
-        shutdown=shutdown,
+        command_handlers_factory=lambda: KanbanCommandHandlers(
+            uow=runtime.uow_factory()
+        ),
+        shutdown=runtime.shutdown,
     )

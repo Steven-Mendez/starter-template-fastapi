@@ -35,75 +35,9 @@ def _ensure_utc(dt: datetime) -> datetime:
     return dt
 
 
-class SQLModelKanbanRepository(KanbanRepositoryPort):
-    def __init__(
-        self,
-        database_url: str | None = None,
-        *,
-        create_schema: bool = True,
-        session: Session | None = None,
-        autocommit: bool = True,
-    ) -> None:
-        if session is not None and database_url is not None:
-            raise ValueError("Pass either database_url or session, not both")
-        if session is None and database_url is None:
-            raise ValueError("Either database_url or session must be provided")
-
-        self._session = session
-        self._autocommit = autocommit
-        self._owns_engine = session is None
-        connect_args: dict[str, object] = {}
-        self._engine: Engine | None = None
-        if database_url is not None:
-            if database_url.startswith("sqlite"):
-                connect_args["check_same_thread"] = False
-            self._engine = create_engine(
-                database_url,
-                connect_args=connect_args,
-                pool_pre_ping=True,
-            )
-            if database_url.startswith("sqlite"):
-                from sqlalchemy import event
-
-                @event.listens_for(self._engine, "connect")
-                def set_sqlite_pragma(
-                    dbapi_connection: Any, connection_record: object
-                ) -> None:
-                    cursor = dbapi_connection.cursor()
-                    cursor.execute("PRAGMA foreign_keys=ON")
-                    cursor.close()
-
+class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
+    def __init__(self) -> None:
         self._closed = False
-        if create_schema and self._engine is not None:
-            SQLModel.metadata.create_all(self._engine)
-
-    @classmethod
-    def from_session(cls, session: Session) -> Self:
-        return cls(session=session, autocommit=False)
-
-    @property
-    def engine(self) -> Engine:
-        if self._engine is None:
-            raise RuntimeError("Repository is session-scoped and has no engine")
-        return self._engine
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        self.close()
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        if self._owns_engine and self._engine is not None:
-            self._engine.dispose()
-        self._closed = True
 
     def _ensure_open(self) -> None:
         if self._closed:
@@ -111,17 +45,10 @@ class SQLModelKanbanRepository(KanbanRepositoryPort):
 
     @contextmanager
     def _session_scope(self) -> Iterator[Session]:
-        if self._session is not None:
-            yield self._session
-            return
-        if self._engine is None:
-            raise RuntimeError("Repository engine is not configured")
-        with Session(self._engine, expire_on_commit=False) as session:
-            yield session
+        raise NotImplementedError
 
-    def _commit_if_needed(self, session: Session) -> None:
-        if self._session is None and self._autocommit:
-            session.commit()
+    def _commit(self, session: Session) -> None:
+        raise NotImplementedError
 
     def is_ready(self) -> bool:
         if self._closed:
@@ -142,7 +69,7 @@ class SQLModelKanbanRepository(KanbanRepositoryPort):
         )
         with self._session_scope() as session:
             session.add(board)
-            self._commit_if_needed(session)
+            self._commit(session)
         return BoardSummary(
             id=board.id,
             title=board.title,
@@ -209,7 +136,7 @@ class SQLModelKanbanRepository(KanbanRepositoryPort):
                 return Err(KanbanError.BOARD_NOT_FOUND)
             board.title = title
             session.add(board)
-            self._commit_if_needed(session)
+            self._commit(session)
             return Ok(
                 BoardSummary(
                     id=board.id,
@@ -225,7 +152,7 @@ class SQLModelKanbanRepository(KanbanRepositoryPort):
             if board is None:
                 return Err(KanbanError.BOARD_NOT_FOUND)
             session.delete(board)
-            self._commit_if_needed(session)
+            self._commit(session)
             return Ok(None)
 
     def find_board_id_by_card(self, card_id: str) -> str | None:
@@ -310,11 +237,10 @@ class SQLModelKanbanRepository(KanbanRepositoryPort):
                         db_card.due_at = card.due_at
                     session.add(db_card)
 
-            self._commit_if_needed(session)
+            self._commit(session)
             return Ok(None)
 
     def find_board_id_by_column(self, column_id: str) -> str | None:
-        """Return the board_id that owns the given column, or None."""
         self._ensure_open()
         with self._session_scope() as session:
             column = session.get(ColumnTable, column_id)
@@ -333,6 +259,79 @@ class SQLModelKanbanRepository(KanbanRepositoryPort):
             priority=CardPriority(card.priority),
             due_at=_ensure_utc(card.due_at) if card.due_at else None,
         )
+
+
+class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
+    def __init__(self, database_url: str, *, create_schema: bool = True) -> None:
+        super().__init__()
+        connect_args: dict[str, object] = {}
+        if database_url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
+        self._engine = create_engine(
+            database_url,
+            connect_args=connect_args,
+            pool_pre_ping=True,
+        )
+        if database_url.startswith("sqlite"):
+            from sqlalchemy import event
+
+            @event.listens_for(self._engine, "connect")
+            def set_sqlite_pragma(
+                dbapi_connection: Any, connection_record: object
+            ) -> None:
+                del connection_record
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
+        if create_schema:
+            SQLModel.metadata.create_all(self._engine)
+
+    @property
+    def engine(self) -> Engine:
+        return self._engine
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        del exc_type, exc, tb
+        self.close()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._engine.dispose()
+        self._closed = True
+
+    @contextmanager
+    def _session_scope(self) -> Iterator[Session]:
+        with Session(self._engine, expire_on_commit=False) as session:
+            yield session
+
+    def _commit(self, session: Session) -> None:
+        session.commit()
+
+
+class SessionSQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
+    def __init__(self, session: Session) -> None:
+        super().__init__()
+        self._session = session
+
+    def close(self) -> None:
+        self._closed = True
+
+    @contextmanager
+    def _session_scope(self) -> Iterator[Session]:
+        yield self._session
+
+    def _commit(self, session: Session) -> None:
+        del session
 
 
 class SQLiteKanbanRepository(SQLModelKanbanRepository):

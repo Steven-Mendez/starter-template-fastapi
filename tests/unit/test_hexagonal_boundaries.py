@@ -530,3 +530,25 @@ def test_routes_do_not_depend_on_container_provider_callable() -> None:
 def test_legacy_root_wrappers_are_removed() -> None:
     assert not (ROOT / "dependencies.py").exists()
     assert not (ROOT / "settings.py").exists()
+
+
+def test_di_composition_avoids_runtime_type_reflection() -> None:
+    composition_file = SRC_DIR / "infrastructure" / "config" / "di" / "composition.py"
+    tree = ast.parse(
+        composition_file.read_text(encoding="utf-8"), filename=str(composition_file)
+    )
+
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id in {
+            "isinstance",
+            "getattr",
+        }:
+            violations.append(f"{node.func.id}() at line {node.lineno}")
+
+    assert not violations, (
+        "DI composition should be driven by typed ports, not runtime reflection: "
+        + ", ".join(violations)
+    )

@@ -1,7 +1,9 @@
 from src.infrastructure.config.di.composition import (
+    ManagedKanbanRepositoryPort,
+    RuntimeDependencies,
     UnitOfWorkFactory,
+    compose_runtime_dependencies,
     create_repository_for_settings,
-    create_uow_factory_for_settings,
 )
 from src.infrastructure.config.di.container import (
     ConfiguredAppContainer,
@@ -11,7 +13,9 @@ from src.infrastructure.config.di.container import (
 __all__ = [
     "UnitOfWorkFactory",
     "ConfiguredAppContainer",
+    "ManagedKanbanRepositoryPort",
+    "RuntimeDependencies",
     "build_container",
+    "compose_runtime_dependencies",
     "create_repository_for_settings",
-    "create_uow_factory_for_settings",
 ]

@@ -4,11 +4,11 @@ from types import TracebackType
 from typing import Self
 
 from src.application.shared.unit_of_work import UnitOfWork
-from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
+from src.domain.kanban.repository.command import KanbanCommandRepositoryPort
 
 
 class InMemoryUnitOfWork(UnitOfWork):
-    def __init__(self, repository: InMemoryKanbanRepository) -> None:
+    def __init__(self, repository: KanbanCommandRepositoryPort) -> None:
         self.kanban = repository
 
     def __enter__(self) -> Self:
@@ -20,10 +20,10 @@ class InMemoryUnitOfWork(UnitOfWork):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        pass
+        return None
 
     def commit(self) -> None:
-        pass
+        return None
 
     def rollback(self) -> None:
-        pass
+        return None
