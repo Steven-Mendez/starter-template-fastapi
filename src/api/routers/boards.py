@@ -44,10 +44,11 @@ def create_board(
 def list_boards(
     queries: QueryHandlersDep,
 ) -> list[BoardSummary]:
-    return [
-        to_board_summary_response(board)
-        for board in queries.handle_list_boards(ListBoardsQuery())
-    ]
+    match queries.handle_list_boards(ListBoardsQuery()):
+        case AppOk(value):
+            return [to_board_summary_response(board) for board in value]
+        case AppErr(err):
+            raise_http_from_application_error(err)
 
 
 @boards_router.get("/boards/{board_id}", response_model=BoardDetail)

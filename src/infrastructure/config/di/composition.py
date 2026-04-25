@@ -43,7 +43,7 @@ class SqlManagedKanbanRepositoryPort(ManagedKanbanRepositoryPort, Protocol):
 
 @dataclass(frozen=True, slots=True)
 class RuntimeDependencies:
-    repository: ManagedKanbanRepositoryPort
+    repositories: RuntimeRepositories
     uow_factory: UnitOfWorkFactory
     readiness_probe: ReadinessProbe
     id_gen: IdGenerator
@@ -51,7 +51,12 @@ class RuntimeDependencies:
     shutdown: ShutdownHook
 
 
-def create_repository_for_settings(
+@dataclass(frozen=True, slots=True)
+class RuntimeRepositories:
+    kanban: ManagedKanbanRepositoryPort
+
+
+def create_kanban_repository_for_settings(
     settings: AppSettings,
 ) -> ManagedKanbanRepositoryPort:
     if settings.repository_backend == "sqlite":
@@ -61,11 +66,25 @@ def create_repository_for_settings(
     return InMemoryKanbanRepository()
 
 
+def create_runtime_repositories(settings: AppSettings) -> RuntimeRepositories:
+    return RuntimeRepositories(
+        kanban=create_kanban_repository_for_settings(settings),
+    )
+
+
+def create_repository_for_settings(
+    settings: AppSettings,
+) -> ManagedKanbanRepositoryPort:
+    """Backward-compatible helper for callers expecting a single repository."""
+    return create_kanban_repository_for_settings(settings)
+
+
 def _create_sql_runtime_dependencies(
-    repository: SqlManagedKanbanRepositoryPort,
+    repositories: RuntimeRepositories,
 ) -> RuntimeDependencies:
+    repository = cast(SqlManagedKanbanRepositoryPort, repositories.kanban)
     return RuntimeDependencies(
-        repository=repository,
+        repositories=repositories,
         uow_factory=lambda: SqlModelUnitOfWork(repository.engine),
         readiness_probe=repository,
         id_gen=UUIDIdGenerator(),
@@ -75,16 +94,15 @@ def _create_sql_runtime_dependencies(
 
 
 def compose_runtime_dependencies(settings: AppSettings) -> RuntimeDependencies:
-    repository = create_repository_for_settings(settings)
+    repositories = create_runtime_repositories(settings)
+    repository = repositories.kanban
     if settings.repository_backend == "inmemory":
         return RuntimeDependencies(
-            repository=repository,
+            repositories=repositories,
             uow_factory=lambda: InMemoryUnitOfWork(repository),
             readiness_probe=repository,
             id_gen=UUIDIdGenerator(),
             clock=SystemClock(),
             shutdown=repository.close,
         )
-    return _create_sql_runtime_dependencies(
-        cast(SqlManagedKanbanRepositoryPort, repository)
-    )
+    return _create_sql_runtime_dependencies(repositories)

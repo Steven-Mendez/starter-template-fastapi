@@ -13,7 +13,10 @@ from src.application.shared import ApplicationError, AppResult
 class KanbanQueryInputPort(Protocol):
     def handle_health_check(self, query: HealthCheckQuery) -> bool: ...
 
-    def handle_list_boards(self, query: ListBoardsQuery) -> list[AppBoardSummary]: ...
+    def handle_list_boards(
+        self,
+        query: ListBoardsQuery,
+    ) -> AppResult[list[AppBoardSummary], ApplicationError]: ...
 
     def handle_get_board(
         self,
