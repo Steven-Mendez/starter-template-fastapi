@@ -14,7 +14,7 @@ class PatchCardInput(TypedDict):
     position: int | None
     priority: AppCardPriority | None
     due_at: datetime | None
-    has_due_at: bool
+    clear_due_at: bool
 
 
 def to_create_card_input(
@@ -40,12 +40,12 @@ def to_patch_card_input(body: CardUpdate) -> PatchCardInput:
             AppCardPriority(wire_priority.value) if wire_priority is not None else None
         ),
         "due_at": cast(datetime | None, updates.get("due_at")),
-        "has_due_at": "due_at" in updates,
+        "clear_due_at": "due_at" in updates and updates.get("due_at") is None,
     }
 
 
 def has_patch_card_changes(input_data: PatchCardInput) -> bool:
-    if input_data["has_due_at"]:
+    if input_data["clear_due_at"]:
         return True
 
     return any(
@@ -56,6 +56,7 @@ def has_patch_card_changes(input_data: PatchCardInput) -> bool:
             input_data["column_id"],
             input_data["position"],
             input_data["priority"],
+            input_data["due_at"],
         )
     )
 

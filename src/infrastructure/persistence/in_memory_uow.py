@@ -3,8 +3,8 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Self
 
+from src.application.ports.kanban_command_repository import KanbanCommandRepositoryPort
 from src.application.shared.unit_of_work import UnitOfWork
-from src.domain.kanban.repository.command import KanbanCommandRepositoryPort
 
 
 class InMemoryUnitOfWork(UnitOfWork):

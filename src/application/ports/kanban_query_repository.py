@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from src.domain.kanban.models import Board, BoardSummary
+from src.application.contracts import AppBoardSummary
+from src.domain.kanban.models import Board
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result
 
 
 class KanbanQueryRepositoryPort(Protocol):
-    def list_boards(self) -> list[BoardSummary]: ...
+    def list_all(self) -> list[AppBoardSummary]: ...
 
-    def get_board(self, board_id: str) -> Result[Board, KanbanError]: ...
+    def find_by_id(self, board_id: str) -> Result[Board, KanbanError]: ...
 
     def find_board_id_by_card(self, card_id: str) -> str | None: ...

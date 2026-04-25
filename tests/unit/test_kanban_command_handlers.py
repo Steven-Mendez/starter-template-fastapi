@@ -15,6 +15,16 @@ pytestmark = pytest.mark.unit
 _UNKNOWN_COLUMN_ID = "00000000-0000-4000-8000-000000000099"
 
 
+def test_create_entities_use_fake_id_generator(handler_harness: HandlerHarness) -> None:
+    board = handler_harness.board("One")
+    column = handler_harness.column(board.id, "c")
+    card = handler_harness.card(column.id, "task")
+
+    assert board.id == "00000000-0000-4000-8000-000000000001"
+    assert column.id == "00000000-0000-4000-8000-000000000002"
+    assert card.id == "00000000-0000-4000-8000-000000000003"
+
+
 def test_card_cannot_move_to_column_on_another_board(
     handler_harness: HandlerHarness,
 ) -> None:
@@ -124,6 +134,38 @@ def test_due_at_preserved_when_moving_between_columns(
 
     assert isinstance(moved, AppOk)
     assert moved.value.due_at == due_at
+
+
+def test_patch_card_clear_due_at_when_clear_due_at_is_true(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Due clear")
+    column = handler_harness.column(board.id, "A")
+    due_at = datetime(2030, 1, 1, 0, 0, tzinfo=timezone.utc)
+    card = handler_harness.card(column.id, "task", due_at=due_at)
+
+    cleared = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, clear_due_at=True)
+    )
+
+    assert isinstance(cleared, AppOk)
+    assert cleared.value.due_at is None
+
+
+def test_patch_card_keeps_due_at_when_updating_other_fields(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Due keep")
+    column = handler_harness.column(board.id, "A")
+    due_at = datetime(2032, 2, 2, 12, 0, tzinfo=timezone.utc)
+    card = handler_harness.card(column.id, "task", due_at=due_at)
+
+    patched = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, title="renamed")
+    )
+
+    assert isinstance(patched, AppOk)
+    assert patched.value.due_at == due_at
 
 
 def test_delete_middle_column_reindexes_remaining_columns(

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Literal, Protocol, cast
+from datetime import datetime, timezone
+from typing import Any, Literal, Protocol, TypeVar, cast
 
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -24,7 +24,6 @@ from src.application.queries import KanbanQueryHandlers
 from src.application.shared import AppErr, AppOk, AppResult
 from src.domain.kanban.models import (
     Board,
-    BoardSummary,
     Card,
     Column,
 )
@@ -33,22 +32,31 @@ from src.domain.kanban.models import (
 )
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result, expect_ok
+from tests.support.fakes import FakeClock, FakeIdGenerator
 
 type JsonDict = dict[str, Any]
 type PriorityLiteral = Literal["low", "medium", "high"]
 
 
 class KanbanBuilderRepository(Protocol):
-    def create_board(self, title: str) -> BoardSummary: ...
+    def save(self, board: Board) -> None: ...
 
-    def get_board(self, board_id: str) -> Result[Board, KanbanError]: ...
+    def list_all(self) -> list[AppBoardSummary]: ...
 
-    def save_board(self, board: Board) -> Result[None, KanbanError]: ...
+    def find_by_id(self, board_id: str) -> Result[Board, KanbanError]: ...
+
+    def remove(self, board_id: str) -> Result[None, KanbanError]: ...
 
     def find_board_id_by_column(self, column_id: str) -> str | None: ...
 
+    def find_board_id_by_card(self, card_id: str) -> str | None: ...
 
-def _expect_app_ok(result: AppResult[Any, Any]) -> Any:
+
+_T = TypeVar("_T")
+_E = TypeVar("_E")
+
+
+def _expect_app_ok(result: AppResult[_T, _E]) -> _T:
     match result:
         case AppOk(value=v):
             return v
@@ -60,11 +68,22 @@ def _expect_app_ok(result: AppResult[Any, Any]) -> Any:
 class StoreBuilder:
     repository: KanbanBuilderRepository
 
-    def board(self, title: str = "Board") -> BoardSummary:
-        return self.repository.create_board(title)
+    def board(self, title: str = "Board") -> AppBoardSummary:
+        board = Board(
+            id=str(uuid.uuid4()),
+            title=title,
+            created_at=datetime.now(timezone.utc),
+            columns=[],
+        )
+        self.repository.save(board)
+        return AppBoardSummary(
+            id=board.id,
+            title=board.title,
+            created_at=board.created_at,
+        )
 
     def _load_board(self, board_id: str) -> Board:
-        return expect_ok(self.repository.get_board(board_id))
+        return expect_ok(self.repository.find_by_id(board_id))
 
     def column(self, board_id: str, title: str = "Todo") -> Column:
         board = self._load_board(board_id)
@@ -79,7 +98,7 @@ class StoreBuilder:
             cards=[],
         )
         board.columns.append(column)
-        expect_ok(self.repository.save_board(board))
+        self.repository.save(board)
         return column
 
     def card(
@@ -113,7 +132,7 @@ class StoreBuilder:
             due_at=due_at,
         )
         column.insert_card(card)
-        expect_ok(self.repository.save_board(board))
+        self.repository.save(board)
         return card
 
 
@@ -123,7 +142,26 @@ class HandlerHarness:
     queries: KanbanQueryHandlers
 
     def board(self, title: str = "Board") -> AppBoardSummary:
-        return self.commands.handle_create_board(CreateBoardCommand(title=title))
+        return _expect_app_ok(
+            self.commands.handle_create_board(CreateBoardCommand(title=title))
+        )
+
+    @classmethod
+    def build_default(cls) -> HandlerHarness:
+        from src.infrastructure.persistence.in_memory_repository import (
+            InMemoryKanbanRepository,
+        )
+        from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
+
+        repository = InMemoryKanbanRepository()
+        return cls(
+            commands=KanbanCommandHandlers(
+                uow=InMemoryUnitOfWork(repository),
+                id_gen=FakeIdGenerator(),
+                clock=FakeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+            ),
+            queries=KanbanQueryHandlers(repository=repository, readiness=repository),
+        )
 
     def column(self, board_id: str, title: str = "Todo") -> AppColumn:
         return _expect_app_ok(

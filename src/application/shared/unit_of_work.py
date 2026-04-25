@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Protocol, Self
 
-from src.domain.kanban.repository.command import KanbanCommandRepositoryPort
+from src.application.ports.kanban_command_repository import KanbanCommandRepositoryPort
 
 
 class UnitOfWork(Protocol):

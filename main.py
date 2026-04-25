@@ -12,8 +12,8 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from problem_details import register_problem_details
 from src.api.dependencies import set_app_container
+from src.api.error_handlers import register_problem_details
 from src.api.routers import api_router
 from src.config.settings import AppSettings, get_settings
 from src.infrastructure.config.di.container import build_container

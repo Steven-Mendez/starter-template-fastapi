@@ -15,4 +15,4 @@ class PatchCardCommand:
     position: int | None = None
     priority: AppCardPriority | None = None
     due_at: datetime | None = None
-    due_at_provided: bool = False
+    clear_due_at: bool = False

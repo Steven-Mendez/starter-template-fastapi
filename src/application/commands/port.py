@@ -14,7 +14,9 @@ from src.application.shared import ApplicationError, AppResult
 
 
 class KanbanCommandInputPort(Protocol):
-    def handle_create_board(self, command: CreateBoardCommand) -> AppBoardSummary: ...
+    def handle_create_board(
+        self, command: CreateBoardCommand
+    ) -> AppResult[AppBoardSummary, ApplicationError]: ...
 
     def handle_patch_board(
         self, command: PatchBoardCommand

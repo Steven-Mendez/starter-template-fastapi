@@ -6,7 +6,7 @@ from typing import Generator
 
 import pytest
 
-from src.domain.kanban.repository import KanbanRepositoryPort
+from src.application.ports import KanbanRepositoryPort
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 

@@ -13,11 +13,13 @@ from fastapi.routing import APIRoute
 from src.api import dependencies as api_dependencies
 from src.api.routers import kanban_router, root_router
 from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPort
+from src.application.ports import (
+    KanbanCommandRepositoryPort,
+    KanbanQueryRepositoryPort,
+    KanbanRepositoryPort,
+)
 from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.application.shared.readiness import ReadinessProbe
-from src.domain.kanban.repository import KanbanRepositoryPort
-from src.domain.kanban.repository.command import KanbanCommandRepositoryPort
-from src.domain.kanban.repository.query import KanbanQueryRepositoryPort
 from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.lifecycle import ClosableResource
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
@@ -28,7 +30,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
 RUNTIME_MODULE_FILES = (
     "main.py",
-    "problem_details.py",
 )
 
 
@@ -121,13 +122,14 @@ def get_layer(module_name: str) -> str:
         return "api"
     if module_name.startswith("src.infrastructure"):
         return "infrastructure"
-    if module_name in {"main", "problem_details"}:
+    if module_name == "main":
         return "runtime"
     return "other"
 
 
 DENY_MATRIX = {
     "domain": [
+        "src.domain.kanban.repository",
         "src.application",
         "src.api",
         "src.infrastructure",
@@ -140,6 +142,7 @@ DENY_MATRIX = {
         "src.config",
     ],
     "application": [
+        "src.domain.kanban.repository",
         "src.api",
         "src.infrastructure",
         "fastapi",
@@ -151,12 +154,14 @@ DENY_MATRIX = {
         "src.config",
     ],
     "api": [
+        "src.domain.kanban.repository",
         "src.domain",
         "src.infrastructure",
         "dependencies",
         "settings",
     ],
     "infrastructure": [
+        "src.domain.kanban.repository",
         "src.api",
         "dependencies",
     ],
@@ -166,11 +171,39 @@ TRANSITIVE_DENY_MATRIX = {
     "domain": DENY_MATRIX["domain"],
     "application": DENY_MATRIX["application"],
     "api": [
+        "src.domain.kanban.repository",
         "src.infrastructure",
         "dependencies",
         "settings",
     ],
     "infrastructure": DENY_MATRIX["infrastructure"],
+}
+
+EXTERNAL_LIBRARY_DENY = {
+    "domain": [
+        "fastapi",
+        "starlette",
+        "sqlmodel",
+        "sqlalchemy",
+        "uvicorn",
+        "httpx",
+        "alembic",
+        "pydantic_settings",
+        "psycopg",
+    ],
+    "application": [
+        "fastapi",
+        "starlette",
+        "sqlmodel",
+        "sqlalchemy",
+        "uvicorn",
+        "httpx",
+        "alembic",
+        "pydantic_settings",
+        "psycopg",
+    ],
+    "api": ["sqlmodel", "sqlalchemy", "alembic", "uvicorn", "psycopg"],
+    "infrastructure": [],
 }
 
 
@@ -275,6 +308,71 @@ def test_hexagonal_architecture_boundaries() -> None:
     if diagnostics:
         error_msgs = "\n".join(f" - {d}" for d in diagnostics)
         pytest.fail(f"Architecture boundary violations detected:\n{error_msgs}")
+
+
+def test_forbidden_external_library_imports() -> None:
+    modules = get_module_imports()
+    violations: list[str] = []
+
+    for module_name, imports in modules.items():
+        layer = get_layer(module_name)
+        if layer not in EXTERNAL_LIBRARY_DENY:
+            continue
+
+        for imp in imports:
+            for forbidden in EXTERNAL_LIBRARY_DENY[layer]:
+                if imp == forbidden or imp.startswith(f"{forbidden}."):
+                    violations.append(
+                        f"{module_name} imports {imp} "
+                        f"(Violation: {layer} layer cannot import {forbidden})"
+                    )
+
+    if violations:
+        pytest.fail(
+            "External library forbidden import violations:\n"
+            + "\n".join(f" - {violation}" for violation in sorted(violations))
+        )
+
+
+def test_domain_does_not_contain_port_modules() -> None:
+    port_dir = SRC_DIR / "domain" / "kanban" / "repository"
+    assert not port_dir.exists(), (
+        "Repository ports must not live in the domain layer. "
+        "Expected location: src/application/ports/"
+    )
+
+
+def test_domain_does_not_define_board_summary_read_model() -> None:
+    board_summary_model = SRC_DIR / "domain" / "kanban" / "models" / "board_summary.py"
+    assert not board_summary_model.exists(), (
+        "BoardSummary read model must not live in domain. "
+        "Expected location: src/application/contracts/"
+    )
+
+
+def test_domain_kanban_services_package_removed() -> None:
+    services_dir = SRC_DIR / "domain" / "kanban" / "services"
+    assert not services_dir.exists()
+
+
+def test_tests_do_not_import_legacy_domain_repository_module() -> None:
+    violations: list[str] = []
+    tests_dir = ROOT / "tests"
+
+    for test_file in sorted(tests_dir.rglob("*.py")):
+        tree = ast.parse(test_file.read_text(encoding="utf-8"), filename=str(test_file))
+        has_legacy_import = any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == "src.domain.kanban.repository"
+            for node in ast.walk(tree)
+        )
+        if has_legacy_import:
+            violations.append(str(test_file.relative_to(ROOT)))
+
+    assert not violations, (
+        "Tests must import repository ports from src.application.ports: "
+        + ", ".join(violations)
+    )
 
 
 def test_api_routes_use_cqrs_handlers() -> None:

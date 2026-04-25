@@ -9,9 +9,9 @@ from src.application.contracts import (
 )
 from src.application.contracts.mappers import (
     to_app_board,
-    to_app_board_summary,
     to_app_card,
 )
+from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
 from src.application.queries.get_board import GetBoardQuery
 from src.application.queries.get_card import GetCardQuery
 from src.application.queries.health_check import HealthCheckQuery
@@ -25,7 +25,6 @@ from src.application.shared import (
     ReadinessProbe,
 )
 from src.application.shared.errors import from_domain_error
-from src.domain.kanban.repository import KanbanQueryRepositoryPort
 from src.domain.shared.result import Err
 
 
@@ -40,13 +39,13 @@ class KanbanQueryHandlers(KanbanQueryInputPort):
 
     def handle_list_boards(self, query: ListBoardsQuery) -> list[AppBoardSummary]:
         del query
-        return [to_app_board_summary(board) for board in self.repository.list_boards()]
+        return self.repository.list_all()
 
     def handle_get_board(
         self,
         query: GetBoardQuery,
     ) -> AppResult[AppBoard, ApplicationError]:
-        board_result = self.repository.get_board(query.board_id)
+        board_result = self.repository.find_by_id(query.board_id)
         if isinstance(board_result, Err):
             return AppErr(from_domain_error(board_result.error))
         return AppOk(to_app_board(board_result.value))
@@ -59,7 +58,7 @@ class KanbanQueryHandlers(KanbanQueryInputPort):
         if board_id is None:
             return AppErr(ApplicationError.CARD_NOT_FOUND)
 
-        board_result = self.repository.get_board(board_id)
+        board_result = self.repository.find_by_id(board_id)
         if isinstance(board_result, Err):
             return AppErr(from_domain_error(board_result.error))
 

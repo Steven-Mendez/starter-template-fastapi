@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
 
-from src.api.schemas.kanban import BoardCreate, CardCreate, CardPrioritySchema
+from src.api.schemas.kanban import (
+    BoardCreate,
+    CardCreate,
+    CardPrioritySchema,
+    CardUpdate,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -36,3 +42,16 @@ def test_card_create_due_at_optional_iso8601() -> None:
     )
     assert c.due_at == datetime(2030, 1, 15, 12, 0, tzinfo=timezone.utc)
     assert CardCreate.model_validate({"title": "x"}).due_at is None
+
+
+def test_card_update_column_id_must_be_valid_uuid() -> None:
+    with pytest.raises(ValidationError):
+        CardUpdate.model_validate({"column_id": "not-a-uuid"})
+
+
+def test_card_update_valid_uuid_column_id() -> None:
+    card_update = CardUpdate.model_validate(
+        {"column_id": "00000000-0000-4000-8000-000000000001"}
+    )
+
+    assert card_update.column_id == UUID("00000000-0000-4000-8000-000000000001")

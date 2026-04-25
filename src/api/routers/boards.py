@@ -31,11 +31,13 @@ def create_board(
     body: BoardCreate,
     commands: CommandHandlersDep,
 ) -> BoardSummary:
-    return to_board_summary_response(
-        commands.handle_create_board(
-            CreateBoardCommand(title=to_create_board_input(body))
-        )
-    )
+    match commands.handle_create_board(
+        CreateBoardCommand(title=to_create_board_input(body))
+    ):
+        case AppOk(value):
+            return to_board_summary_response(value)
+        case AppErr(err):
+            raise_http_from_application_error(err)
 
 
 @boards_router.get("/boards", response_model=list[BoardSummary])

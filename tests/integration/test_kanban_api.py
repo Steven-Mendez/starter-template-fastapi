@@ -90,6 +90,44 @@ def test_post_card_due_at_and_patch_clear(
     assert datetime.fromisoformat(set_again.json()["due_at"]) == _WHEN
 
 
+def test_patch_card_without_due_at_field_preserves_existing_due_at(
+    api_client: TestClient,
+    api_kanban: ApiBuilder,
+) -> None:
+    board_id = api_kanban.board_id("Due keep")
+    col_id = api_kanban.column_id(board_id, "Todo")
+    with_due = api_kanban.card(col_id, "due", due_at=_ISO_DUE)
+    card_id = require_str(with_due, "id")
+
+    patched = api_client.patch(
+        f"/api/cards/{card_id}",
+        json={"title": "renamed"},
+    )
+    assert patched.status_code == 200
+    assert datetime.fromisoformat(require_str(patched.json(), "due_at")) == _WHEN
+
+
+def test_patch_card_with_invalid_column_id_returns_422(
+    api_client: TestClient,
+    api_kanban: ApiBuilder,
+) -> None:
+    board_id = api_kanban.board_id("invalid column uuid")
+    col_id = api_kanban.column_id(board_id, "Todo")
+    card_id = api_kanban.card_id(col_id, "x")
+
+    response = api_client.patch(
+        f"/api/cards/{card_id}",
+        json={"column_id": "definitely-not-a-uuid"},
+    )
+
+    assert response.status_code == 422
+    assert response.headers.get("content-type", "").startswith(
+        "application/problem+json"
+    )
+    errors = response.json().get("errors", [])
+    assert any("column_id" in str(error) for error in errors)
+
+
 def test_patch_due_at_only_is_valid(
     api_client: TestClient,
     api_kanban: ApiBuilder,

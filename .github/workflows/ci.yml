@@ -25,6 +25,9 @@ jobs:
       - name: Lint
         run: make lint
 
+      - name: Architecture lint
+        run: make lint-arch
+
       - name: Typecheck
         run: make typecheck
 

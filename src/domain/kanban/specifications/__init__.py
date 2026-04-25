@@ -5,6 +5,7 @@ from src.domain.kanban.specifications.card_move import (
     CardMoveCandidate,
     SameBoardMoveSpecification,
     TargetColumnExistsSpecification,
+    ValidCardMoveSpecification,
 )
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "SameBoardMoveSpecification",
     "Specification",
     "TargetColumnExistsSpecification",
+    "ValidCardMoveSpecification",
 ]

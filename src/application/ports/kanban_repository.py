@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from src.domain.kanban.repository.command import KanbanCommandRepositoryPort
-from src.domain.kanban.repository.query import KanbanQueryRepositoryPort
+from src.application.ports.kanban_command_repository import KanbanCommandRepositoryPort
+from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
 
 
 class KanbanRepositoryPort(

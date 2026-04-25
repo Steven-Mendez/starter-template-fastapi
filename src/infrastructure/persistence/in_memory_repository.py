@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
-from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
-from src.domain.kanban.repository import KanbanRepositoryPort
+from src.application.contracts import AppBoardSummary
+from src.application.ports.kanban_repository import KanbanRepositoryPort
+from src.domain.kanban.models import Board, Card, CardPriority, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 
@@ -48,20 +48,13 @@ class InMemoryKanbanRepository(KanbanRepositoryPort):
     def is_ready(self) -> bool:
         return True
 
-    def create_board(self, title: str) -> BoardSummary:
-        bid = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
-        row = _Board(id=bid, title=title, created_at=now)
-        self._boards[bid] = row
-        return BoardSummary(id=row.id, title=row.title, created_at=row.created_at)
-
-    def list_boards(self) -> list[BoardSummary]:
+    def list_all(self) -> list[AppBoardSummary]:
         return [
-            BoardSummary(id=b.id, title=b.title, created_at=b.created_at)
+            AppBoardSummary(id=b.id, title=b.title, created_at=b.created_at)
             for b in self._boards.values()
         ]
 
-    def get_board(self, board_id: str) -> Result[Board, KanbanError]:
+    def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
         board = self._boards.get(board_id)
         if not board:
             return Err(KanbanError.BOARD_NOT_FOUND)
@@ -99,18 +92,7 @@ class InMemoryKanbanRepository(KanbanRepositoryPort):
             )
         )
 
-    def update_board(
-        self, board_id: str, title: str
-    ) -> Result[BoardSummary, KanbanError]:
-        board = self._boards.get(board_id)
-        if not board:
-            return Err(KanbanError.BOARD_NOT_FOUND)
-        board.title = title
-        return Ok(
-            BoardSummary(id=board.id, title=board.title, created_at=board.created_at)
-        )
-
-    def delete_board(self, board_id: str) -> Result[None, KanbanError]:
+    def remove(self, board_id: str) -> Result[None, KanbanError]:
         if board_id not in self._boards:
             return Err(KanbanError.BOARD_NOT_FOUND)
         column_ids = [c.id for c in self._columns.values() if c.board_id == board_id]
@@ -142,10 +124,12 @@ class InMemoryKanbanRepository(KanbanRepositoryPort):
             return None
         return column.board_id
 
-    def save_board(self, board: Board) -> Result[None, KanbanError]:
-        if board.id not in self._boards:
-            return Err(KanbanError.BOARD_NOT_FOUND)
-        self._boards[board.id].title = board.title
+    def save(self, board: Board) -> None:
+        self._boards[board.id] = _Board(
+            id=board.id,
+            title=board.title,
+            created_at=board.created_at,
+        )
 
         existing_column_ids = {
             column.id
@@ -196,7 +180,7 @@ class InMemoryKanbanRepository(KanbanRepositoryPort):
         for card_id in existing_card_ids - current_card_ids:
             self._cards.pop(card_id, None)
 
-        return Ok(None)
+        return None
 
     def _cards_for_column_sorted(self, column_id: str) -> list[_Card]:
         cards = [c for c in self._cards.values() if c.column_id == column_id]

@@ -79,7 +79,7 @@ def patch_card(
             position=input_data["position"],
             priority=input_data["priority"],
             due_at=input_data["due_at"],
-            due_at_provided=input_data["has_due_at"],
+            clear_due_at=input_data["clear_due_at"],
         )
     ):
         case AppOk(value):

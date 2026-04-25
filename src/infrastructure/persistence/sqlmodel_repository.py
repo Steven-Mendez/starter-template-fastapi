@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -12,10 +10,20 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
-from src.domain.kanban.repository import KanbanRepositoryPort
+from src.application.contracts import AppBoardSummary
+from src.application.ports.kanban_repository import KanbanRepositoryPort
+from src.domain.kanban.models import Board, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
+from src.infrastructure.persistence.sqlmodel.mappers import (
+    board_domain_to_table,
+    board_table_to_domain,
+    board_table_to_summary,
+    card_domain_to_table,
+    card_table_to_domain,
+    column_domain_to_table,
+    column_table_to_domain,
+)
 from src.infrastructure.persistence.sqlmodel.models import (
     BoardTable,
     CardTable,
@@ -27,12 +35,6 @@ def sqlite_url_from_path(db_path: str) -> str:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     return f"sqlite:///{path.resolve()}"
-
-
-def _ensure_utc(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt
 
 
 class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
@@ -60,36 +62,13 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
         except SQLAlchemyError:
             return False
 
-    def create_board(self, title: str) -> BoardSummary:
-        self._ensure_open()
-        board = BoardTable(
-            id=str(uuid.uuid4()),
-            title=title,
-            created_at=datetime.now(timezone.utc),
-        )
-        with self._session_scope() as session:
-            session.add(board)
-            self._commit(session)
-        return BoardSummary(
-            id=board.id,
-            title=board.title,
-            created_at=_ensure_utc(board.created_at),
-        )
-
-    def list_boards(self) -> list[BoardSummary]:
+    def list_all(self) -> list[AppBoardSummary]:
         self._ensure_open()
         with self._session_scope() as session:
             boards = session.exec(select(BoardTable).order_by("created_at")).all()
-        return [
-            BoardSummary(
-                id=board.id,
-                title=board.title,
-                created_at=_ensure_utc(board.created_at),
-            )
-            for board in boards
-        ]
+        return [board_table_to_summary(board) for board in boards]
 
-    def get_board(self, board_id: str) -> Result[Board, KanbanError]:
+    def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
         self._ensure_open()
         with self._session_scope() as session:
             board = session.get(BoardTable, board_id)
@@ -109,43 +88,14 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
                     .order_by("position")
                 ).all()
                 out_columns.append(
-                    Column(
-                        id=column.id,
-                        board_id=column.board_id,
-                        title=column.title,
-                        position=column.position,
-                        cards=[self._to_card_read(card) for card in cards],
+                    column_table_to_domain(
+                        row=column,
+                        cards=[card_table_to_domain(card) for card in cards],
                     )
                 )
-            return Ok(
-                Board(
-                    id=board.id,
-                    title=board.title,
-                    created_at=_ensure_utc(board.created_at),
-                    columns=out_columns,
-                )
-            )
+            return Ok(board_table_to_domain(row=board, columns=out_columns))
 
-    def update_board(
-        self, board_id: str, title: str
-    ) -> Result[BoardSummary, KanbanError]:
-        self._ensure_open()
-        with self._session_scope() as session:
-            board = session.get(BoardTable, board_id)
-            if board is None:
-                return Err(KanbanError.BOARD_NOT_FOUND)
-            board.title = title
-            session.add(board)
-            self._commit(session)
-            return Ok(
-                BoardSummary(
-                    id=board.id,
-                    title=board.title,
-                    created_at=_ensure_utc(board.created_at),
-                )
-            )
-
-    def delete_board(self, board_id: str) -> Result[None, KanbanError]:
+    def remove(self, board_id: str) -> Result[None, KanbanError]:
         self._ensure_open()
         with self._session_scope() as session:
             board = session.get(BoardTable, board_id)
@@ -166,14 +116,16 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
                 return None
             return column.board_id
 
-    def save_board(self, board: Board) -> Result[None, KanbanError]:
+    def save(self, board: Board) -> None:
         self._ensure_open()
         with self._session_scope() as session:
             db_board = session.get(BoardTable, board.id)
+            mapped_board = board_domain_to_table(board)
             if db_board is None:
-                return Err(KanbanError.BOARD_NOT_FOUND)
-
-            db_board.title = board.title
+                db_board = mapped_board
+            else:
+                db_board.title = mapped_board.title
+                db_board.created_at = mapped_board.created_at
             session.add(db_board)
 
             existing_columns = session.exec(
@@ -188,16 +140,13 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
 
             for column in board.columns:
                 db_column = session.get(ColumnTable, column.id)
+                mapped_column = column_domain_to_table(column, board_id=board.id)
                 if db_column is None:
-                    db_column = ColumnTable(
-                        id=column.id,
-                        board_id=board.id,
-                        title=column.title,
-                        position=column.position,
-                    )
+                    db_column = mapped_column
                 else:
-                    db_column.title = column.title
-                    db_column.position = column.position
+                    db_column.board_id = mapped_column.board_id
+                    db_column.title = mapped_column.title
+                    db_column.position = mapped_column.position
                 session.add(db_column)
 
             existing_board_cards = session.exec(
@@ -218,27 +167,19 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
             for column in board.columns:
                 for card in column.cards:
                     db_card = session.get(CardTable, card.id)
+                    mapped_card = card_domain_to_table(card, column_id=column.id)
                     if db_card is None:
-                        db_card = CardTable(
-                            id=card.id,
-                            column_id=column.id,
-                            title=card.title,
-                            description=card.description,
-                            position=card.position,
-                            priority=card.priority.value,
-                            due_at=card.due_at,
-                        )
+                        db_card = mapped_card
                     else:
-                        db_card.column_id = column.id
-                        db_card.title = card.title
-                        db_card.description = card.description
-                        db_card.position = card.position
-                        db_card.priority = card.priority.value
-                        db_card.due_at = card.due_at
+                        db_card.column_id = mapped_card.column_id
+                        db_card.title = mapped_card.title
+                        db_card.description = mapped_card.description
+                        db_card.position = mapped_card.position
+                        db_card.priority = mapped_card.priority
+                        db_card.due_at = mapped_card.due_at
                     session.add(db_card)
 
             self._commit(session)
-            return Ok(None)
 
     def find_board_id_by_column(self, column_id: str) -> str | None:
         self._ensure_open()
@@ -247,19 +188,6 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
             if column is None:
                 return None
             return column.board_id
-
-    @staticmethod
-    def _to_card_read(card: CardTable) -> Card:
-        return Card(
-            id=card.id,
-            column_id=card.column_id,
-            title=card.title,
-            description=card.description,
-            position=card.position,
-            priority=CardPriority(card.priority),
-            due_at=_ensure_utc(card.due_at) if card.due_at else None,
-        )
-
 
 class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
     def __init__(self, database_url: str, *, create_schema: bool = True) -> None:

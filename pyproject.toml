@@ -17,6 +17,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx>=0.28.0",
+    "import-linter>=2.1",
     "mypy>=1.18.2",
     "pre-commit>=4.3.0",
     "pytest>=9.0.3",
@@ -49,3 +50,80 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
+
+[tool.importlinter]
+root_packages = ["src"]
+include_external_packages = true
+
+# hex-design-guide.md §3, §16, §29 Rule 1
+[[tool.importlinter.contracts]]
+name = "Domain layer: no outward or framework dependencies"
+type = "forbidden"
+source_modules = ["src.domain"]
+forbidden_modules = [
+    "src.application",
+    "src.api",
+    "src.infrastructure",
+    "src.config",
+    "fastapi",
+    "starlette",
+    "sqlmodel",
+    "sqlalchemy",
+    "uvicorn",
+    "httpx",
+    "alembic",
+    "pydantic_settings",
+    "psycopg",
+]
+
+# hex-design-guide.md §4, §16, §29 Rule 2
+# pydantic intentionally NOT forbidden - see hex-design-guide.md §35
+[[tool.importlinter.contracts]]
+name = "Application layer: no infrastructure or framework dependencies"
+type = "forbidden"
+source_modules = ["src.application"]
+forbidden_modules = [
+    "src.api",
+    "src.infrastructure",
+    "src.config",
+    "fastapi",
+    "starlette",
+    "sqlmodel",
+    "sqlalchemy",
+    "uvicorn",
+    "httpx",
+    "alembic",
+    "pydantic_settings",
+    "psycopg",
+]
+
+# hex-design-guide.md §7, §8, §16
+[[tool.importlinter.contracts]]
+name = "API adapter: no infrastructure bypass or direct domain access"
+type = "forbidden"
+source_modules = ["src.api"]
+# API depends on application, and application legitimately depends on domain.
+# This contract forbids direct adapter-to-domain/infrastructure coupling only.
+allow_indirect_imports = true
+forbidden_modules = [
+    "src.infrastructure",
+    "src.domain",
+    "sqlmodel",
+    "sqlalchemy",
+    "alembic",
+    "uvicorn",
+    "psycopg",
+]
+
+# hex-design-guide.md §6, §16
+[[tool.importlinter.contracts]]
+name = "Infrastructure: no inbound adapter imports"
+type = "forbidden"
+source_modules = ["src.infrastructure"]
+forbidden_modules = ["src.api"]
+
+# hex-design-guide.md §1 "Dependencies point inward"
+[[tool.importlinter.contracts]]
+name = "Core inward dependency direction"
+type = "layers"
+layers = ["src.api", "src.application", "src.domain"]

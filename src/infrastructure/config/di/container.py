@@ -34,7 +34,9 @@ def build_container(settings: AppSettings) -> ConfiguredAppContainer:
             readiness=runtime.readiness_probe,
         ),
         command_handlers_factory=lambda: KanbanCommandHandlers(
-            uow=runtime.uow_factory()
+            uow=runtime.uow_factory(),
+            id_gen=runtime.id_gen,
+            clock=runtime.clock,
         ),
         shutdown=runtime.shutdown,
     )

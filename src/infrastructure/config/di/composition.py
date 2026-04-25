@@ -6,10 +6,14 @@ from typing import Protocol, TypeAlias, cast
 
 from sqlalchemy.engine import Engine
 
+from src.application.ports.clock import Clock
+from src.application.ports.id_generator import IdGenerator
+from src.application.ports.kanban_repository import KanbanRepositoryPort
 from src.application.shared.readiness import ReadinessProbe
 from src.application.shared.unit_of_work import UnitOfWork
 from src.config.settings import AppSettings
-from src.domain.kanban.repository import KanbanRepositoryPort
+from src.infrastructure.adapters.system_clock import SystemClock
+from src.infrastructure.adapters.uuid_id_generator import UUIDIdGenerator
 from src.infrastructure.persistence import (
     InMemoryKanbanRepository,
     SQLiteKanbanRepository,
@@ -42,6 +46,8 @@ class RuntimeDependencies:
     repository: ManagedKanbanRepositoryPort
     uow_factory: UnitOfWorkFactory
     readiness_probe: ReadinessProbe
+    id_gen: IdGenerator
+    clock: Clock
     shutdown: ShutdownHook
 
 
@@ -62,6 +68,8 @@ def _create_sql_runtime_dependencies(
         repository=repository,
         uow_factory=lambda: SqlModelUnitOfWork(repository.engine),
         readiness_probe=repository,
+        id_gen=UUIDIdGenerator(),
+        clock=SystemClock(),
         shutdown=repository.close,
     )
 
@@ -73,6 +81,8 @@ def compose_runtime_dependencies(settings: AppSettings) -> RuntimeDependencies:
             repository=repository,
             uow_factory=lambda: InMemoryUnitOfWork(repository),
             readiness_probe=repository,
+            id_gen=UUIDIdGenerator(),
+            clock=SystemClock(),
             shutdown=repository.close,
         )
     return _create_sql_runtime_dependencies(

@@ -18,6 +18,12 @@ repos:
         entry: uv run ruff format --force-exclude
         language: system
         types_or: [python, pyi]
+      - id: architecture-lint
+        name: architecture lint (import-linter)
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+        types: [python]
       - id: mypy
         name: mypy
         entry: uv run mypy

@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from src.domain.kanban.models.column import Column
+from src.domain.kanban.specifications.card_move import (
+    CardMoveCandidate,
+    ValidCardMoveSpecification,
+)
 from src.domain.shared.errors import KanbanError
 
 
@@ -36,7 +40,18 @@ class Board:
         source_col = self.get_column(source_column_id)
         target_col = self.get_column(target_column_id)
 
-        if not source_col or not target_col:
+        if source_col is None:
+            return KanbanError.INVALID_CARD_MOVE
+
+        if target_col is None:
+            return KanbanError.INVALID_CARD_MOVE
+
+        candidate = CardMoveCandidate(
+            target_column_exists=True,
+            current_board_id=self.id,
+            target_board_id=target_col.board_id,
+        )
+        if not ValidCardMoveSpecification().is_satisfied_by(candidate):
             return KanbanError.INVALID_CARD_MOVE
 
         if source_column_id == target_column_id:

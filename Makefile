@@ -2,7 +2,7 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev format lint lint-fix typecheck check precommit-install precommit-run precommit-update test test-cov test-unit test-integration test-e2e test-fast
+.PHONY: help sync dev format lint lint-arch lint-fix typecheck check precommit-install precommit-run precommit-update test test-cov test-unit test-integration test-e2e test-fast
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -19,13 +19,16 @@ format: ## Format code with Ruff formatter
 lint: ## Run Ruff lint checks
 	uv run ruff check .
 
+lint-arch: ## Check Hexagonal Architecture import contracts (Import Linter)
+	uv run lint-imports
+
 lint-fix: ## Run Ruff lint checks and auto-fix
 	uv run ruff check --fix .
 
 typecheck: ## Run static type checks (mypy)
 	uv run mypy
 
-check: lint typecheck ## Run lint + type checks
+check: lint lint-arch typecheck ## Run lint + architecture lint + type checks
 
 precommit-install: ## Install git pre-commit hooks
 	uv run pre-commit install
