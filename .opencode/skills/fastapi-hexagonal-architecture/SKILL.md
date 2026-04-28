@@ -105,7 +105,7 @@ Endpoint -> use case -> domain entity -> repository port -> SQLAlchemy repositor
 For a medium-sized FastAPI service, prefer:
 
 ```text
-app/
+./src/
   main.py
   api/
     __init__.py
@@ -174,7 +174,7 @@ app/
       http_product_catalog.py
     messaging/
       kafka_event_publisher.py
-tests/
+./tests/
   unit/
     domain/
     application/
@@ -187,7 +187,7 @@ tests/
 For a smaller service, use fewer folders:
 
 ```text
-app/
+./src/
   main.py
   api/
   application/
@@ -202,7 +202,7 @@ Do not create excessive layers for simple CRUD. Use architecture to control comp
 For larger systems, prefer bounded contexts or vertical slices:
 
 ```text
-app/
+./src/
   modules/
     orders/
       domain/
@@ -267,7 +267,7 @@ The domain layer may contain:
 Example:
 
 ```python
-# app/domain/order/entity.py
+# src/domain/order/entity.py
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
@@ -357,14 +357,14 @@ It must not directly depend on:
 Example:
 
 ```python
-# app/application/use_cases/place_order.py
+# src/application/use_cases/place_order.py
 from dataclasses import dataclass
 from uuid import UUID
 
-from app.application.ports.order_repository import OrderRepository
-from app.application.ports.product_catalog import ProductCatalog
-from app.application.ports.unit_of_work import UnitOfWork
-from app.domain.order.entity import Order, OrderItem
+from src.application.ports.order_repository import OrderRepository
+from src.application.ports.product_catalog import ProductCatalog
+from src.application.ports.unit_of_work import UnitOfWork
+from src.domain.order.entity import Order, OrderItem
 
 
 @dataclass(frozen=True)
@@ -442,11 +442,11 @@ The application should say what it needs. Infrastructure decides how to provide 
 Example repository port:
 
 ```python
-# app/application/ports/order_repository.py
+# src/application/ports/order_repository.py
 from typing import Protocol
 from uuid import UUID
 
-from app.domain.order.entity import Order
+from src.domain.order.entity import Order
 
 
 class OrderRepository(Protocol):
@@ -460,7 +460,7 @@ class OrderRepository(Protocol):
 Example payment port:
 
 ```python
-# app/application/ports/payment_gateway.py
+# src/application/ports/payment_gateway.py
 from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
@@ -479,7 +479,7 @@ class PaymentGateway(Protocol):
 Example email port:
 
 ```python
-# app/application/ports/email_sender.py
+# src/application/ports/email_sender.py
 from typing import Protocol
 
 
@@ -509,19 +509,19 @@ Examples:
 Example SQLAlchemy adapter:
 
 ```python
-# app/infrastructure/repositories/sqlalchemy_order_repository.py
+# src/infrastructure/repositories/sqlalchemy_order_repository.py
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.ports.order_repository import OrderRepository
-from app.domain.order.entity import Order
-from app.infrastructure.database.mappers import (
+from src.application.ports.order_repository import OrderRepository
+from src.domain.order.entity import Order
+from src.infrastructure.database.mappers import (
     order_domain_to_model,
     order_model_to_domain,
 )
-from app.infrastructure.database.models import OrderModel
+from src.infrastructure.database.models import OrderModel
 
 
 class SQLAlchemyOrderRepository(OrderRepository):
@@ -568,12 +568,12 @@ Routes should not:
 Example:
 
 ```python
-# app/api/v1/routes/orders.py
+# src/api/v1/routes/orders.py
 from fastapi import APIRouter, Depends, status
 
-from app.api.v1.dependencies import get_place_order_use_case
-from app.api.v1.schemas.orders import PlaceOrderRequest, PlaceOrderResponse
-from app.application.use_cases.place_order import (
+from src.api.v1.dependencies import get_place_order_use_case
+from src.api.v1.schemas.orders import PlaceOrderRequest, PlaceOrderResponse
+from src.application.use_cases.place_order import (
     PlaceOrderCommand,
     PlaceOrderItemCommand,
     PlaceOrderUseCase,
@@ -662,7 +662,7 @@ A Unit of Work coordinates a transaction. The use case should not need to know a
 Port:
 
 ```python
-# app/application/ports/unit_of_work.py
+# src/application/ports/unit_of_work.py
 from typing import Protocol
 
 
@@ -677,7 +677,7 @@ class UnitOfWork(Protocol):
 Adapter:
 
 ```python
-# app/infrastructure/database/sqlalchemy_unit_of_work.py
+# src/infrastructure/database/sqlalchemy_unit_of_work.py
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -736,17 +736,17 @@ class PlaceOrderUseCase:
 Composition example:
 
 ```python
-# app/api/v1/dependencies.py
+# src/api/v1/dependencies.py
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.use_cases.place_order import PlaceOrderUseCase
-from app.infrastructure.database.session import async_session_factory
-from app.infrastructure.database.sqlalchemy_unit_of_work import SQLAlchemyUnitOfWork
-from app.infrastructure.external.http_product_catalog import HTTPProductCatalog
-from app.infrastructure.repositories.sqlalchemy_order_repository import (
+from src.application.use_cases.place_order import PlaceOrderUseCase
+from src.infrastructure.database.session import async_session_factory
+from src.infrastructure.database.sqlalchemy_unit_of_work import SQLAlchemyUnitOfWork
+from src.infrastructure.external.http_product_catalog import HTTPProductCatalog
+from src.infrastructure.repositories.sqlalchemy_order_repository import (
     SQLAlchemyOrderRepository,
 )
 
@@ -778,7 +778,7 @@ Domain and application layers should raise meaningful exceptions. FastAPI maps t
 Domain exceptions:
 
 ```python
-# app/domain/exceptions.py
+# src/domain/exceptions.py
 class DomainError(Exception):
     pass
 
@@ -794,7 +794,7 @@ class EmptyOrderCannotBeConfirmed(BusinessRuleViolation):
 Application exceptions:
 
 ```python
-# app/application/exceptions.py
+# src/application/exceptions.py
 class UseCaseError(Exception):
     pass
 
@@ -888,7 +888,7 @@ In larger systems, domain events can keep use cases cleaner.
 Example event:
 
 ```python
-# app/domain/order/events.py
+# src/domain/order/events.py
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -908,7 +908,7 @@ Configuration belongs in infrastructure or app setup, not in domain.
 Example:
 
 ```python
-# app/infrastructure/config.py
+# src/infrastructure/config.py
 from pydantic_settings import BaseSettings
 
 
@@ -991,11 +991,11 @@ API tests:
 Keep `main.py` boring.
 
 ```python
-# app/main.py
+# src/main.py
 from fastapi import FastAPI
 
-from app.api.error_handlers import register_error_handlers
-from app.api.v1.router import api_router
+from src.api.error_handlers import register_error_handlers
+from src.api.v1.router import api_router
 
 
 def create_app() -> FastAPI:
@@ -1020,7 +1020,7 @@ Not every FastAPI app needs heavy hexagonal architecture.
 A simple CRUD app may be fine with:
 
 ```text
-app/
+./src/
   main.py
   routers/
   schemas/
@@ -1105,7 +1105,7 @@ UserRepository
 Anti-pattern 4: Domain importing infrastructure.
 
 ```python
-from app.infrastructure.database.models import OrderModel
+from src.infrastructure.database.models import OrderModel
 ```
 
 Anti-pattern 5: Use case returning FastAPI response.
@@ -1160,11 +1160,11 @@ When reviewing a FastAPI codebase, check:
 Suggest commands like these when reviewing the project:
 
 ```bash
-grep -R "fastapi" app/domain
-grep -R "sqlalchemy" app/domain
-grep -R "Depends" app/application
-grep -R "HTTPException" app/application app/domain
-grep -R "sqlalchemy" app/application
+grep -R "fastapi" src/domain
+grep -R "sqlalchemy" src/domain
+grep -R "Depends" src/application
+grep -R "HTTPException" src/application src/domain
+grep -R "sqlalchemy" src/application
 ```
 
 Expected result: no matches, unless there is a deliberate and documented exception.
