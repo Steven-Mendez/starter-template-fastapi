@@ -78,5 +78,5 @@
 - [x] 7.4 Verify CI configuration (`.github/workflows/`) executes the architecture suite and `lint-imports` on every PR
 - [x] 7.5 Run `openspec validate hex-conformance-finalization` and resolve any reported issues
 - [x] 7.6 Run the full quality gate (`pytest`, `lint-imports`, `mypy`, `ruff check .`, `pre-commit run --all-files`); confirm 100% pass
-- [ ] 7.7 Open a PR titled `chore(arch): finalize hex conformance via use-case decomposition + automated suite` summarizing the breaking changes and pointing to the design doc
+- [x] 7.7 Open a PR titled `chore(arch): finalize hex conformance via use-case decomposition + automated suite` summarizing the breaking changes and pointing to the design doc
 - [ ] 7.8 After merge, archive the change with `openspec archive hex-conformance-finalization` so the four spec files (two new, two modified) are merged into the `openspec/specs/` source of truth
