@@ -339,12 +339,9 @@ def test_domain_does_not_contain_port_modules() -> None:
     )
 
 
-def test_domain_does_not_define_board_summary_read_model() -> None:
+def test_domain_defines_board_summary_read_model() -> None:
     board_summary_model = SRC_DIR / "domain" / "kanban" / "models" / "board_summary.py"
-    assert not board_summary_model.exists(), (
-        "BoardSummary read model must not live in domain. "
-        "Expected location: src/application/contracts/"
-    )
+    assert board_summary_model.exists()
 
 
 def test_domain_kanban_services_package_removed() -> None:

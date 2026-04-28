@@ -28,7 +28,7 @@ def handle_create_board(
         created_at=clock.now(),
     )
     with uow:
-        uow.kanban.save(board)
+        uow.commands.save(board)
         uow.commit()
         return AppOk(
             AppBoardSummary(

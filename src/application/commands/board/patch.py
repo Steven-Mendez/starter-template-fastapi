@@ -27,13 +27,13 @@ def handle_patch_board(
         return AppErr(ApplicationError.PATCH_NO_CHANGES)
 
     with uow:
-        result = uow.kanban.find_by_id(command.board_id)
+        result = uow.commands.find_by_id(command.board_id)
         if isinstance(result, Err):
             return AppErr(from_domain_error(result.error))
         board = result.value
         if command.title is not None:
             board.rename(command.title)
-        uow.kanban.save(board)
+        uow.commands.save(board)
         uow.commit()
         return AppOk(
             AppBoardSummary(

@@ -29,11 +29,11 @@ def handle_create_card(
     command: CreateCardCommand,
 ) -> AppResult[AppCard, ApplicationError]:
     with uow:
-        board_id = uow.kanban.find_board_id_by_column(command.column_id)
+        board_id = uow.lookup.find_board_id_by_column(command.column_id)
         if not board_id:
             return AppErr(ApplicationError.COLUMN_NOT_FOUND)
 
-        board_result = uow.kanban.find_by_id(board_id)
+        board_result = uow.commands.find_by_id(board_id)
         if isinstance(board_result, Err):
             return AppErr(from_domain_error(board_result.error))
         board = board_result.value
@@ -53,6 +53,6 @@ def handle_create_card(
         )
         col.insert_card(card)
 
-        uow.kanban.save(board)
+        uow.commands.save(board)
         uow.commit()
         return AppOk(to_app_card(card))

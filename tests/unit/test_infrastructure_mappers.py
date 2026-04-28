@@ -7,7 +7,7 @@ import pytest
 from src.domain.kanban.models import Board, Card, CardPriority, Column
 from src.infrastructure.persistence.sqlmodel.mappers import (
     board_domain_to_table,
-    board_table_to_summary,
+    board_table_to_read_model,
     card_domain_to_table,
     card_table_to_domain,
     column_domain_to_table,
@@ -75,11 +75,11 @@ def test_card_domain_to_table_maps_priority_as_string() -> None:
     assert row.priority == "high"
 
 
-def test_board_table_to_summary_maps_fields() -> None:
+def test_board_table_to_read_model_maps_fields() -> None:
     created_at = datetime(2026, 4, 1, 10, 30)
     row = BoardTable(id="board-1", title="Planning", created_at=created_at)
 
-    summary = board_table_to_summary(row)
+    summary = board_table_to_read_model(row)
 
     assert summary.id == "board-1"
     assert summary.title == "Planning"

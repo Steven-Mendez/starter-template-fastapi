@@ -12,8 +12,10 @@ from src.application.ports.kanban_repository import KanbanRepositoryPort
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.application.shared.readiness import ReadinessProbe
 from src.config.settings import AppSettings
-from src.infrastructure.adapters.system_clock import SystemClock
-from src.infrastructure.adapters.uuid_id_generator import UUIDIdGenerator
+from src.infrastructure.adapters.outbound.clock.system_clock import SystemClock
+from src.infrastructure.adapters.outbound.id_generator.uuid_id_generator import (
+    UUIDIdGenerator,
+)
 from src.infrastructure.persistence import SQLModelKanbanRepository
 from src.infrastructure.persistence.lifecycle import ClosableResource
 from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork

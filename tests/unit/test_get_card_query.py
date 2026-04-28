@@ -4,10 +4,9 @@ from dataclasses import dataclass
 
 import pytest
 
-from src.application.contracts import AppBoardSummary
 from src.application.queries.get_card import GetCardQuery, handle_get_card
 from src.application.shared import AppErr, ApplicationError, AppOk
-from src.domain.kanban.models import Board, Card, CardPriority
+from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 
@@ -20,7 +19,7 @@ class SpyQueryRepository:
     find_card_by_id_calls: int = 0
     find_by_id_calls: int = 0
 
-    def list_all(self) -> list[AppBoardSummary]:
+    def list_all(self) -> list[BoardSummary]:
         return []
 
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
@@ -32,10 +31,6 @@ class SpyQueryRepository:
         del card_id
         self.find_card_by_id_calls += 1
         return self.card_result
-
-    def find_board_id_by_card(self, card_id: str) -> str | None:
-        del card_id
-        return None
 
 
 def test_handle_get_card_uses_direct_lookup_without_board_read() -> None:

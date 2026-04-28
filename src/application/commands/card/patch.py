@@ -47,11 +47,11 @@ def handle_patch_card(
         return AppErr(ApplicationError.PATCH_NO_CHANGES)
 
     with uow:
-        board_id = uow.kanban.find_board_id_by_card(command.card_id)
+        board_id = uow.lookup.find_board_id_by_card(command.card_id)
         if not board_id:
             return AppErr(ApplicationError.CARD_NOT_FOUND)
 
-        board_result = uow.kanban.find_by_id(board_id)
+        board_result = uow.commands.find_by_id(board_id)
         if isinstance(board_result, Err):
             return AppErr(from_domain_error(board_result.error))
         board = board_result.value
@@ -89,6 +89,6 @@ def handle_patch_card(
         if not updated_card:
             return AppErr(ApplicationError.CARD_NOT_FOUND)
 
-        uow.kanban.save(board)
+        uow.commands.save(board)
         uow.commit()
         return AppOk(to_app_card(updated_card))

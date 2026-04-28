@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from src.application.contracts.kanban import (
     AppBoard,
+    AppBoardSummary,
     AppCard,
     AppCardPriority,
     AppColumn,
 )
-from src.domain.kanban.models import Board, Card, CardPriority, Column
+from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
 
 _PRIORITY_TO_APP = {
     CardPriority.LOW: AppCardPriority.LOW,
@@ -57,4 +58,12 @@ def to_app_board(board: Board) -> AppBoard:
         title=board.title,
         created_at=board.created_at,
         columns=[to_app_column(column) for column in board.columns],
+    )
+
+
+def to_app_board_summary(summary: BoardSummary) -> AppBoardSummary:
+    return AppBoardSummary(
+        id=summary.id,
+        title=summary.title,
+        created_at=summary.created_at,
     )

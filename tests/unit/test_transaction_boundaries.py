@@ -30,9 +30,9 @@ def test_uow_save_requires_explicit_commit(postgresql_dsn: str) -> None:
         repository.save(board)
 
         with SqlModelUnitOfWork(repository.engine) as uow:
-            loaded = expect_ok(uow.kanban.find_by_id(board.id))
+            loaded = expect_ok(uow.commands.find_by_id(board.id))
             loaded.title = "Changed"
-            uow.kanban.save(loaded)
+            uow.commands.save(loaded)
 
         refreshed = expect_ok(repository.find_by_id(board.id))
         assert refreshed.title == "Original"
@@ -47,7 +47,7 @@ def test_uow_remove_requires_explicit_commit(postgresql_dsn: str) -> None:
         repository.save(board)
 
         with SqlModelUnitOfWork(repository.engine) as uow:
-            removed = uow.kanban.remove(board.id)
+            removed = uow.commands.remove(board.id)
             assert not isinstance(removed, Err)
 
         still_there = expect_ok(repository.find_by_id(board.id))
@@ -62,7 +62,7 @@ def test_uow_commit_persists_writes(postgresql_dsn: str) -> None:
         board = _new_board("Committed")
 
         with SqlModelUnitOfWork(repository.engine) as uow:
-            uow.kanban.save(board)
+            uow.commands.save(board)
             uow.commit()
 
         persisted = expect_ok(repository.find_by_id(board.id))
@@ -78,7 +78,7 @@ def test_uow_rolls_back_on_exception(postgresql_dsn: str) -> None:
 
         with pytest.raises(RuntimeError, match="boom"):
             with SqlModelUnitOfWork(repository.engine) as uow:
-                uow.kanban.save(board)
+                uow.commands.save(board)
                 raise RuntimeError("boom")
 
         result = repository.find_by_id(board.id)

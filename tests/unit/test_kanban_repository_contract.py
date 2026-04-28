@@ -7,9 +7,8 @@ from typing import Protocol
 
 import pytest
 
-from src.application.contracts import AppBoardSummary
 from src.application.shared.readiness import ReadinessProbe
-from src.domain.kanban.models import Board, Card, CardPriority, Column
+from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.persistence.lifecycle import ClosableResource
@@ -24,7 +23,7 @@ pytestmark = pytest.mark.unit
 class RepositoryContract(Protocol):
     def save(self, board: Board) -> None: ...
 
-    def list_all(self) -> list[AppBoardSummary]: ...
+    def list_all(self) -> list[BoardSummary]: ...
 
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]: ...
 

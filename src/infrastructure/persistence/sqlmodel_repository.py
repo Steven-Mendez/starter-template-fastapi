@@ -9,15 +9,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from src.application.contracts import AppBoardSummary
 from src.application.ports.kanban_repository import KanbanRepositoryPort
-from src.domain.kanban.models import Board, Card, Column
+from src.domain.kanban.models import Board, BoardSummary, Card, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.persistence.sqlmodel.mappers import (
     board_domain_to_table,
     board_table_to_domain,
-    board_table_to_summary,
+    board_table_to_read_model,
     card_domain_to_table,
     card_table_to_domain,
     column_domain_to_table,
@@ -60,11 +59,11 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
         except SQLAlchemyError:
             return False
 
-    def list_all(self) -> list[AppBoardSummary]:
+    def list_all(self) -> list[BoardSummary]:
         self._ensure_open()
         with self._session_scope() as session:
             boards = session.exec(select(BoardTable).order_by("created_at")).all()
-        return [board_table_to_summary(board) for board in boards]
+        return [board_table_to_read_model(board) for board in boards]
 
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
         self._ensure_open()

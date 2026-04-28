@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPort
 from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.config.settings import AppSettings
-from src.infrastructure.adapters.kanban_query_repository_view import (
+from src.infrastructure.adapters.outbound.query.kanban_query_repository_view import (
     KanbanQueryRepositoryView,
 )
 from src.infrastructure.config.di.composition import (

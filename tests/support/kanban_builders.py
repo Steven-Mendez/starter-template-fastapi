@@ -24,6 +24,7 @@ from src.application.queries import KanbanQueryHandlers
 from src.application.shared import AppErr, AppOk, AppResult
 from src.domain.kanban.models import (
     Board,
+    BoardSummary,
     Card,
     Column,
 )
@@ -32,7 +33,7 @@ from src.domain.kanban.models import (
 )
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result, expect_ok
-from src.infrastructure.adapters.kanban_query_repository_view import (
+from src.infrastructure.adapters.outbound.query.kanban_query_repository_view import (
     KanbanQueryRepositoryView,
 )
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
@@ -46,7 +47,7 @@ type PriorityLiteral = Literal["low", "medium", "high"]
 class KanbanBuilderRepository(Protocol):
     def save(self, board: Board) -> None: ...
 
-    def list_all(self) -> list[AppBoardSummary]: ...
+    def list_all(self) -> list[BoardSummary]: ...
 
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]: ...
 

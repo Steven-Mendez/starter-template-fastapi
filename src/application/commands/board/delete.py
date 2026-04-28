@@ -19,7 +19,7 @@ def handle_delete_board(
     command: DeleteBoardCommand,
 ) -> AppResult[None, ApplicationError]:
     with uow:
-        result = uow.kanban.remove(command.board_id)
+        result = uow.commands.remove(command.board_id)
         if isinstance(result, Err):
             return AppErr(from_domain_error(result.error))
         uow.commit()

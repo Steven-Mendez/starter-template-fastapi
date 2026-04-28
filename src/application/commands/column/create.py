@@ -25,7 +25,7 @@ def handle_create_column(
     command: CreateColumnCommand,
 ) -> AppResult[AppColumn, ApplicationError]:
     with uow:
-        board_result = uow.kanban.find_by_id(command.board_id)
+        board_result = uow.commands.find_by_id(command.board_id)
         if isinstance(board_result, Err):
             return AppErr(from_domain_error(board_result.error))
         board = board_result.value
@@ -38,6 +38,6 @@ def handle_create_column(
         )
         board.add_column(column)
 
-        uow.kanban.save(board)
+        uow.commands.save(board)
         uow.commit()
         return AppOk(to_app_column(column))

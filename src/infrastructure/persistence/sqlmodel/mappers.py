@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from src.application.contracts import AppBoardSummary
-from src.domain.kanban.models import Board, Card, CardPriority, Column
+from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
 from src.infrastructure.persistence.sqlmodel.models import (
     BoardTable,
     CardTable,
@@ -49,8 +48,8 @@ def board_table_to_domain(row: BoardTable, columns: list[Column]) -> Board:
     )
 
 
-def board_table_to_summary(row: BoardTable) -> AppBoardSummary:
-    return AppBoardSummary(
+def board_table_to_read_model(row: BoardTable) -> BoardSummary:
+    return BoardSummary(
         id=row.id,
         title=row.title,
         created_at=_ensure_utc(row.created_at),

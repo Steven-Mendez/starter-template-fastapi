@@ -4,10 +4,12 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from src.application.ports.kanban_command_repository import KanbanCommandRepositoryPort
+from src.application.ports.kanban_lookup_repository import KanbanLookupRepositoryPort
 
 
 class UnitOfWorkPort(Protocol):
-    kanban: KanbanCommandRepositoryPort
+    commands: KanbanCommandRepositoryPort
+    lookup: KanbanLookupRepositoryPort
 
     def __enter__(self) -> Self: ...
 
