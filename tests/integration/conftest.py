@@ -9,10 +9,10 @@ from contextlib import contextmanager
 
 import pytest
 from alembic.config import Config
-from docker.errors import DockerException
+from docker.errors import DockerException  # type: ignore[import-untyped]
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
-from testcontainers.postgres import PostgresContainer
+from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
 from alembic import command
 from main import app

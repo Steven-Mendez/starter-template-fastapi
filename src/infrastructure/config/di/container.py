@@ -7,6 +7,7 @@ from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPo
 from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.config.settings import AppSettings
 from src.infrastructure.config.di.composition import (
+    ManagedKanbanRepositoryPort,
     RuntimeRepositories,
     ShutdownHook,
     compose_runtime_dependencies,
@@ -24,7 +25,7 @@ class ConfiguredAppContainer:
     shutdown: ShutdownHook
 
     @property
-    def repository(self):
+    def repository(self) -> ManagedKanbanRepositoryPort:
         """Backward-compatible alias to the kanban repository."""
         return self.repositories.kanban
 

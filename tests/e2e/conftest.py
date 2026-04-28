@@ -13,8 +13,8 @@ from pathlib import Path
 import httpx
 import pytest
 from alembic.config import Config
-from docker.errors import DockerException
-from testcontainers.postgres import PostgresContainer
+from docker.errors import DockerException  # type: ignore[import-untyped]
+from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
 from alembic import command
 

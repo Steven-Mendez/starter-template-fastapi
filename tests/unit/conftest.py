@@ -6,14 +6,14 @@ from collections.abc import Generator
 
 import pytest
 from sqlalchemy import create_engine, text
-from testcontainers.postgres import PostgresContainer
+from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
 from src.infrastructure.persistence.sqlmodel.models import get_sqlmodel_metadata
 from tests.support.kanban_builders import HandlerHarness
 
 
 @pytest.fixture(scope="session")
-def postgresql_dsn() -> str:
+def postgresql_dsn() -> Generator[str, None, None]:
     with PostgresContainer("postgres:16-alpine") as postgres:
         raw_dsn = postgres.get_connection_url()
         if raw_dsn.startswith("postgresql+psycopg2://"):
