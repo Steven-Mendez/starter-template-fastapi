@@ -26,6 +26,12 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-commit, pre-push]
+      - id: architecture-tests
+        name: architecture tests
+        entry: make test-architecture
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
       - id: mypy
         name: mypy
         entry: make typecheck

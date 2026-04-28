@@ -16,9 +16,11 @@ from src.infrastructure.adapters.outbound.clock.system_clock import SystemClock
 from src.infrastructure.adapters.outbound.id_generator.uuid_id_generator import (
     UUIDIdGenerator,
 )
-from src.infrastructure.persistence import SQLModelKanbanRepository
-from src.infrastructure.persistence.lifecycle import ClosableResource
-from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork
+from src.infrastructure.adapters.outbound.persistence import SQLModelKanbanRepository
+from src.infrastructure.adapters.outbound.persistence.lifecycle import ClosableResource
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.unit_of_work import (
+    SqlModelUnitOfWork,
+)
 
 UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWorkPort]
 ShutdownHook: TypeAlias = Callable[[], None]

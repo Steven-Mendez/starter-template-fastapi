@@ -4,7 +4,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, status
 
-from src.api.dependencies import CommandHandlersDep, QueryHandlersDep, WriteApiKeyDep
+from src.api.dependencies import (
+    CreateCardUseCaseDep,
+    GetCardUseCaseDep,
+    PatchCardUseCaseDep,
+    WriteApiKeyDep,
+)
 from src.api.mappers.kanban import (
     to_card_response,
     to_create_card_input,
@@ -27,11 +32,11 @@ cards_router = APIRouter(tags=["cards"])
 def create_card(
     column_id: UUID,
     body: CardCreate,
-    commands: CommandHandlersDep,
+    use_case: CreateCardUseCaseDep,
     _: WriteApiKeyDep,
 ) -> CardRead:
     title, description, priority, due_at = to_create_card_input(body)
-    match commands.handle_create_card(
+    match use_case.execute(
         CreateCardCommand(
             column_id=str(column_id),
             title=title,
@@ -49,9 +54,9 @@ def create_card(
 @cards_router.get("/cards/{card_id}", response_model=CardRead)
 def get_card(
     card_id: UUID,
-    queries: QueryHandlersDep,
+    use_case: GetCardUseCaseDep,
 ) -> CardRead:
-    match queries.handle_get_card(GetCardQuery(card_id=str(card_id))):
+    match use_case.execute(GetCardQuery(card_id=str(card_id))):
         case AppOk(value):
             return to_card_response(value)
         case AppErr(err):
@@ -62,11 +67,11 @@ def get_card(
 def patch_card(
     card_id: UUID,
     body: CardUpdate,
-    commands: CommandHandlersDep,
+    use_case: PatchCardUseCaseDep,
     _: WriteApiKeyDep,
 ) -> CardRead:
     input_data = to_patch_card_input(body)
-    match commands.handle_patch_card(
+    match use_case.execute(
         PatchCardCommand(
             card_id=str(card_id),
             title=input_data["title"],

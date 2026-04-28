@@ -8,7 +8,7 @@ from _pytest.logging import LogCaptureFixture
 from fastapi.testclient import TestClient
 
 from main import create_app
-from src.api.dependencies import get_kanban_query_handlers
+from src.api.dependencies.use_cases import get_check_readiness_use_case
 from src.config.settings import AppSettings
 
 pytestmark = pytest.mark.integration
@@ -33,13 +33,13 @@ def test_health_backend_label_comes_from_app_settings(
         )
     )
 
-    class _DegradedHealthQueries:
-        def handle_health_check(self, query: object) -> bool:
+    class _DegradedReadinessUseCase:
+        def execute(self, query: object) -> bool:
             del query
             return False
 
-    app.dependency_overrides[get_kanban_query_handlers] = lambda: (
-        _DegradedHealthQueries()
+    app.dependency_overrides[get_check_readiness_use_case] = lambda: (
+        _DegradedReadinessUseCase()
     )
     with TestClient(app) as client:
         response = client.get("/health")

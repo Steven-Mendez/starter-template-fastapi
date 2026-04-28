@@ -5,11 +5,14 @@ from typing import Annotated, Protocol, TypeAlias, cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 
-from src.application.commands import KanbanCommandInputPort
-from src.application.queries import KanbanQueryInputPort
+from src.application.ports.clock_port import ClockPort
+from src.application.ports.id_generator_port import IdGeneratorPort
+from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
+from src.application.shared.readiness import ReadinessProbe
 from src.config.settings import AppSettings
 
-CommandHandlersFactory: TypeAlias = Callable[[], KanbanCommandInputPort]
+UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWorkPort]
 
 
 class DependencyContainerNotReadyError(RuntimeError):
@@ -21,10 +24,19 @@ class AppContainer(Protocol):
     def settings(self) -> AppSettings: ...
 
     @property
-    def query_handlers(self) -> KanbanQueryInputPort: ...
+    def query_repository(self) -> KanbanQueryRepositoryPort: ...
 
     @property
-    def command_handlers_factory(self) -> CommandHandlersFactory: ...
+    def uow_factory(self) -> UnitOfWorkFactory: ...
+
+    @property
+    def id_gen(self) -> IdGeneratorPort: ...
+
+    @property
+    def clock(self) -> ClockPort: ...
+
+    @property
+    def readiness_probe(self) -> ReadinessProbe: ...
 
 
 def set_app_container(app: FastAPI, container: AppContainer) -> None:
@@ -58,22 +70,5 @@ def require_write_api_key(
         )
 
 
-def get_kanban_command_handlers(request: Request) -> KanbanCommandInputPort:
-    container = get_app_container(request)
-    return container.command_handlers_factory()
-
-
-def get_kanban_query_handlers(request: Request) -> KanbanQueryInputPort:
-    return get_app_container(request).query_handlers
-
-
 AppSettingsDep: TypeAlias = Annotated[AppSettings, Depends(get_app_settings)]
-CommandHandlersDep: TypeAlias = Annotated[
-    KanbanCommandInputPort,
-    Depends(get_kanban_command_handlers),
-]
-QueryHandlersDep: TypeAlias = Annotated[
-    KanbanQueryInputPort,
-    Depends(get_kanban_query_handlers),
-]
 WriteApiKeyDep: TypeAlias = Annotated[None, Depends(require_write_api_key)]

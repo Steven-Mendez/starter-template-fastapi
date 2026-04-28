@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
-from src.infrastructure.persistence.sqlmodel.models import (
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.models import (
     BoardTable,
     CardTable,
     ColumnTable,

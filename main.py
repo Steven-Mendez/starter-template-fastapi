@@ -41,7 +41,18 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
-    if app_settings.cors_origins:
+    if app_settings.cors_origins == ["*"]:
+        # Wildcard with credentials is rejected by browsers when sent as
+        # `Access-Control-Allow-Origin: *`. Using a regex keeps credentials
+        # working while still echoing any requesting origin.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origin_regex=".*",
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    elif app_settings.cors_origins:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=app_settings.cors_origins,

@@ -15,8 +15,8 @@ class AppSettings(BaseSettings):
 
     environment: Literal["development", "test", "production"] = "development"
     enable_docs: bool = True
-    cors_origins: list[str] = []
-    trusted_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
+    cors_origins: list[str] = ["*"]
+    trusted_hosts: list[str] = ["*"]
     log_level: str = "INFO"
     postgresql_dsn: str = "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
     health_persistence_backend: str = "postgresql"

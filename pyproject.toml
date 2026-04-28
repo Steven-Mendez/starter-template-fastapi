@@ -31,6 +31,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--strict-markers"
 markers = [
+    "architecture: static architecture conformance checks",
     "unit: default for new tests—cheap signal",
     "integration: cross-module wiring against PostgreSQL testcontainers",
     "e2e: expensive; reserve for deployment-shaped checks",
@@ -75,7 +76,14 @@ forbidden_modules = [
     "alembic",
     "pydantic_settings",
     "psycopg",
+    "pydantic",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Persistence adapters: no application contracts coupling"
+type = "forbidden"
+source_modules = ["src.infrastructure.adapters.outbound.persistence"]
+forbidden_modules = ["src.application.contracts"]
 
 # hex-design-guide.md §4, §16, §29 Rule 2
 # pydantic intentionally NOT forbidden - see hex-design-guide.md §35

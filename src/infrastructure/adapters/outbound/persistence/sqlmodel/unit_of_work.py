@@ -9,7 +9,7 @@ from sqlmodel import Session
 from src.application.ports.kanban_command_repository import KanbanCommandRepositoryPort
 from src.application.ports.kanban_lookup_repository import KanbanLookupRepositoryPort
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
-from src.infrastructure.persistence.sqlmodel_repository import (
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
     SessionSQLModelKanbanRepository,
 )
 

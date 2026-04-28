@@ -12,16 +12,33 @@ from src.application.commands import (
     CreateBoardCommand,
     CreateCardCommand,
     CreateColumnCommand,
-    KanbanCommandHandlers,
 )
+from src.application.commands.card.patch import PatchCardCommand
+from src.application.commands.column.delete import DeleteColumnCommand
 from src.application.contracts import (
     AppBoardSummary,
     AppCard,
     AppCardPriority,
     AppColumn,
 )
-from src.application.queries import KanbanQueryHandlers
+from src.application.queries.get_board import GetBoardQuery
+from src.application.queries.get_card import GetCardQuery
+from src.application.queries.health_check import HealthCheckQuery
 from src.application.shared import AppErr, AppOk, AppResult
+from src.application.use_cases.board import (
+    CreateBoardUseCase,
+    DeleteBoardUseCase,
+    GetBoardUseCase,
+    ListBoardsUseCase,
+    PatchBoardUseCase,
+)
+from src.application.use_cases.card import (
+    CreateCardUseCase,
+    GetCardUseCase,
+    PatchCardUseCase,
+)
+from src.application.use_cases.column import CreateColumnUseCase, DeleteColumnUseCase
+from src.application.use_cases.health.check_readiness import CheckReadinessUseCase
 from src.domain.kanban.models import (
     Board,
     BoardSummary,
@@ -33,11 +50,15 @@ from src.domain.kanban.models import (
 )
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result, expect_ok
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
+    SQLModelKanbanRepository,
+)
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.unit_of_work import (
+    SqlModelUnitOfWork,
+)
 from src.infrastructure.adapters.outbound.query.kanban_query_repository_view import (
     KanbanQueryRepositoryView,
 )
-from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
-from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork
 from tests.support.fakes import FakeClock, FakeIdGenerator
 
 type JsonDict = dict[str, Any]
@@ -145,28 +166,71 @@ class StoreBuilder:
 @dataclass(slots=True)
 class HandlerHarness:
     repository: SQLModelKanbanRepository
-    commands: KanbanCommandHandlers
-    queries: KanbanQueryHandlers
+    create_board_use_case: CreateBoardUseCase
+    patch_board_use_case: PatchBoardUseCase
+    delete_board_use_case: DeleteBoardUseCase
+    get_board_use_case: GetBoardUseCase
+    list_boards_use_case: ListBoardsUseCase
+    create_column_use_case: CreateColumnUseCase
+    delete_column_use_case: DeleteColumnUseCase
+    create_card_use_case: CreateCardUseCase
+    patch_card_use_case: PatchCardUseCase
+    get_card_use_case: GetCardUseCase
+    check_readiness_use_case: CheckReadinessUseCase
 
     def board(self, title: str = "Board") -> AppBoardSummary:
         return _expect_app_ok(
-            self.commands.handle_create_board(CreateBoardCommand(title=title))
+            self.create_board_use_case.execute(CreateBoardCommand(title=title))
         )
+
+    def get_board(self, board_id: str) -> AppResult[Any, Any]:
+        return self.get_board_use_case.execute(GetBoardQuery(board_id=board_id))
+
+    def get_card(self, card_id: str) -> AppResult[Any, Any]:
+        return self.get_card_use_case.execute(GetCardQuery(card_id=card_id))
 
     @classmethod
     def build_default(cls, database_url: str) -> HandlerHarness:
         repository = SQLModelKanbanRepository(database_url)
+        id_gen = FakeIdGenerator()
+        clock = FakeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
         return cls(
             repository=repository,
-            commands=KanbanCommandHandlers(
+            create_board_use_case=CreateBoardUseCase(
                 uow=SqlModelUnitOfWork(repository.engine),
-                id_gen=FakeIdGenerator(),
-                clock=FakeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+                id_gen=id_gen,
+                clock=clock,
             ),
-            queries=KanbanQueryHandlers(
-                repository=KanbanQueryRepositoryView(repository),
-                readiness=repository,
+            patch_board_use_case=PatchBoardUseCase(
+                uow=SqlModelUnitOfWork(repository.engine),
             ),
+            delete_board_use_case=DeleteBoardUseCase(
+                uow=SqlModelUnitOfWork(repository.engine),
+            ),
+            get_board_use_case=GetBoardUseCase(
+                query_repository=KanbanQueryRepositoryView(repository),
+            ),
+            list_boards_use_case=ListBoardsUseCase(
+                query_repository=KanbanQueryRepositoryView(repository),
+            ),
+            create_column_use_case=CreateColumnUseCase(
+                uow=SqlModelUnitOfWork(repository.engine),
+                id_gen=id_gen,
+            ),
+            delete_column_use_case=DeleteColumnUseCase(
+                uow=SqlModelUnitOfWork(repository.engine),
+            ),
+            create_card_use_case=CreateCardUseCase(
+                uow=SqlModelUnitOfWork(repository.engine),
+                id_gen=id_gen,
+            ),
+            patch_card_use_case=PatchCardUseCase(
+                uow=SqlModelUnitOfWork(repository.engine),
+            ),
+            get_card_use_case=GetCardUseCase(
+                query_repository=KanbanQueryRepositoryView(repository),
+            ),
+            check_readiness_use_case=CheckReadinessUseCase(readiness=repository),
         )
 
     def close(self) -> None:
@@ -174,9 +238,14 @@ class HandlerHarness:
 
     def column(self, board_id: str, title: str = "Todo") -> AppColumn:
         return _expect_app_ok(
-            self.commands.handle_create_column(
+            self.create_column_use_case.execute(
                 CreateColumnCommand(board_id=board_id, title=title)
             )
+        )
+
+    def delete_column(self, column_id: str) -> AppResult[Any, Any]:
+        return self.delete_column_use_case.execute(
+            DeleteColumnCommand(column_id=column_id)
         )
 
     def card(
@@ -189,7 +258,7 @@ class HandlerHarness:
         due_at: datetime | None = None,
     ) -> AppCard:
         return _expect_app_ok(
-            self.commands.handle_create_card(
+            self.create_card_use_case.execute(
                 CreateCardCommand(
                     column_id=column_id,
                     title=title,
@@ -199,6 +268,12 @@ class HandlerHarness:
                 )
             )
         )
+
+    def patch_card(self, command: PatchCardCommand) -> AppResult[Any, Any]:
+        return self.patch_card_use_case.execute(command)
+
+    def health_ready(self) -> bool:
+        return self.check_readiness_use_case.execute(HealthCheckQuery())
 
 
 def require_str(payload: JsonDict, key: str) -> str:

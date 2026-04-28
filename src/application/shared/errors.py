@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from src.domain.kanban.exceptions import (
+    BoardNotFoundError,
+    CardNotFoundError,
+    ColumnNotFoundError,
+    InvalidCardMoveError,
+    KanbanDomainError,
+)
 from src.domain.shared.errors import KanbanError
 
 
@@ -41,6 +48,17 @@ _ERROR_MAP = {
     KanbanError.INVALID_CARD_MOVE: ApplicationError.INVALID_CARD_MOVE,
 }
 
+_EXCEPTION_ERROR_MAP: dict[type[KanbanDomainError], ApplicationError] = {
+    BoardNotFoundError: ApplicationError.BOARD_NOT_FOUND,
+    ColumnNotFoundError: ApplicationError.COLUMN_NOT_FOUND,
+    CardNotFoundError: ApplicationError.CARD_NOT_FOUND,
+    InvalidCardMoveError: ApplicationError.INVALID_CARD_MOVE,
+}
+
 
 def from_domain_error(error: KanbanError) -> ApplicationError:
     return _ERROR_MAP.get(error, ApplicationError.UNMAPPED_DOMAIN_ERROR)
+
+
+def from_domain_exception(exc: KanbanDomainError) -> ApplicationError:
+    return _EXCEPTION_ERROR_MAP.get(type(exc), ApplicationError.UNMAPPED_DOMAIN_ERROR)

@@ -5,14 +5,17 @@ from datetime import datetime, timezone
 import pytest
 
 from src.domain.kanban.models import Board, Card, CardPriority, Column
-from src.infrastructure.persistence.sqlmodel.mappers import (
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.mappers import (
     board_domain_to_table,
     board_table_to_read_model,
     card_domain_to_table,
     card_table_to_domain,
     column_domain_to_table,
 )
-from src.infrastructure.persistence.sqlmodel.models import BoardTable, CardTable
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.models import (
+    BoardTable,
+    CardTable,
+)
 
 pytestmark = pytest.mark.unit
 

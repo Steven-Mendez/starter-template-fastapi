@@ -1,0 +1,1 @@
+"""Architecture conformance test package."""

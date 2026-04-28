@@ -8,7 +8,9 @@ import pytest
 from sqlalchemy import create_engine, text
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
-from src.infrastructure.persistence.sqlmodel.models import get_sqlmodel_metadata
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.models import (
+    get_sqlmodel_metadata,
+)
 from tests.support.kanban_builders import HandlerHarness
 
 

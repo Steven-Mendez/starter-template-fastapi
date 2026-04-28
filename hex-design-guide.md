@@ -1,4 +1,21 @@
-A good hexagonal architecture FastAPI application is not “FastAPI with many folders.” It is an application where FastAPI is only one adapter around a business core that can be tested, used, and evolved without depending on HTTP, databases, ORMs, queues, or cloud SDKs.
+A good hexagonal architecture FastAPI application is not "FastAPI with many folders." It is an application where FastAPI is only one adapter around a business core that can be tested, used, and evolved without depending on HTTP, databases, ORMs, queues, or cloud SDKs.
+
+## Project conformance notes
+
+This repository enforces hexagonal conformance with an automated architecture
+suite in `tests/architecture/` plus import contracts (`uv run lint-imports`).
+
+- Use cases are decomposed into classes under `src/application/use_cases/`.
+- Persistence adapters live under `src/infrastructure/adapters/outbound/persistence/`.
+- Domain exceptions are declared in `src/domain/kanban/exceptions.py` and translated
+  at the application/API boundary.
+
+When changing boundaries, run:
+
+```bash
+uv run pytest tests/architecture -m architecture
+uv run lint-imports
+```
 
 Hexagonal architecture is also called Ports and Adapters. The central idea is that the application should be equally drivable by users, tests, batch jobs, scripts, message consumers, or other programs, while being isolated from runtime devices such as databases and external APIs. That framing comes from Alistair Cockburn’s original hexagonal architecture article.  ￼ FastAPI fits this style well because it has routers, dependency injection, request/response validation, and testing support, but those features should live mostly at the edges, not in the domain core. FastAPI’s own docs describe dependency injection as a simple way to integrate components, and its “bigger applications” guidance encourages splitting larger APIs into multiple files and routers.  ￼
 

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from src.domain.kanban.exceptions import InvalidCardMoveError
 from src.domain.kanban.models import Board, Card, CardPriority, Column
 from src.domain.kanban.specifications.base import PredicateSpecification
 from src.domain.kanban.specifications.card_move import (
@@ -12,7 +13,6 @@ from src.domain.kanban.specifications.card_move import (
     TargetColumnExistsSpecification,
     ValidCardMoveSpecification,
 )
-from src.domain.shared.errors import KanbanError
 
 pytestmark = pytest.mark.unit
 
@@ -118,14 +118,13 @@ def test_board_move_card_rejects_move_when_target_column_missing() -> None:
         columns=[source_column],
     )
 
-    error = board.move_card(
-        card_id="card-1",
-        source_column_id="col-1",
-        target_column_id="missing-column",
-        requested_position=None,
-    )
-
-    assert error is KanbanError.INVALID_CARD_MOVE
+    with pytest.raises(InvalidCardMoveError):
+        board.move_card(
+            card_id="card-1",
+            source_column_id="col-1",
+            target_column_id="missing-column",
+            requested_position=None,
+        )
 
 
 def test_board_move_card_moves_between_columns_when_spec_satisfied() -> None:
@@ -160,14 +159,13 @@ def test_board_move_card_moves_between_columns_when_spec_satisfied() -> None:
         columns=[source_column, target_column],
     )
 
-    error = board.move_card(
+    board.move_card(
         card_id="card-1",
         source_column_id="col-1",
         target_column_id="col-2",
         requested_position=None,
     )
 
-    assert error is None
     assert source_column.cards == []
     assert len(target_column.cards) == 1
     assert target_column.cards[0].id == "card-1"

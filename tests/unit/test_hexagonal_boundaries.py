@@ -12,16 +12,16 @@ from fastapi.routing import APIRoute
 
 from src.api import dependencies as api_dependencies
 from src.api.routers import kanban_router, root_router
-from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPort
 from src.application.ports import (
     KanbanCommandRepositoryPort,
     KanbanQueryRepositoryPort,
     KanbanRepositoryPort,
 )
-from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.application.shared.readiness import ReadinessProbe
-from src.infrastructure.persistence.lifecycle import ClosableResource
-from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
+from src.infrastructure.adapters.outbound.persistence.lifecycle import ClosableResource
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
+    SQLModelKanbanRepository,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -380,51 +380,42 @@ def test_api_routes_use_cqrs_handlers() -> None:
 
         has_query_port = False
         has_command_port = False
-        has_concrete_query_handler = False
-        has_concrete_command_handler = False
         has_repository = False
 
         for param_name, param in sig.parameters.items():
             annotation = type_hints.get(param_name, param.annotation)
-            if annotation_contains_type(annotation, KanbanQueryInputPort):
-                has_query_port = True
-            if annotation_contains_type(annotation, KanbanCommandInputPort):
-                has_command_port = True
-            if annotation_contains_type(annotation, KanbanQueryHandlers):
-                has_concrete_query_handler = True
-            if annotation_contains_type(annotation, KanbanCommandHandlers):
-                has_concrete_command_handler = True
             if annotation_contains_type(annotation, KanbanRepositoryPort):
                 has_repository = True
+
+            annotation_text = str(annotation)
+            if "UseCase" in annotation_text:
+                if "Get" in annotation_text or "List" in annotation_text:
+                    has_query_port = True
+                else:
+                    has_command_port = True
 
         assert not has_repository, (
             f"Endpoint {endpoint.__name__} must not depend on a repository directly."
         )
-        assert not has_concrete_query_handler, (
-            f"Endpoint {endpoint.__name__} must depend on query ports, "
-            "not concrete handlers."
-        )
-        assert not has_concrete_command_handler, (
-            f"Endpoint {endpoint.__name__} must depend on command ports, "
-            "not concrete handlers."
-        )
-
         methods = route.methods or set()
 
         if "GET" in methods:
             assert has_query_port, (
-                f"Read endpoint {endpoint.__name__} must use KanbanQueryInputPort."
+                f"Read endpoint {endpoint.__name__} must use a query "
+                "use-case dependency."
             )
             assert not has_command_port, (
                 f"Read endpoint {endpoint.__name__} must not use "
-                "KanbanCommandInputPort."
+                "a command use-case dependency."
             )
         else:
             assert has_command_port, (
-                f"Write endpoint {endpoint.__name__} must use KanbanCommandInputPort."
+                f"Write endpoint {endpoint.__name__} must use a command "
+                "use-case dependency."
             )
             assert not has_query_port, (
-                f"Write endpoint {endpoint.__name__} must not use KanbanQueryInputPort."
+                f"Write endpoint {endpoint.__name__} must not use a query "
+                "use-case dependency."
             )
 
 
@@ -534,44 +525,51 @@ def test_domain_aggregates_do_not_call_private_entity_methods() -> None:
 
 
 def test_api_dependencies_do_not_import_concrete_handler_classes() -> None:
-    deps_file = SRC_DIR / "api" / "dependencies.py"
-    tree = ast.parse(deps_file.read_text(encoding="utf-8"), filename=str(deps_file))
-
+    dep_files = [
+        SRC_DIR / "api" / "dependencies" / "security.py",
+        SRC_DIR / "api" / "dependencies" / "use_cases.py",
+    ]
     violations: list[str] = []
     module_aliases: dict[str, str] = {}
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module is not None:
-            if node.module == "src.application.commands":
-                if any(alias.name == "KanbanCommandHandlers" for alias in node.names):
-                    violations.append("src.application.commands.KanbanCommandHandlers")
-            if node.module == "src.application.queries":
-                if any(alias.name == "KanbanQueryHandlers" for alias in node.names):
-                    violations.append("src.application.queries.KanbanQueryHandlers")
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                module_aliases[alias.asname or alias.name] = alias.name
+    for deps_file in dep_files:
+        tree = ast.parse(deps_file.read_text(encoding="utf-8"), filename=str(deps_file))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module is not None:
+                if node.module == "src.application.commands":
+                    if any(
+                        alias.name == "KanbanCommandHandlers" for alias in node.names
+                    ):
+                        violations.append(
+                            "src.application.commands.KanbanCommandHandlers"
+                        )
+                if node.module == "src.application.queries":
+                    if any(alias.name == "KanbanQueryHandlers" for alias in node.names):
+                        violations.append("src.application.queries.KanbanQueryHandlers")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    module_aliases[alias.asname or alias.name] = alias.name
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id in {
-            "KanbanCommandHandlers",
-            "KanbanQueryHandlers",
-        }:
-            violations.append(node.id)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id in {
+                "KanbanCommandHandlers",
+                "KanbanQueryHandlers",
+            }:
+                violations.append(node.id)
 
-        if isinstance(node, ast.Attribute) and node.attr in {
-            "KanbanCommandHandlers",
-            "KanbanQueryHandlers",
-        }:
-            if isinstance(node.value, ast.Name):
-                imported_module = module_aliases.get(node.value.id)
-                if imported_module in {
-                    "src.application.commands",
-                    "src.application.queries",
-                    "src.application.commands.handlers",
-                    "src.application.queries.handlers",
-                }:
-                    violations.append(f"{imported_module}.{node.attr}")
+            if isinstance(node, ast.Attribute) and node.attr in {
+                "KanbanCommandHandlers",
+                "KanbanQueryHandlers",
+            }:
+                if isinstance(node.value, ast.Name):
+                    imported_module = module_aliases.get(node.value.id)
+                    if imported_module in {
+                        "src.application.commands",
+                        "src.application.queries",
+                        "src.application.commands.handlers",
+                        "src.application.queries.handlers",
+                    }:
+                        violations.append(f"{imported_module}.{node.attr}")
 
     assert not violations, (
         "API dependencies must consume ports/factories, not concrete handlers: "

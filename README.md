@@ -99,6 +99,20 @@ make typecheck
 make check
 ```
 
+## Conformance
+
+Architecture conformance is enforced by dedicated tests plus import contracts.
+
+Run the conformance gate:
+
+```bash
+uv run pytest tests/architecture -m architecture
+uv run lint-imports
+```
+
+If it fails, fix the boundary violation in the owning layer (API, application,
+domain, or infrastructure) instead of bypassing the check.
+
 Install and run git hooks:
 
 ```bash

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from src.domain.kanban.models import Board, Column
 from src.domain.shared.result import Ok
-from src.infrastructure.persistence.sqlmodel_repository import (
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
     PersistenceConflictError,
     SQLModelKanbanRepository,
 )

@@ -8,8 +8,12 @@ import pytest
 from src.domain.kanban.models import Board
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, expect_ok
-from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
-from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
+    SQLModelKanbanRepository,
+)
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.unit_of_work import (
+    SqlModelUnitOfWork,
+)
 
 pytestmark = pytest.mark.unit
 

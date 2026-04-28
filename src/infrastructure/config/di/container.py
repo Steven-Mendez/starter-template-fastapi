@@ -3,8 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPort
-from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
+from src.application.ports.clock_port import ClockPort
+from src.application.ports.id_generator_port import IdGeneratorPort
+from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
+from src.application.shared.readiness import ReadinessProbe
 from src.config.settings import AppSettings
 from src.infrastructure.adapters.outbound.query.kanban_query_repository_view import (
     KanbanQueryRepositoryView,
@@ -16,15 +19,18 @@ from src.infrastructure.config.di.composition import (
     compose_runtime_dependencies,
 )
 
-CommandHandlersFactory = Callable[[], KanbanCommandInputPort]
+UnitOfWorkFactory = Callable[[], UnitOfWorkPort]
 
 
 @dataclass(slots=True)
 class ConfiguredAppContainer:
     settings: AppSettings
     repositories: RuntimeRepositories
-    query_handlers: KanbanQueryInputPort
-    command_handlers_factory: CommandHandlersFactory
+    query_repository: KanbanQueryRepositoryPort
+    uow_factory: UnitOfWorkFactory
+    id_gen: IdGeneratorPort
+    clock: ClockPort
+    readiness_probe: ReadinessProbe
     shutdown: ShutdownHook
 
     @property
@@ -36,17 +42,14 @@ class ConfiguredAppContainer:
 def build_container(settings: AppSettings) -> ConfiguredAppContainer:
     runtime = compose_runtime_dependencies(settings)
     kanban_repository = runtime.repositories.kanban
+    query_repository = KanbanQueryRepositoryView(kanban_repository)
     return ConfiguredAppContainer(
         settings=settings,
         repositories=runtime.repositories,
-        query_handlers=KanbanQueryHandlers(
-            repository=KanbanQueryRepositoryView(kanban_repository),
-            readiness=runtime.readiness_probe,
-        ),
-        command_handlers_factory=lambda: KanbanCommandHandlers(
-            uow=runtime.uow_factory(),
-            id_gen=runtime.id_gen,
-            clock=runtime.clock,
-        ),
+        query_repository=query_repository,
+        uow_factory=runtime.uow_factory,
+        id_gen=runtime.id_gen,
+        clock=runtime.clock,
+        readiness_probe=runtime.readiness_probe,
         shutdown=runtime.shutdown,
     )

@@ -1,6 +1,6 @@
 """Persistence adapters for Kanban outbound ports."""
 
-from src.infrastructure.persistence.sqlmodel_repository import (
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelKanbanRepository,
 )
 

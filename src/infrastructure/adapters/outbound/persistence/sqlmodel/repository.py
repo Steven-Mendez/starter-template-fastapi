@@ -13,7 +13,7 @@ from src.application.ports.kanban_repository import KanbanRepositoryPort
 from src.domain.kanban.models import Board, BoardSummary, Card, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
-from src.infrastructure.persistence.sqlmodel.mappers import (
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.mappers import (
     board_domain_to_table,
     board_table_to_domain,
     board_table_to_read_model,
@@ -22,7 +22,7 @@ from src.infrastructure.persistence.sqlmodel.mappers import (
     column_domain_to_table,
     column_table_to_domain,
 )
-from src.infrastructure.persistence.sqlmodel.models import (
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.models import (
     BoardTable,
     CardTable,
     ColumnTable,

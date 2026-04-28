@@ -4,7 +4,8 @@ from dataclasses import dataclass
 
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.application.shared import AppErr, ApplicationError, AppOk, AppResult
-from src.application.shared.errors import from_domain_error
+from src.application.shared.errors import from_domain_error, from_domain_exception
+from src.domain.kanban.exceptions import KanbanDomainError
 from src.domain.shared.result import Err
 
 
@@ -28,9 +29,10 @@ def handle_delete_column(
             return AppErr(from_domain_error(board_result.error))
         board = board_result.value
 
-        delete_error = board.delete_column(command.column_id)
-        if delete_error is not None:
-            return AppErr(from_domain_error(delete_error))
+        try:
+            board.delete_column(command.column_id)
+        except KanbanDomainError as exc:
+            return AppErr(from_domain_exception(exc))
 
         uow.commands.save(board)
         uow.commit()

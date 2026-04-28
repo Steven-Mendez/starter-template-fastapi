@@ -4,7 +4,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, status
 
-from src.api.dependencies import CommandHandlersDep, QueryHandlersDep, WriteApiKeyDep
+from src.api.dependencies import (
+    CreateBoardUseCaseDep,
+    DeleteBoardUseCaseDep,
+    GetBoardUseCaseDep,
+    ListBoardsUseCaseDep,
+    PatchBoardUseCaseDep,
+    WriteApiKeyDep,
+)
 from src.api.mappers.kanban import (
     to_board_detail_response,
     to_board_summary_response,
@@ -29,12 +36,10 @@ boards_router = APIRouter(tags=["boards"])
 )
 def create_board(
     body: BoardCreate,
-    commands: CommandHandlersDep,
+    use_case: CreateBoardUseCaseDep,
     _: WriteApiKeyDep,
 ) -> BoardSummary:
-    match commands.handle_create_board(
-        CreateBoardCommand(title=to_create_board_input(body))
-    ):
+    match use_case.execute(CreateBoardCommand(title=to_create_board_input(body))):
         case AppOk(value):
             return to_board_summary_response(value)
         case AppErr(err):
@@ -43,9 +48,9 @@ def create_board(
 
 @boards_router.get("/boards", response_model=list[BoardSummary])
 def list_boards(
-    queries: QueryHandlersDep,
+    use_case: ListBoardsUseCaseDep,
 ) -> list[BoardSummary]:
-    match queries.handle_list_boards(ListBoardsQuery()):
+    match use_case.execute(ListBoardsQuery()):
         case AppOk(value):
             return [to_board_summary_response(board) for board in value]
         case AppErr(err):
@@ -55,9 +60,9 @@ def list_boards(
 @boards_router.get("/boards/{board_id}", response_model=BoardDetail)
 def get_board(
     board_id: UUID,
-    queries: QueryHandlersDep,
+    use_case: GetBoardUseCaseDep,
 ) -> BoardDetail:
-    match queries.handle_get_board(GetBoardQuery(board_id=str(board_id))):
+    match use_case.execute(GetBoardQuery(board_id=str(board_id))):
         case AppOk(value):
             return to_board_detail_response(value)
         case AppErr(err):
@@ -68,10 +73,10 @@ def get_board(
 def patch_board(
     board_id: UUID,
     body: BoardUpdate,
-    commands: CommandHandlersDep,
+    use_case: PatchBoardUseCaseDep,
     _: WriteApiKeyDep,
 ) -> BoardSummary:
-    match commands.handle_patch_board(
+    match use_case.execute(
         PatchBoardCommand(board_id=str(board_id), title=to_patch_board_input(body))
     ):
         case AppOk(value):
@@ -83,10 +88,10 @@ def patch_board(
 @boards_router.delete("/boards/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_board(
     board_id: UUID,
-    commands: CommandHandlersDep,
+    use_case: DeleteBoardUseCaseDep,
     _: WriteApiKeyDep,
 ) -> None:
-    match commands.handle_delete_board(DeleteBoardCommand(board_id=str(board_id))):
+    match use_case.execute(DeleteBoardCommand(board_id=str(board_id))):
         case AppOk(_):
             return
         case AppErr(err):

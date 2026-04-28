@@ -2,35 +2,30 @@ from __future__ import annotations
 
 import pytest
 
-from src.application.queries import GetBoardQuery
 from src.application.shared import AppOk
 from tests.support.kanban_builders import HandlerHarness
 
 pytestmark = pytest.mark.unit
 
 
-def test_command_handlers_only_expose_mutations(
+def test_command_use_cases_expose_execute(
     handler_harness: HandlerHarness,
 ) -> None:
-    commands = handler_harness.commands
-    assert hasattr(commands, "handle_create_board")
-    assert hasattr(commands, "handle_patch_card")
-    assert not hasattr(commands, "handle_get_board")
-    assert not hasattr(commands, "handle_list_boards")
+    assert hasattr(handler_harness.create_column_use_case, "execute")
+    assert hasattr(handler_harness.patch_card_use_case, "execute")
+    assert hasattr(handler_harness.delete_board_use_case, "execute")
 
 
-def test_query_handlers_only_expose_reads(handler_harness: HandlerHarness) -> None:
-    queries = handler_harness.queries
-    assert hasattr(queries, "handle_list_boards")
-    assert hasattr(queries, "handle_get_card")
-    assert not hasattr(queries, "handle_create_board")
-    assert not hasattr(queries, "handle_patch_card")
+def test_query_use_cases_expose_execute(handler_harness: HandlerHarness) -> None:
+    assert hasattr(handler_harness.get_board_use_case, "execute")
+    assert hasattr(handler_harness.get_card_use_case, "execute")
+    assert hasattr(handler_harness.check_readiness_use_case, "execute")
 
 
 def test_query_repository_view_hides_write_methods(
     handler_harness: HandlerHarness,
 ) -> None:
-    repository = handler_harness.queries.repository
+    repository = handler_harness.get_board_use_case.query_repository
     assert hasattr(repository, "list_all")
     assert hasattr(repository, "find_by_id")
     assert not hasattr(repository, "save")
@@ -45,9 +40,7 @@ def test_router_use_case_can_be_done_with_split_handlers(
     created_column = handler_harness.column(board.id, "Todo")
     created_card = handler_harness.card(created_column.id, "Task A")
 
-    fetched_board = handler_harness.queries.handle_get_board(
-        GetBoardQuery(board_id=board.id)
-    )
+    fetched_board = handler_harness.get_board(board.id)
     assert isinstance(fetched_board, AppOk)
     todo_column = next(
         (

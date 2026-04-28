@@ -4,7 +4,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, status
 
-from src.api.dependencies import CommandHandlersDep, WriteApiKeyDep
+from src.api.dependencies import (
+    CreateColumnUseCaseDep,
+    DeleteColumnUseCaseDep,
+    WriteApiKeyDep,
+)
 from src.api.mappers.kanban import to_column_response, to_create_column_input
 from src.api.routers._errors import raise_http_from_application_error
 from src.api.schemas.kanban import ColumnCreate, ColumnRead
@@ -22,10 +26,10 @@ columns_router = APIRouter(tags=["columns"])
 def create_column(
     board_id: UUID,
     body: ColumnCreate,
-    commands: CommandHandlersDep,
+    use_case: CreateColumnUseCaseDep,
     _: WriteApiKeyDep,
 ) -> ColumnRead:
-    match commands.handle_create_column(
+    match use_case.execute(
         CreateColumnCommand(board_id=str(board_id), title=to_create_column_input(body))
     ):
         case AppOk(value):
@@ -37,10 +41,10 @@ def create_column(
 @columns_router.delete("/columns/{column_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_column(
     column_id: UUID,
-    commands: CommandHandlersDep,
+    use_case: DeleteColumnUseCaseDep,
     _: WriteApiKeyDep,
 ) -> None:
-    match commands.handle_delete_column(DeleteColumnCommand(column_id=str(column_id))):
+    match use_case.execute(DeleteColumnCommand(column_id=str(column_id))):
         case AppOk(_):
             return
         case AppErr(err):

@@ -1160,14 +1160,12 @@ When reviewing a FastAPI codebase, check:
 Suggest commands like these when reviewing the project:
 
 ```bash
-grep -R "fastapi" src/domain
-grep -R "sqlalchemy" src/domain
-grep -R "Depends" src/application
-grep -R "HTTPException" src/application src/domain
-grep -R "sqlalchemy" src/application
+uv run pytest tests/architecture -m architecture
+uv run lint-imports
 ```
 
-Expected result: no matches, unless there is a deliberate and documented exception.
+Expected result: architecture tests and import contracts stay green; treat failures as
+dependency-direction violations that must be fixed at the appropriate boundary.
 
 ## Output Behavior
 

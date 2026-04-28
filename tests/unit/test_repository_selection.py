@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 
 from src.config.settings import AppSettings
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
+    SQLModelKanbanRepository,
+)
 from src.infrastructure.config.di.composition import create_repository_for_settings
 from src.infrastructure.config.di.container import build_container
-from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 
 pytestmark = pytest.mark.unit
 

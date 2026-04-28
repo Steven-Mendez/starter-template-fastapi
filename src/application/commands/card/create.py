@@ -8,7 +8,8 @@ from src.application.contracts.mappers import to_app_card, to_domain_priority
 from src.application.ports.id_generator_port import IdGeneratorPort
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.application.shared import AppErr, ApplicationError, AppOk, AppResult
-from src.application.shared.errors import from_domain_error
+from src.application.shared.errors import from_domain_error, from_domain_exception
+from src.domain.kanban.exceptions import KanbanDomainError
 from src.domain.kanban.models import Card
 from src.domain.shared.result import Err
 
@@ -51,7 +52,10 @@ def handle_create_card(
             priority=to_domain_priority(command.priority),
             due_at=command.due_at,
         )
-        col.insert_card(card)
+        try:
+            col.insert_card(card)
+        except KanbanDomainError as exc:
+            return AppErr(from_domain_exception(exc))
 
         uow.commands.save(board)
         uow.commit()

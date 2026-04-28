@@ -7,7 +7,8 @@ from src.application.contracts import AppCard, AppCardPriority
 from src.application.contracts.mappers import to_app_card, to_domain_priority
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.application.shared import AppErr, ApplicationError, AppOk, AppResult
-from src.application.shared.errors import from_domain_error
+from src.application.shared.errors import from_domain_error, from_domain_exception
+from src.domain.kanban.exceptions import KanbanDomainError
 from src.domain.shared.result import Err
 
 
@@ -63,14 +64,15 @@ def handle_patch_card(
                     target_col_id = command.column_id
                 else:
                     target_col_id = source_col.id
-                err = board.move_card(
-                    command.card_id,
-                    source_col.id,
-                    target_col_id,
-                    command.position,
-                )
-                if err:
-                    return AppErr(from_domain_error(err))
+                try:
+                    board.move_card(
+                        command.card_id,
+                        source_col.id,
+                        target_col_id,
+                        command.position,
+                    )
+                except KanbanDomainError as exc:
+                    return AppErr(from_domain_exception(exc))
 
         updated_card = board.get_card(command.card_id)
         if updated_card is not None:

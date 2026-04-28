@@ -11,8 +11,8 @@ from src.application.shared.readiness import ReadinessProbe
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
-from src.infrastructure.persistence.lifecycle import ClosableResource
-from src.infrastructure.persistence.sqlmodel_repository import (
+from src.infrastructure.adapters.outbound.persistence.lifecycle import ClosableResource
+from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
     PersistenceConflictError,
     SQLModelKanbanRepository,
 )
@@ -187,13 +187,12 @@ def test_repository_contract_persists_card_sequence(
 
     board_result = repo.find_by_id(board.id)
     assert isinstance(board_result, Ok)
-    move_error = board_result.value.move_card(
+    board_result.value.move_card(
         c1.value.id,
         source_column_id=col.value.id,
         target_column_id=col.value.id,
         requested_position=1,
     )
-    assert move_error is None
     repo.save(board_result.value)
 
     board_r = repo.find_by_id(board.id)
