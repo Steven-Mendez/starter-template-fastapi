@@ -6,6 +6,8 @@ Minimal [FastAPI](https://fastapi.tiangolo.com/) service with Uvicorn, OpenAPI d
 
 ```bash
 uv sync
+docker compose up -d db
+uv run alembic upgrade head
 make dev
 ```
 
@@ -16,6 +18,7 @@ Then open http://127.0.0.1:8000/docs for the interactive API docs.
 - Python 3.14+ (see `.python-version`)
 - [uv](https://docs.astral.sh/uv/) for dependencies and `uv run`
 - [GNU Make](https://www.gnu.org/software/make/) if you use the Makefile shortcuts below
+- Docker (required for PostgreSQL containers and integration/e2e tests)
 
 ## Install
 
@@ -119,13 +122,72 @@ Environment variables use the `APP_` prefix:
 - `APP_ENVIRONMENT=development|test|production`
 - `APP_CORS_ORIGINS='["https://frontend.example.com"]'`
 - `APP_TRUSTED_HOSTS='["api.example.com"]'`
-- `APP_REPOSITORY_BACKEND=inmemory|sqlite|postgresql`
-- `APP_SQLITE_PATH=.data/kanban.db`
 - `APP_POSTGRESQL_DSN=postgresql+psycopg://postgres:postgres@localhost:5432/kanban`
 
-By default the app targets PostgreSQL storage. For quick local experiments without
-PostgreSQL, set `APP_REPOSITORY_BACKEND=sqlite` (plus `APP_SQLITE_PATH`) or
-`APP_REPOSITORY_BACKEND=inmemory`.
+The application is PostgreSQL-only.
+
+## Docker workflows
+
+### Run PostgreSQL in Docker, app locally
+
+1) Start only the database service:
+
+```bash
+docker compose up -d db
+```
+
+2) Run migrations against the local DSN (`localhost`):
+
+```bash
+uv run alembic upgrade head
+```
+
+3) Start the API locally:
+
+```bash
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Run full stack in Docker (app + PostgreSQL)
+
+```bash
+docker compose up --build
+```
+
+The API is exposed at http://127.0.0.1:8000 and uses the internal Compose DSN (`db:5432`).
+
+## Testing strategy
+
+- Unit tests run against PostgreSQL testcontainers.
+- Integration tests run against PostgreSQL via `testcontainers` and apply
+  Alembic migrations before exercising API flows.
+- E2E tests run a live Uvicorn process against PostgreSQL in Docker.
+
+Run the default fast suite (unit + integration, skips e2e):
+
+```bash
+make test-fast
+```
+
+Run integration tests only (requires Docker):
+
+```bash
+make test-integration
+```
+
+If Docker is unavailable, integration tests are skipped automatically.
+
+Run e2e tests:
+
+```bash
+make test-e2e
+```
+
+Run the full suite:
+
+```bash
+make test
+```
 
 ## Database migrations (Alembic)
 
@@ -141,7 +203,7 @@ Create a new revision (autogenerate):
 uv run alembic revision --autogenerate -m "describe-change"
 ```
 
-`GET /health` now reports persistence readiness:
+`GET /health` reports persistence readiness:
 
 ```json
 {

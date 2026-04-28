@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.application.commands.board.create import CreateBoardCommand, handle_create_board
-from src.application.commands.board.delete import DeleteBoardCommand, handle_delete_board
+from src.application.commands.board.create import (
+    CreateBoardCommand,
+    handle_create_board,
+)
+from src.application.commands.board.delete import (
+    DeleteBoardCommand,
+    handle_delete_board,
+)
 from src.application.commands.board.patch import PatchBoardCommand, handle_patch_board
 from src.application.commands.card.create import CreateCardCommand, handle_create_card
 from src.application.commands.card.patch import PatchCardCommand, handle_patch_card
@@ -17,16 +23,17 @@ from src.application.commands.column.delete import (
 )
 from src.application.commands.port import KanbanCommandInputPort
 from src.application.contracts import AppBoardSummary, AppCard, AppColumn
-from src.application.ports.clock import Clock
-from src.application.ports.id_generator import IdGenerator
-from src.application.shared import ApplicationError, AppResult, UnitOfWork
+from src.application.ports.clock_port import ClockPort
+from src.application.ports.id_generator_port import IdGeneratorPort
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
+from src.application.shared import ApplicationError, AppResult
 
 
 @dataclass(slots=True)
 class KanbanCommandHandlers(KanbanCommandInputPort):
-    uow: UnitOfWork
-    id_gen: IdGenerator
-    clock: Clock
+    uow: UnitOfWorkPort
+    id_gen: IdGeneratorPort
+    clock: ClockPort
 
     def handle_create_board(
         self, command: CreateBoardCommand

@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import Self
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -29,12 +28,6 @@ from src.infrastructure.persistence.sqlmodel.models import (
     CardTable,
     ColumnTable,
 )
-
-
-def sqlite_url_from_path(db_path: str) -> str:
-    path = Path(db_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return f"sqlite:///{path.resolve()}"
 
 
 class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
@@ -189,28 +182,14 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
                 return None
             return column.board_id
 
+
 class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
     def __init__(self, database_url: str, *, create_schema: bool = True) -> None:
         super().__init__()
-        connect_args: dict[str, object] = {}
-        if database_url.startswith("sqlite"):
-            connect_args["check_same_thread"] = False
-        self._engine = create_engine(
-            database_url,
-            connect_args=connect_args,
-            pool_pre_ping=True,
-        )
-        if database_url.startswith("sqlite"):
-            from sqlalchemy import event
-
-            @event.listens_for(self._engine, "connect")
-            def set_sqlite_pragma(
-                dbapi_connection: Any, connection_record: object
-            ) -> None:
-                del connection_record
-                cursor = dbapi_connection.cursor()
-                cursor.execute("PRAGMA foreign_keys=ON")
-                cursor.close()
+        if not database_url.startswith("postgresql"):
+            msg = "SQLModelKanbanRepository supports PostgreSQL DSNs only"
+            raise ValueError(msg)
+        self._engine = create_engine(database_url, pool_pre_ping=True)
 
         if create_schema:
             SQLModel.metadata.create_all(self._engine)
@@ -260,8 +239,3 @@ class SessionSQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
 
     def _commit(self, session: Session) -> None:
         del session
-
-
-class SQLiteKanbanRepository(SQLModelKanbanRepository):
-    def __init__(self, db_path: str) -> None:
-        super().__init__(sqlite_url_from_path(db_path))

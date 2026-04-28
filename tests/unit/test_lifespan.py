@@ -8,8 +8,8 @@ from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRep
 pytestmark = pytest.mark.unit
 
 
-def test_lifespan_closes_repository() -> None:
-    settings = AppSettings(repository_backend="sqlite", sqlite_path=":memory:")
+def test_lifespan_closes_repository(postgresql_dsn: str) -> None:
+    settings = AppSettings(postgresql_dsn=postgresql_dsn)
     test_app = create_app(settings)
 
     with TestClient(test_app):

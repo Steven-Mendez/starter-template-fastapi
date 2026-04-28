@@ -18,7 +18,7 @@ The domain layer contains non-trivial business behavior:
 - `Column.move_card_within` — reorders a card within the same column.
 - `Column._recalculate_positions` — reindexes cards after insertion or extraction.
 
-None of this behavior has dedicated **pure domain unit tests**. The only tests that exercise domain behavior do so indirectly through the application handler layer (`test_kanban_command_handlers.py`) or through repository contract tests (`test_kanban_repository_contract.py`), which additionally involve in-memory or SQLite persistence.
+None of this behavior has dedicated **pure domain unit tests**. The only tests that exercise domain behavior do so indirectly through the application handler layer (`test_kanban_command_handlers.py`) or through repository contract tests (`test_kanban_repository_contract.py`), which additionally involve persistence adapters.
 
 This is a significant gap: if a domain invariant is broken, the failure surface is a handler test or a repository test — not a fast, isolated domain test. The hexagonal architecture's primary promise is that domain logic is testable without infrastructure.
 

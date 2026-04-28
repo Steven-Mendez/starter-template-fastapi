@@ -5,8 +5,9 @@ from datetime import datetime
 
 from src.application.contracts import AppCard, AppCardPriority
 from src.application.contracts.mappers import to_app_card, to_domain_priority
-from src.application.ports.id_generator import IdGenerator
-from src.application.shared import AppErr, ApplicationError, AppOk, AppResult, UnitOfWork
+from src.application.ports.id_generator_port import IdGeneratorPort
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
+from src.application.shared import AppErr, ApplicationError, AppOk, AppResult
 from src.application.shared.errors import from_domain_error
 from src.domain.kanban.models import Card
 from src.domain.shared.result import Err
@@ -23,8 +24,8 @@ class CreateCardCommand:
 
 def handle_create_card(
     *,
-    uow: UnitOfWork,
-    id_gen: IdGenerator,
+    uow: UnitOfWorkPort,
+    id_gen: IdGeneratorPort,
     command: CreateCardCommand,
 ) -> AppResult[AppCard, ApplicationError]:
     with uow:

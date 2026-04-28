@@ -6,7 +6,7 @@ from typing import Protocol, Self
 from src.application.ports.kanban_command_repository import KanbanCommandRepositoryPort
 
 
-class UnitOfWork(Protocol):
+class UnitOfWorkPort(Protocol):
     kanban: KanbanCommandRepositoryPort
 
     def __enter__(self) -> Self: ...

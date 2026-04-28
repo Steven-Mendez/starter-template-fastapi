@@ -56,17 +56,6 @@ Thumbs.db
 *.log
 logs/
 
-# Runtime data (SQLite default backend)
-.data/
-:memory:
-*.db
-*.sqlite
-*.sqlite3
-*.db-shm
-*.db-wal
-*.sqlite-shm
-*.sqlite-wal
-
-# Runtime data (PostgreSQL local/dev containers)
+# Runtime data (PostgreSQL local environments)
 .pgdata/
 postgres-data/

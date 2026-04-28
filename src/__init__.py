@@ -1,1 +1,1 @@
-"""Kanban board API package (in-memory)."""
+"""Kanban board API package."""

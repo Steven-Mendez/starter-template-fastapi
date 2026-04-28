@@ -6,13 +6,13 @@ from typing import Self
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from src.application.shared.unit_of_work import UnitOfWork
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.infrastructure.persistence.sqlmodel_repository import (
     SessionSQLModelKanbanRepository,
 )
 
 
-class SqlModelUnitOfWork(UnitOfWork):
+class SqlModelUnitOfWork(UnitOfWorkPort):
     def __init__(self, engine: Engine):
         self._engine = engine
         self._session: Session | None = None

@@ -4,8 +4,9 @@ from dataclasses import dataclass
 
 from src.application.contracts import AppColumn
 from src.application.contracts.mappers import to_app_column
-from src.application.ports.id_generator import IdGenerator
-from src.application.shared import AppErr, ApplicationError, AppOk, AppResult, UnitOfWork
+from src.application.ports.id_generator_port import IdGeneratorPort
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
+from src.application.shared import AppErr, ApplicationError, AppOk, AppResult
 from src.application.shared.errors import from_domain_error
 from src.domain.kanban.models import Column
 from src.domain.shared.result import Err
@@ -19,8 +20,8 @@ class CreateColumnCommand:
 
 def handle_create_column(
     *,
-    uow: UnitOfWork,
-    id_gen: IdGenerator,
+    uow: UnitOfWorkPort,
+    id_gen: IdGeneratorPort,
     command: CreateColumnCommand,
 ) -> AppResult[AppColumn, ApplicationError]:
     with uow:

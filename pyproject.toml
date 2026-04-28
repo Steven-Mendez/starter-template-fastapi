@@ -23,6 +23,7 @@ dev = [
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
     "ruff>=0.14.0",
+    "testcontainers>=4.13.2",
 ]
 
 [tool.pytest.ini_options]
@@ -31,7 +32,7 @@ pythonpath = ["."]
 addopts = "--strict-markers"
 markers = [
     "unit: default for new tests—cheap signal",
-    "integration: cross-module wiring without a real port",
+    "integration: cross-module wiring against PostgreSQL testcontainers",
     "e2e: expensive; reserve for deployment-shaped checks",
 ]
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.application.contracts import AppBoardSummary
-from src.application.shared import AppErr, ApplicationError, AppOk, AppResult, UnitOfWork
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
+from src.application.shared import AppErr, ApplicationError, AppOk, AppResult
 from src.application.shared.errors import from_domain_error
 from src.domain.shared.result import Err
 
@@ -16,7 +17,7 @@ class PatchBoardCommand:
 
 def handle_patch_board(
     *,
-    uow: UnitOfWork,
+    uow: UnitOfWorkPort,
     command: PatchBoardCommand,
 ) -> AppResult[AppBoardSummary, ApplicationError]:
     with uow:

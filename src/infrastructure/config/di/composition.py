@@ -6,24 +6,19 @@ from typing import Protocol, TypeAlias, cast
 
 from sqlalchemy.engine import Engine
 
-from src.application.ports.clock import Clock
-from src.application.ports.id_generator import IdGenerator
+from src.application.ports.clock_port import ClockPort
+from src.application.ports.id_generator_port import IdGeneratorPort
 from src.application.ports.kanban_repository import KanbanRepositoryPort
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.application.shared.readiness import ReadinessProbe
-from src.application.shared.unit_of_work import UnitOfWork
 from src.config.settings import AppSettings
 from src.infrastructure.adapters.system_clock import SystemClock
 from src.infrastructure.adapters.uuid_id_generator import UUIDIdGenerator
-from src.infrastructure.persistence import (
-    InMemoryKanbanRepository,
-    SQLiteKanbanRepository,
-    SQLModelKanbanRepository,
-)
-from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
+from src.infrastructure.persistence import SQLModelKanbanRepository
 from src.infrastructure.persistence.lifecycle import ClosableResource
 from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork
 
-UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWork]
+UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWorkPort]
 ShutdownHook: TypeAlias = Callable[[], None]
 
 
@@ -46,8 +41,8 @@ class RuntimeDependencies:
     repositories: RuntimeRepositories
     uow_factory: UnitOfWorkFactory
     readiness_probe: ReadinessProbe
-    id_gen: IdGenerator
-    clock: Clock
+    id_gen: IdGeneratorPort
+    clock: ClockPort
     shutdown: ShutdownHook
 
 
@@ -59,11 +54,7 @@ class RuntimeRepositories:
 def create_kanban_repository_for_settings(
     settings: AppSettings,
 ) -> ManagedKanbanRepositoryPort:
-    if settings.repository_backend == "sqlite":
-        return SQLiteKanbanRepository(settings.sqlite_path)
-    if settings.repository_backend == "postgresql":
-        return SQLModelKanbanRepository(settings.postgresql_dsn, create_schema=False)
-    return InMemoryKanbanRepository()
+    return SQLModelKanbanRepository(settings.postgresql_dsn, create_schema=False)
 
 
 def create_runtime_repositories(settings: AppSettings) -> RuntimeRepositories:
@@ -95,14 +86,4 @@ def _create_sql_runtime_dependencies(
 
 def compose_runtime_dependencies(settings: AppSettings) -> RuntimeDependencies:
     repositories = create_runtime_repositories(settings)
-    repository = repositories.kanban
-    if settings.repository_backend == "inmemory":
-        return RuntimeDependencies(
-            repositories=repositories,
-            uow_factory=lambda: InMemoryUnitOfWork(repository),
-            readiness_probe=repository,
-            id_gen=UUIDIdGenerator(),
-            clock=SystemClock(),
-            shutdown=repository.close,
-        )
     return _create_sql_runtime_dependencies(repositories)

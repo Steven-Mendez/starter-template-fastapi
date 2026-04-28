@@ -20,7 +20,6 @@ from src.application.ports import (
 )
 from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.application.shared.readiness import ReadinessProbe
-from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.lifecycle import ClosableResource
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 
@@ -484,7 +483,7 @@ def test_persistence_adapters_match_repository_port_surface() -> None:
     )
 
     diagnostics: list[str] = []
-    for adapter in (InMemoryKanbanRepository, SQLModelKanbanRepository):
+    for adapter in (SQLModelKanbanRepository,):
         adapter_methods = {
             method_name
             for method_name, attr in adapter.__dict__.items()

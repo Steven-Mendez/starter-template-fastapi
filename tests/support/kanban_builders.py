@@ -32,6 +32,8 @@ from src.domain.kanban.models import (
 )
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result, expect_ok
+from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
+from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork
 from tests.support.fakes import FakeClock, FakeIdGenerator
 
 type JsonDict = dict[str, Any]
@@ -138,6 +140,7 @@ class StoreBuilder:
 
 @dataclass(slots=True)
 class HandlerHarness:
+    repository: SQLModelKanbanRepository
     commands: KanbanCommandHandlers
     queries: KanbanQueryHandlers
 
@@ -147,21 +150,20 @@ class HandlerHarness:
         )
 
     @classmethod
-    def build_default(cls) -> HandlerHarness:
-        from src.infrastructure.persistence.in_memory_repository import (
-            InMemoryKanbanRepository,
-        )
-        from src.infrastructure.persistence.in_memory_uow import InMemoryUnitOfWork
-
-        repository = InMemoryKanbanRepository()
+    def build_default(cls, database_url: str) -> HandlerHarness:
+        repository = SQLModelKanbanRepository(database_url)
         return cls(
+            repository=repository,
             commands=KanbanCommandHandlers(
-                uow=InMemoryUnitOfWork(repository),
+                uow=SqlModelUnitOfWork(repository.engine),
                 id_gen=FakeIdGenerator(),
                 clock=FakeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
             ),
             queries=KanbanQueryHandlers(repository=repository, readiness=repository),
         )
+
+    def close(self) -> None:
+        self.repository.close()
 
     def column(self, board_id: str, title: str = "Todo") -> AppColumn:
         return _expect_app_ok(

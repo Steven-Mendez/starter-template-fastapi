@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.application.shared import AppErr, ApplicationError, AppOk, AppResult, UnitOfWork
+from src.application.ports.unit_of_work_port import UnitOfWorkPort
+from src.application.shared import AppErr, ApplicationError, AppOk, AppResult
 from src.application.shared.errors import from_domain_error
 from src.domain.shared.result import Err
 
@@ -14,7 +15,7 @@ class DeleteColumnCommand:
 
 def handle_delete_column(
     *,
-    uow: UnitOfWork,
+    uow: UnitOfWorkPort,
     command: DeleteColumnCommand,
 ) -> AppResult[None, ApplicationError]:
     with uow:

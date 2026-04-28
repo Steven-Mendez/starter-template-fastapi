@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable, Generator
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Protocol
 
 import pytest
@@ -13,9 +12,8 @@ from src.application.shared.readiness import ReadinessProbe
 from src.domain.kanban.models import Board, Card, CardPriority, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
-from src.infrastructure.persistence.in_memory_repository import InMemoryKanbanRepository
 from src.infrastructure.persistence.lifecycle import ClosableResource
-from src.infrastructure.persistence.sqlmodel_repository import SQLiteKanbanRepository
+from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 
 pytestmark = pytest.mark.unit
 
@@ -112,30 +110,18 @@ def _append_card(
     return Ok(card)
 
 
-@pytest.fixture(params=["inmemory", "sqlite"])
+@pytest.fixture
 def repository_factory(
-    request: pytest.FixtureRequest, tmp_path: Path
+    postgresql_dsn: str,
 ) -> Generator[Callable[[], RepositoryContract], None, None]:
     created_repositories: list[RepositoryContract] = []
 
-    if request.param == "inmemory":
-
-        def make_inmemory() -> RepositoryContract:
-            repository = InMemoryKanbanRepository()
-            created_repositories.append(repository)
-            return repository
-
-        yield make_inmemory
-        return
-
-    db_path = tmp_path / "kanban-contract.sqlite3"
-
-    def make_sqlite() -> RepositoryContract:
-        repository = SQLiteKanbanRepository(str(db_path))
+    def make_postgresql() -> RepositoryContract:
+        repository = SQLModelKanbanRepository(postgresql_dsn)
         created_repositories.append(repository)
         return repository
 
-    yield make_sqlite
+    yield make_postgresql
 
     for repository in created_repositories:
         close = getattr(repository, "close", None)
@@ -286,50 +272,36 @@ def test_repository_contract_persists_saved_card_field_updates(
     assert updated.due_at == datetime(2031, 2, 2, 0, 0, tzinfo=timezone.utc)
 
 
-def test_sqlite_repository_persists_data_across_instances(tmp_path: Path) -> None:
-    db_path = tmp_path / "kanban-persist.sqlite3"
-    first = SQLiteKanbanRepository(str(db_path))
+def test_repository_persists_data_across_instances(postgresql_dsn: str) -> None:
+    first = SQLModelKanbanRepository(postgresql_dsn)
     created = _new_board("Persistent")
     first.save(created)
-    second = SQLiteKanbanRepository(str(db_path))
+    second = SQLModelKanbanRepository(postgresql_dsn)
     boards = second.list_all()
     assert any(board.id == created.id for board in boards)
     first.close()
     second.close()
 
 
-def test_repository_implementations_conform_to_protocol(tmp_path: Path) -> None:
-    sqlite_repo = SQLiteKanbanRepository(str(tmp_path / "repo-protocol.sqlite3"))
-    in_memory_repo = InMemoryKanbanRepository()
+def test_repository_implementations_conform_to_protocol(postgresql_dsn: str) -> None:
+    repository = SQLModelKanbanRepository(postgresql_dsn)
 
-    typed_sqlite: RepositoryContract = sqlite_repo
-    typed_in_memory: RepositoryContract = in_memory_repo
+    typed_repository: RepositoryContract = repository
 
-    created_sqlite = _new_board("contract-sqlite")
-    typed_sqlite.save(created_sqlite)
-    assert created_sqlite.id
-    assert any(board.id == created_sqlite.id for board in typed_sqlite.list_all())
+    created = _new_board("contract-postgresql")
+    typed_repository.save(created)
+    assert created.id
+    assert any(board.id == created.id for board in typed_repository.list_all())
 
-    created_inmemory = _new_board("contract")
-    typed_in_memory.save(created_inmemory)
-    assert created_inmemory.id
-    assert any(
-        board.id == created_inmemory.id for board in typed_in_memory.list_all()
-    )
+    probe: ReadinessProbe = repository
+    assert probe.is_ready() is True
 
-    sqlite_probe: ReadinessProbe = sqlite_repo
-    in_memory_probe: ReadinessProbe = in_memory_repo
-    assert sqlite_probe.is_ready() is True
-    assert in_memory_probe.is_ready() is True
-
-    sqlite_lifecycle: ClosableResource = sqlite_repo
-    in_memory_lifecycle: ClosableResource = in_memory_repo
-    sqlite_lifecycle.close()
-    in_memory_lifecycle.close()
+    lifecycle: ClosableResource = repository
+    lifecycle.close()
 
 
-def test_sqlite_repository_close_is_idempotent(tmp_path: Path) -> None:
-    repository = SQLiteKanbanRepository(str(tmp_path / "close-idempotent.sqlite3"))
+def test_repository_close_is_idempotent(postgresql_dsn: str) -> None:
+    repository = SQLModelKanbanRepository(postgresql_dsn)
     lifecycle: ClosableResource = repository
     probe: ReadinessProbe = repository
     lifecycle.close()
@@ -337,10 +309,8 @@ def test_sqlite_repository_close_is_idempotent(tmp_path: Path) -> None:
     assert probe.is_ready() is False
 
 
-def test_sqlite_repository_context_manager_closes_connection(tmp_path: Path) -> None:
-    with SQLiteKanbanRepository(
-        str(tmp_path / "context-manager.sqlite3")
-    ) as repository:
+def test_repository_context_manager_closes_connection(postgresql_dsn: str) -> None:
+    with SQLModelKanbanRepository(postgresql_dsn) as repository:
         board = _new_board("ctx")
         repository.save(board)
         assert board.id

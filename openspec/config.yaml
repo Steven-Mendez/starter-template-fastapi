@@ -6,7 +6,7 @@ context: |
   Language: Python 3.14
   Framework: FastAPI (inbound adapter only — not the application)
   ORM: SQLModel / SQLAlchemy (infrastructure only)
-  Database backends: PostgreSQL (primary), SQLite (dev/test), in-memory (tests)
+  Database backend: PostgreSQL
   Migrations: Alembic
   Settings: pydantic-settings with APP_ prefix
   Package manager: uv (lockfile: uv.lock)

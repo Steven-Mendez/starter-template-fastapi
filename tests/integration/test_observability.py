@@ -18,7 +18,7 @@ def test_health_reports_persistence_readiness(api_client: TestClient) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["persistence"]["backend"] in {"inmemory", "sqlite"}
+    assert payload["persistence"]["backend"] == "postgresql"
     assert payload["persistence"]["ready"] is True
 
 
@@ -39,9 +39,14 @@ def test_request_logging_emits_structured_fields(
 
 
 def test_unhandled_exception_logging_emits_structured_fields(
+    postgresql_dsn: str,
     caplog: LogCaptureFixture,
 ) -> None:
-    app = create_app(AppSettings(repository_backend="inmemory"))
+    app = create_app(
+        AppSettings(
+            postgresql_dsn=postgresql_dsn,
+        )
+    )
 
     @app.get("/explode")
     def explode() -> dict[str, str]:

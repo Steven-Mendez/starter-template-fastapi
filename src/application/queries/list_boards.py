@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from src.application.contracts import AppBoardSummary
 from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
-from src.application.shared import AppOk, ApplicationError, AppResult
+from src.application.shared import ApplicationError, AppOk, AppResult
 
 
 @dataclass(frozen=True, slots=True)
