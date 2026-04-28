@@ -1,72 +1,20 @@
 schema: spec-driven
 
-context: |
-  Project: starter-template-fastapi
-  Domain: Kanban board management (boards, columns, cards with priorities and due dates)
-  Language: Python 3.14
-  Framework: FastAPI (inbound adapter only — not the application)
-  ORM: SQLModel / SQLAlchemy (infrastructure only)
-  Database backend: PostgreSQL
-  Migrations: Alembic
-  Settings: pydantic-settings with APP_ prefix
-  Package manager: uv (lockfile: uv.lock)
-  Test runner: pytest with markers: unit, integration, e2e
-  Linter: ruff
-  Type checker: mypy (strict)
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
 
-  Architecture: Hexagonal Architecture (Ports and Adapters)
-  Dependency direction: api → application → domain; infrastructure → application/domain
-  Pattern: CQRS — commands in src/application/commands/, queries in src/application/queries/
-  Error handling: Result type (Ok/Err) for domain fallibles; AppResult (AppOk/AppErr) for application fallibles
-  Persistence: aggregate-level repository pattern; UnitOfWork for transaction boundary
-  ID generation: IdGenerator port (application layer) — UUIDIdGenerator in infrastructure
-  Time: Clock port (application layer) — SystemClock in infrastructure
-  Boundary enforcement: AST-based import check in tests/unit/test_hexagonal_boundaries.py
-
-  Aggregate root: Board (contains Column entities, which contain Card entities)
-  Domain entities: Board, Column, Card
-  Domain value objects: CardPriority (StrEnum: low/medium/high)
-  Domain errors: KanbanError (StrEnum with detail property)
-  Application errors: ApplicationError (mirrors KanbanError for inbound adapters)
-  Application contracts: AppBoard, AppBoardSummary, AppColumn, AppCard, AppCardPriority
-
-  Conventions:
-  - Use dataclasses (not Pydantic) for domain entities and application commands/contracts
-  - Use Protocol (structural subtyping) for all ports
-  - Use from __future__ import annotations in all files
-  - Use slots=True on dataclasses where possible
-  - Use StrEnum for domain and application error/priority enums
-  - Commands are frozen dataclasses; queries are also frozen dataclasses
-  - Async is not used — all handlers and repositories are synchronous
-  - ID fields are str (not UUID) throughout the domain and application layers
-  - API path parameters use UUID type for automatic Pydantic validation
-
-  Current refactor in progress: 10 OpenSpec changes to close gaps between
-  current implementation and intended Hexagonal Architecture. See openspec/changes/.
-  Key changes: relocate repository ports from domain to application layer,
-  replace business-operation repository methods with aggregate persistence primitives,
-  add IdGenerator/Clock ports, remove BoardSummary from domain, fix test coupling.
-
-rules:
-  proposal:
-    - Always include problem statement, rationale, scope, out-of-scope, affected modules, acceptance criteria, migration strategy, and risks.
-    - State dependencies on other changes explicitly with change IDs.
-    - Use the actual file paths from the project (src/, tests/, openspec/).
-    - Breaking changes are acceptable — this project is not in production.
-
-  tasks:
-    - Sequence tasks in safe execution order.
-    - Each task must be independently verifiable (a shell command or test assertion).
-    - Reference the design.md ADR number when a task implements an architectural decision.
-    - Flag tasks that must be co-applied with other changes in the same commit.
-
-  design:
-    - Document architectural decisions as numbered ADRs (ADR-N: title, decision, rationale, alternatives considered).
-    - Include concrete pseudocode for revised interfaces, not just descriptions.
-    - Explicitly state dependency direction between components.
-
-  spec:
-    - Every requirement must have ADDED, MODIFIED, or REMOVED prefix.
-    - Every requirement must have at least one concrete Scenario with Given/When/Then.
-    - Every scenario must be verifiable by a test, a static check, or an import inspection.
-    - Avoid vague wording like "should be improved" — state the exact measurable outcome.
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
