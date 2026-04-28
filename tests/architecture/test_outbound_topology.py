@@ -9,7 +9,7 @@ MARKER = pytest.mark.architecture
 
 @MARKER
 def test_no_legacy_outbound_roots_under_infrastructure() -> None:
-    """fastapi-hexagonal-architecture: outbound adapters stay under
+    """hexagonal-architecture-conformance: outbound adapters stay under
     adapters/outbound.
     """
     infra_root = Path(__file__).resolve().parents[2] / "src" / "infrastructure"
@@ -21,7 +21,7 @@ def test_no_legacy_outbound_roots_under_infrastructure() -> None:
         if child.is_dir() and not child.name.startswith("__")
     }
     assert direct_children.isdisjoint(banned_roots), (
-        "fastapi-hexagonal-architecture: "
+        "hexagonal-architecture-conformance: "
         "legacy outbound roots found directly under src/infrastructure; "
         "move them under src/infrastructure/adapters/outbound/<concern>"
     )

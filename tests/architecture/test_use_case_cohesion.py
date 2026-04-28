@@ -27,16 +27,16 @@ def _constructor_annotation_name(annotation: ast.expr | None) -> str:
 
 @MARKER
 def test_use_case_modules_are_cohesive() -> None:
-    """fastapi-hexagonal-architecture: check-use-case-cohesion."""
+    """hexagonal-architecture-conformance: check-use-case-cohesion."""
     for path in iter_python_modules("src.application.use_cases"):
         tree = parse_module_ast(path)
         classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
         assert len(classes) == 1, (
-            f"fastapi-hexagonal-architecture: {path} must define exactly one class"
+            f"hexagonal-architecture-conformance: {path} must define exactly one class"
         )
         cls = classes[0]
         assert cls.name.endswith("UseCase"), (
-            "fastapi-hexagonal-architecture: "
+            "hexagonal-architecture-conformance: "
             f"{path} class {cls.name} must end with UseCase"
         )
 
@@ -46,7 +46,7 @@ def test_use_case_modules_are_cohesive() -> None:
             if isinstance(fn, ast.FunctionDef) and not fn.name.startswith("_")
         ]
         assert len(public_methods) == 1 and public_methods[0].name == "execute", (
-            "fastapi-hexagonal-architecture: "
+            "hexagonal-architecture-conformance: "
             f"{path} class {cls.name} must expose only execute as public method"
         )
 
@@ -61,7 +61,7 @@ def test_use_case_modules_are_cohesive() -> None:
         for arg in init_fn.args.args[1:]:
             symbol = _constructor_annotation_name(arg.annotation)
             assert symbol.endswith("Port") or symbol.endswith("UseCase"), (
-                "fastapi-hexagonal-architecture: "
+                "hexagonal-architecture-conformance: "
                 f"{path} constructor dependency {arg.arg} must be typed as "
                 "*Port or *UseCase"
             )

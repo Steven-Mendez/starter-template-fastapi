@@ -11,7 +11,10 @@ MARKER = pytest.mark.architecture
 
 @MARKER
 def test_domain_has_no_outward_or_framework_imports() -> None:
-    """fastapi-hexagonal-architecture: Domain models should not depend on frameworks."""
+    (
+        """hexagonal-architecture-conformance: """
+        """Domain models should not depend on frameworks."""
+    )
     forbidden_prefixes = (
         "src.application",
         "src.api",
@@ -29,19 +32,19 @@ def test_domain_has_no_outward_or_framework_imports() -> None:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith(forbidden_prefixes), (
-                        "fastapi-hexagonal-architecture: "
+                        "hexagonal-architecture-conformance: "
                         f"domain purity violated in {path}: import {alias.name}"
                     )
             if isinstance(node, ast.ImportFrom) and node.module:
                 assert not node.module.startswith(forbidden_prefixes), (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"domain purity violated in {path}: from {node.module} import ..."
                 )
 
 
 @MARKER
 def test_application_has_no_transport_or_infrastructure_imports() -> None:
-    """fastapi-hexagonal-architecture: Application layer must stay
+    """hexagonal-architecture-conformance: Application layer must stay
     framework-agnostic.
     """
     forbidden_prefixes = (
@@ -59,12 +62,12 @@ def test_application_has_no_transport_or_infrastructure_imports() -> None:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith(forbidden_prefixes), (
-                        "fastapi-hexagonal-architecture: "
+                        "hexagonal-architecture-conformance: "
                         f"application purity violated in {path}: import {alias.name}"
                     )
             if isinstance(node, ast.ImportFrom) and node.module:
                 assert not node.module.startswith(forbidden_prefixes), (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     "application purity violated in "
                     f"{path}: from {node.module} import ..."
                 )

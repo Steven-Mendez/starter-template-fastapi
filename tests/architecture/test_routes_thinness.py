@@ -17,7 +17,7 @@ def _is_route_decorator(decorator: ast.expr) -> bool:
 
 @MARKER
 def test_route_handlers_call_exactly_one_use_case() -> None:
-    """fastapi-hexagonal-architecture: Routes stay thin by invoking one use case."""
+    """hexagonal-architecture-conformance: Routes stay thin by invoking one use case."""
     for path in iter_python_modules("src.api.routers"):
         if path.name == "root.py":
             continue
@@ -35,7 +35,7 @@ def test_route_handlers_call_exactly_one_use_case() -> None:
                     if child.func.attr == "execute":
                         use_case_calls += 1
             assert use_case_calls == 1, (
-                "fastapi-hexagonal-architecture: "
+                "hexagonal-architecture-conformance: "
                 f"route {node.name} in {path} must call exactly one "
                 "*UseCase.execute(...)"
             )
@@ -43,7 +43,7 @@ def test_route_handlers_call_exactly_one_use_case() -> None:
 
 @MARKER
 def test_routes_do_not_import_infrastructure() -> None:
-    """fastapi-hexagonal-architecture: Routes must not import infrastructure
+    """hexagonal-architecture-conformance: Routes must not import infrastructure
     directly.
     """
     for path in iter_python_modules("src.api.routers"):
@@ -52,11 +52,11 @@ def test_routes_do_not_import_infrastructure() -> None:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith("src.infrastructure"), (
-                        "fastapi-hexagonal-architecture: "
+                        "hexagonal-architecture-conformance: "
                         f"route module {path} imports forbidden module {alias.name}"
                     )
             if isinstance(node, ast.ImportFrom) and node.module:
                 assert not node.module.startswith("src.infrastructure"), (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"route module {path} imports forbidden module {node.module}"
                 )

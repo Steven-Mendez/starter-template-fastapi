@@ -11,20 +11,23 @@ MARKER = pytest.mark.architecture
 
 @MARKER
 def test_port_protocol_names_end_with_port() -> None:
-    """fastapi-hexagonal-architecture: Port names should communicate boundary role."""
+    (
+        """hexagonal-architecture-conformance: """
+        """Port names should communicate boundary role."""
+    )
     for path in iter_python_modules("src.application.ports"):
         tree = parse_module_ast(path)
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
                 assert node.name.endswith("Port"), (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"port class {node.name} in {path} must end with 'Port'"
                 )
 
 
 @MARKER
 def test_outbound_adapter_names_match_conventions() -> None:
-    """fastapi-hexagonal-architecture: Adapter names should communicate
+    """hexagonal-architecture-conformance: Adapter names should communicate
     implementation role.
     """
     allowed_suffixes = (
@@ -49,6 +52,6 @@ def test_outbound_adapter_names_match_conventions() -> None:
                 if node.name.endswith("Error"):
                     continue
                 assert node.name.endswith(allowed_suffixes), (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"adapter class {node.name} in {path} has invalid suffix"
                 )

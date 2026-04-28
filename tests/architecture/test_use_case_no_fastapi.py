@@ -11,7 +11,7 @@ MARKER = pytest.mark.architecture
 
 @MARKER
 def test_use_cases_do_not_import_frameworks_or_infra() -> None:
-    """fastapi-hexagonal-architecture: check-use-case-no-fastapi."""
+    """hexagonal-architecture-conformance: check-use-case-no-fastapi."""
     forbidden_prefixes = (
         "fastapi",
         "starlette",
@@ -26,11 +26,11 @@ def test_use_cases_do_not_import_frameworks_or_infra() -> None:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith(forbidden_prefixes), (
-                        "fastapi-hexagonal-architecture: "
+                        "hexagonal-architecture-conformance: "
                         f"use-case purity violated in {path}: import {alias.name}"
                     )
             if isinstance(node, ast.ImportFrom) and node.module:
                 assert not node.module.startswith(forbidden_prefixes), (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"use-case purity violated in {path}: from {node.module} import ..."
                 )

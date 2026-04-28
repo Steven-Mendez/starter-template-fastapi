@@ -17,7 +17,7 @@ FORBIDDEN_SYMBOLS = {
 
 @MARKER
 def test_no_protocol_aggregates_handle_methods() -> None:
-    """fastapi-hexagonal-architecture: check-no-aggregator-ports."""
+    """hexagonal-architecture-conformance: check-no-aggregator-ports."""
     for path in iter_python_modules("src.application"):
         tree = parse_module_ast(path)
         for node in tree.body:
@@ -39,25 +39,25 @@ def test_no_protocol_aggregates_handle_methods() -> None:
                     if len(parts) >= 3:
                         nouns.add(parts[2])
             assert len(nouns) < 2, (
-                "fastapi-hexagonal-architecture: "
+                "hexagonal-architecture-conformance: "
                 f"protocol {node.name} in {path} aggregates multiple handle_* nouns"
             )
 
 
 @MARKER
 def test_forbidden_aggregator_symbols_absent() -> None:
-    """fastapi-hexagonal-architecture: check-no-aggregator-symbols."""
+    """hexagonal-architecture-conformance: check-no-aggregator-symbols."""
     for path in iter_python_modules("src.application"):
         tree = parse_module_ast(path)
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
                 assert node.name not in FORBIDDEN_SYMBOLS, (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"forbidden symbol {node.name} declared in {path}"
                 )
             if isinstance(node, ast.ImportFrom):
                 for alias in node.names:
                     assert alias.name not in FORBIDDEN_SYMBOLS, (
-                        "fastapi-hexagonal-architecture: "
+                        "hexagonal-architecture-conformance: "
                         f"forbidden symbol {alias.name} imported in {path}"
                     )

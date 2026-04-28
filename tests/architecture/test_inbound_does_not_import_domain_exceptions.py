@@ -18,7 +18,10 @@ def _domain_exception_names() -> set[str]:
 
 @MARKER
 def test_api_does_not_import_domain_exceptions() -> None:
-    """fastapi-hexagonal-architecture: check-inbound-not-import-domain-exceptions."""
+    (
+        """hexagonal-architecture-conformance: """
+        """check-inbound-not-import-domain-exceptions."""
+    )
     exception_names = _domain_exception_names()
     for path in iter_python_modules("src.api"):
         tree = parse_module_ast(path)
@@ -29,6 +32,6 @@ def test_api_does_not_import_domain_exceptions() -> None:
                 imported_names = {alias.name for alias in node.names}
                 has_exception_name = bool(imported_names & exception_names)
                 assert not (from_domain_exceptions or has_exception_name), (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"api module {path} imports domain exception symbols"
                 )

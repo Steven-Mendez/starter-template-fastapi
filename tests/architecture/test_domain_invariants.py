@@ -29,7 +29,7 @@ def _annotation_mentions_error_union(annotation: ast.AST) -> bool:
 
 @MARKER
 def test_domain_methods_do_not_return_error_unions() -> None:
-    """fastapi-hexagonal-architecture: Domain rule violations belong to typed domain
+    """hexagonal-architecture-conformance: Domain rule violations belong to typed domain
     exceptions, not return unions.
     """
     for path in iter_python_modules("src.domain.kanban.models"):
@@ -37,14 +37,14 @@ def test_domain_methods_do_not_return_error_unions() -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.returns is not None:
                 assert not _annotation_mentions_error_union(node.returns), (
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"domain invariant return type violated in {path}:{node.lineno}"
                 )
 
 
 @MARKER
 def test_domain_exception_subclasses_have_translator_entries() -> None:
-    """fastapi-hexagonal-architecture: Domain exception hierarchy must map at the
+    """hexagonal-architecture-conformance: Domain exception hierarchy must map at the
     application translation boundary.
     """
     exceptions_path = next(iter_python_modules("src.domain.kanban"))
@@ -86,7 +86,7 @@ def test_domain_exception_subclasses_have_translator_entries() -> None:
 
     missing = sorted(domain_exception_names - mapped_exception_names)
     assert not missing, (
-        "fastapi-hexagonal-architecture: "
+        "hexagonal-architecture-conformance: "
         "missing domain exception translator entries in "
         "src/application/shared/errors.py "
         f"for {', '.join(missing)}"

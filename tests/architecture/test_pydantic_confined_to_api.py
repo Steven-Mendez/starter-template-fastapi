@@ -25,7 +25,7 @@ def _inherits_pydantic_model(node: ast.ClassDef) -> bool:
 
 @MARKER
 def test_pydantic_models_confined_to_api_layer() -> None:
-    """fastapi-hexagonal-architecture: check-pydantic-confined-to-api."""
+    """hexagonal-architecture-conformance: check-pydantic-confined-to-api."""
     root = Path(__file__).resolve().parents[2] / "src"
     for path in _all_python_files(root):
         rel = path.relative_to(root)
@@ -35,7 +35,7 @@ def test_pydantic_models_confined_to_api_layer() -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and _inherits_pydantic_model(node):
                 raise AssertionError(
-                    "fastapi-hexagonal-architecture: "
+                    "hexagonal-architecture-conformance: "
                     f"pydantic model {node.name} must be confined "
                     f"to src/api, found in {path}"
                 )
