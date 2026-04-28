@@ -22,12 +22,30 @@ class PatchCardCommand:
     due_at: datetime | None = None
     clear_due_at: bool = False
 
+    def has_changes(self) -> bool:
+        if self.clear_due_at:
+            return True
+        return any(
+            value is not None
+            for value in (
+                self.title,
+                self.description,
+                self.column_id,
+                self.position,
+                self.priority,
+                self.due_at,
+            )
+        )
+
 
 def handle_patch_card(
     *,
     uow: UnitOfWorkPort,
     command: PatchCardCommand,
 ) -> AppResult[AppCard, ApplicationError]:
+    if not command.has_changes():
+        return AppErr(ApplicationError.PATCH_NO_CHANGES)
+
     with uow:
         board_id = uow.kanban.find_board_id_by_card(command.card_id)
         if not board_id:
@@ -39,14 +57,7 @@ def handle_patch_card(
         board = board_result.value
 
         if command.column_id is not None or command.position is not None:
-            source_col = next(
-                (
-                    c
-                    for c in board.columns
-                    if any(ca.id == command.card_id for ca in c.cards)
-                ),
-                None,
-            )
+            source_col = board.find_column_containing_card(command.card_id)
             if source_col:
                 if command.column_id is not None:
                     target_col_id = command.column_id
@@ -61,20 +72,19 @@ def handle_patch_card(
                 if err:
                     return AppErr(from_domain_error(err))
 
-        updated_card = None
-        for col in board.columns:
-            for card in col.cards:
-                if card.id == command.card_id:
-                    if command.title is not None:
-                        card.title = command.title
-                    if command.description is not None:
-                        card.description = command.description
-                    if command.priority is not None:
-                        card.priority = to_domain_priority(command.priority)
-                    if command.clear_due_at or command.due_at is not None:
-                        card.due_at = command.due_at
-                    updated_card = card
-                    break
+        updated_card = board.get_card(command.card_id)
+        if updated_card is not None:
+            updated_card.apply_patch(
+                title=command.title,
+                description=command.description,
+                priority=(
+                    to_domain_priority(command.priority)
+                    if command.priority is not None
+                    else None
+                ),
+                due_at=command.due_at,
+                clear_due_at=command.clear_due_at,
+            )
 
         if not updated_card:
             return AppErr(ApplicationError.CARD_NOT_FOUND)

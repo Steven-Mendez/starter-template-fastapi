@@ -198,16 +198,39 @@ def test_patch_without_fields_returns_422(
     api_kanban: ApiBuilder,
 ) -> None:
     board_id = api_kanban.board_id("x")
-    assert api_client.patch(f"/api/boards/{board_id}", json={}).status_code == 422
+    board_patch = api_client.patch(f"/api/boards/{board_id}", json={})
+    assert board_patch.status_code == 422
+    assert board_patch.json()["detail"] == "At least one field must be provided"
 
     col_id = api_kanban.column_id(board_id, "c")
     card_id = api_kanban.card_id(col_id, "t")
-    assert api_client.patch(f"/api/cards/{card_id}", json={}).status_code == 422
+    card_patch = api_client.patch(f"/api/cards/{card_id}", json={})
+    assert card_patch.status_code == 422
+    assert card_patch.json()["detail"] == "At least one field must be provided"
 
 
 def test_unknown_board_or_card_returns_not_found(api_client: TestClient) -> None:
     assert api_client.get(f"/api/boards/{_UNKNOWN_BOARD_ID}").status_code == 404
     assert api_client.get(f"/api/cards/{_UNKNOWN_CARD_ID}").status_code == 404
+
+
+def test_get_card_returns_card_detail(
+    api_client: TestClient,
+    api_kanban: ApiBuilder,
+) -> None:
+    board_id = api_kanban.board_id("cards")
+    column_id = api_kanban.column_id(board_id, "Todo")
+    created_card = api_kanban.card(column_id, "Read me", "notes", priority="high")
+    card_id = require_str(created_card, "id")
+
+    response = api_client.get(f"/api/cards/{card_id}")
+    assert response.status_code == 200
+    payload = cast(JsonDict, response.json())
+    assert require_str(payload, "id") == card_id
+    assert require_str(payload, "column_id") == column_id
+    assert require_str(payload, "title") == "Read me"
+    assert payload["description"] == "notes"
+    assert payload["priority"] == "high"
 
 
 def test_empty_board_title_is_rejected(api_client: TestClient) -> None:

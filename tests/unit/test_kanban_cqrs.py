@@ -27,6 +27,17 @@ def test_query_handlers_only_expose_reads(handler_harness: HandlerHarness) -> No
     assert not hasattr(queries, "handle_patch_card")
 
 
+def test_query_repository_view_hides_write_methods(
+    handler_harness: HandlerHarness,
+) -> None:
+    repository = handler_harness.queries.repository
+    assert hasattr(repository, "list_all")
+    assert hasattr(repository, "find_by_id")
+    assert not hasattr(repository, "save")
+    assert not hasattr(repository, "remove")
+    assert not hasattr(repository, "find_board_id_by_column")
+
+
 def test_router_use_case_can_be_done_with_split_handlers(
     handler_harness: HandlerHarness,
 ) -> None:

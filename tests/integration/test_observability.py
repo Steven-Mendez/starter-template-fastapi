@@ -8,6 +8,7 @@ from _pytest.logging import LogCaptureFixture
 from fastapi.testclient import TestClient
 
 from main import create_app
+from src.api.dependencies import get_kanban_query_handlers
 from src.config.settings import AppSettings
 
 pytestmark = pytest.mark.integration
@@ -20,6 +21,34 @@ def test_health_reports_persistence_readiness(api_client: TestClient) -> None:
     assert payload["status"] == "ok"
     assert payload["persistence"]["backend"] == "postgresql"
     assert payload["persistence"]["ready"] is True
+
+
+def test_health_backend_label_comes_from_app_settings(
+    postgresql_dsn: str,
+) -> None:
+    app = create_app(
+        AppSettings(
+            postgresql_dsn=postgresql_dsn,
+            health_persistence_backend="primary-db",
+        )
+    )
+
+    class _DegradedHealthQueries:
+        def handle_health_check(self, query: object) -> bool:
+            del query
+            return False
+
+    app.dependency_overrides[get_kanban_query_handlers] = lambda: (
+        _DegradedHealthQueries()
+    )
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["persistence"]["backend"] == "primary-db"
+    assert payload["persistence"]["ready"] is False
 
 
 def test_request_logging_emits_structured_fields(

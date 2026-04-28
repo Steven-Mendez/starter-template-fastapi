@@ -44,23 +44,6 @@ def to_patch_card_input(body: CardUpdate) -> PatchCardInput:
     }
 
 
-def has_patch_card_changes(input_data: PatchCardInput) -> bool:
-    if input_data["clear_due_at"]:
-        return True
-
-    return any(
-        value is not None
-        for value in (
-            input_data["title"],
-            input_data["description"],
-            input_data["column_id"],
-            input_data["position"],
-            input_data["priority"],
-            input_data["due_at"],
-        )
-    )
-
-
 def to_card_response(value: AppCard) -> CardRead:
     return CardRead(
         id=value.id,

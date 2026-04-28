@@ -12,7 +12,10 @@ from src.domain.shared.result import Err
 @dataclass(frozen=True, slots=True)
 class PatchBoardCommand:
     board_id: str
-    title: str
+    title: str | None = None
+
+    def has_changes(self) -> bool:
+        return self.title is not None
 
 
 def handle_patch_board(
@@ -20,12 +23,16 @@ def handle_patch_board(
     uow: UnitOfWorkPort,
     command: PatchBoardCommand,
 ) -> AppResult[AppBoardSummary, ApplicationError]:
+    if not command.has_changes():
+        return AppErr(ApplicationError.PATCH_NO_CHANGES)
+
     with uow:
         result = uow.kanban.find_by_id(command.board_id)
         if isinstance(result, Err):
             return AppErr(from_domain_error(result.error))
         board = result.value
-        board.title = command.title
+        if command.title is not None:
+            board.rename(command.title)
         uow.kanban.save(board)
         uow.commit()
         return AppOk(

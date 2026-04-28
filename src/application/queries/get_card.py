@@ -20,16 +20,7 @@ def handle_get_card(
     repository: KanbanQueryRepositoryPort,
     query: GetCardQuery,
 ) -> AppResult[AppCard, ApplicationError]:
-    board_id = repository.find_board_id_by_card(query.card_id)
-    if board_id is None:
-        return AppErr(ApplicationError.CARD_NOT_FOUND)
-
-    board_result = repository.find_by_id(board_id)
-    if isinstance(board_result, Err):
-        return AppErr(from_domain_error(board_result.error))
-
-    for column in board_result.value.columns:
-        for card in column.cards:
-            if card.id == query.card_id:
-                return AppOk(to_app_card(card))
-    return AppErr(ApplicationError.CARD_NOT_FOUND)
+    card_result = repository.find_card_by_id(query.card_id)
+    if isinstance(card_result, Err):
+        return AppErr(from_domain_error(card_result.error))
+    return AppOk(to_app_card(card_result.value))

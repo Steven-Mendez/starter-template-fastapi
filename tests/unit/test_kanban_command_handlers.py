@@ -4,10 +4,16 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.application.commands import DeleteColumnCommand, PatchCardCommand
+from src.application.commands import (
+    CreateColumnCommand,
+    DeleteColumnCommand,
+    PatchBoardCommand,
+    PatchCardCommand,
+)
 from src.application.contracts import AppCardPriority
 from src.application.queries import GetBoardQuery
 from src.application.shared import AppErr, ApplicationError, AppOk
+from src.domain.kanban.models import Board, Card, Column
 from tests.support.kanban_builders import HandlerHarness
 
 pytestmark = pytest.mark.unit
@@ -25,6 +31,50 @@ def test_create_entities_use_fake_id_generator(handler_harness: HandlerHarness) 
     assert card.id == "00000000-0000-4000-8000-000000000003"
 
 
+def test_create_column_handler_uses_board_add_column_intent(
+    handler_harness: HandlerHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = handler_harness.board("One")
+    calls = {"count": 0}
+    original = Board.add_column
+
+    def tracked_add_column(self: Board, column: Column) -> None:
+        calls["count"] += 1
+        original(self, column)
+
+    monkeypatch.setattr(Board, "add_column", tracked_add_column)
+
+    created = handler_harness.commands.handle_create_column(
+        CreateColumnCommand(board_id=board.id, title="Todo")
+    )
+
+    assert isinstance(created, AppOk)
+    assert calls["count"] == 1
+
+
+def test_create_column_handler_uses_board_next_column_position_intent(
+    handler_harness: HandlerHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = handler_harness.board("One")
+    calls = {"count": 0}
+    original = Board.next_column_position
+
+    def tracked_next_position(self: Board) -> int:
+        calls["count"] += 1
+        return original(self)
+
+    monkeypatch.setattr(Board, "next_column_position", tracked_next_position)
+
+    created = handler_harness.commands.handle_create_column(
+        CreateColumnCommand(board_id=board.id, title="Todo")
+    )
+
+    assert isinstance(created, AppOk)
+    assert calls["count"] == 1
+
+
 def test_card_cannot_move_to_column_on_another_board(
     handler_harness: HandlerHarness,
 ) -> None:
@@ -40,6 +90,32 @@ def test_card_cannot_move_to_column_on_another_board(
 
     assert isinstance(result, AppErr)
     assert result.error is ApplicationError.INVALID_CARD_MOVE
+
+
+def test_patch_board_without_changes_returns_application_validation_error(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("One")
+
+    result = handler_harness.commands.handle_patch_board(
+        PatchBoardCommand(board_id=board.id)
+    )
+
+    assert isinstance(result, AppErr)
+    assert result.error is ApplicationError.PATCH_NO_CHANGES
+
+
+def test_patch_board_renames_board_via_command_handler(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("Before")
+
+    result = handler_harness.commands.handle_patch_board(
+        PatchBoardCommand(board_id=board.id, title="After")
+    )
+
+    assert isinstance(result, AppOk)
+    assert result.value.title == "After"
 
 
 def test_move_card_fails_when_target_column_does_not_exist(
@@ -136,6 +212,46 @@ def test_due_at_preserved_when_moving_between_columns(
     assert moved.value.due_at == due_at
 
 
+def test_patch_card_handler_uses_domain_card_lookup_intents(
+    handler_harness: HandlerHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = handler_harness.board("Lookup")
+    column = handler_harness.column(board.id, "A")
+    card = handler_harness.card(column.id, "task")
+
+    calls = {"find_column": 0, "get_card": 0}
+    original_find_column = Board.find_column_containing_card
+    original_get_card = Board.get_card
+
+    def tracked_find_column(self: Board, card_id: str) -> Column | None:
+        calls["find_column"] += 1
+        return original_find_column(self, card_id)
+
+    def tracked_get_card(self: Board, card_id: str) -> Card | None:
+        calls["get_card"] += 1
+        return original_get_card(self, card_id)
+
+    monkeypatch.setattr(Board, "find_column_containing_card", tracked_find_column)
+    monkeypatch.setattr(Board, "get_card", tracked_get_card)
+
+    patched = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, title="updated")
+    )
+
+    assert isinstance(patched, AppOk)
+    assert calls["find_column"] == 1
+    assert calls["get_card"] == 1
+
+    moved = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id, position=0)
+    )
+
+    assert isinstance(moved, AppOk)
+    assert calls["find_column"] == 3
+    assert calls["get_card"] == 2
+
+
 def test_patch_card_clear_due_at_when_clear_due_at_is_true(
     handler_harness: HandlerHarness,
 ) -> None:
@@ -150,6 +266,21 @@ def test_patch_card_clear_due_at_when_clear_due_at_is_true(
 
     assert isinstance(cleared, AppOk)
     assert cleared.value.due_at is None
+
+
+def test_patch_card_without_changes_returns_application_validation_error(
+    handler_harness: HandlerHarness,
+) -> None:
+    board = handler_harness.board("No-op")
+    column = handler_harness.column(board.id, "A")
+    card = handler_harness.card(column.id, "task")
+
+    patched = handler_harness.commands.handle_patch_card(
+        PatchCardCommand(card_id=card.id)
+    )
+
+    assert isinstance(patched, AppErr)
+    assert patched.error is ApplicationError.PATCH_NO_CHANGES
 
 
 def test_patch_card_keeps_due_at_when_updating_other_fields(

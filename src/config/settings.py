@@ -19,6 +19,8 @@ class AppSettings(BaseSettings):
     trusted_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     log_level: str = "INFO"
     postgresql_dsn: str = "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
+    health_persistence_backend: str = "postgresql"
+    write_api_key: str | None = None
 
 
 @lru_cache

@@ -95,4 +95,3 @@ All public methods of `Board` that contain business logic have at least one posi
 - Given: a `Board` with columns A and B; card "task" with priority HIGH in column A
 - When: `move_card("task", "col-A", "col-B", None)` is called
 - Then: column A has 0 cards; column B has 1 card with title "task" and priority HIGH
-

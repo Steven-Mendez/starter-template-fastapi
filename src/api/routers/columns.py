@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, status
 
-from src.api.dependencies import CommandHandlersDep
+from src.api.dependencies import CommandHandlersDep, WriteApiKeyDep
 from src.api.mappers.kanban import to_column_response, to_create_column_input
 from src.api.routers._errors import raise_http_from_application_error
 from src.api.schemas.kanban import ColumnCreate, ColumnRead
@@ -23,6 +23,7 @@ def create_column(
     board_id: UUID,
     body: ColumnCreate,
     commands: CommandHandlersDep,
+    _: WriteApiKeyDep,
 ) -> ColumnRead:
     match commands.handle_create_column(
         CreateColumnCommand(board_id=str(board_id), title=to_create_column_input(body))
@@ -37,6 +38,7 @@ def create_column(
 def delete_column(
     column_id: UUID,
     commands: CommandHandlersDep,
+    _: WriteApiKeyDep,
 ) -> None:
     match commands.handle_delete_column(DeleteColumnCommand(column_id=str(column_id))):
         case AppOk(_):

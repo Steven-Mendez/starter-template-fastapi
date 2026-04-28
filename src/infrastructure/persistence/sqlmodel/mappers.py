@@ -44,6 +44,7 @@ def board_table_to_domain(row: BoardTable, columns: list[Column]) -> Board:
         id=row.id,
         title=row.title,
         created_at=_ensure_utc(row.created_at),
+        version=row.version,
         columns=columns,
     )
 
@@ -81,5 +82,6 @@ def board_domain_to_table(board: Board) -> BoardTable:
     return BoardTable(
         id=board.id,
         title=board.title,
+        version=board.version if board.version > 0 else 1,
         created_at=board.created_at,
     )

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
-from src.api.dependencies import CommandHandlersDep, QueryHandlersDep
+from src.api.dependencies import CommandHandlersDep, QueryHandlersDep, WriteApiKeyDep
 from src.api.mappers.kanban import (
-    has_patch_card_changes,
     to_card_response,
     to_create_card_input,
     to_patch_card_input,
@@ -29,6 +28,7 @@ def create_card(
     column_id: UUID,
     body: CardCreate,
     commands: CommandHandlersDep,
+    _: WriteApiKeyDep,
 ) -> CardRead:
     title, description, priority, due_at = to_create_card_input(body)
     match commands.handle_create_card(
@@ -63,13 +63,9 @@ def patch_card(
     card_id: UUID,
     body: CardUpdate,
     commands: CommandHandlersDep,
+    _: WriteApiKeyDep,
 ) -> CardRead:
     input_data = to_patch_card_input(body)
-    if not has_patch_card_changes(input_data):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="At least one field must be provided",
-        )
     match commands.handle_patch_card(
         PatchCardCommand(
             card_id=str(card_id),

@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from src.application.commands import KanbanCommandHandlers, KanbanCommandInputPort
 from src.application.queries import KanbanQueryHandlers, KanbanQueryInputPort
 from src.config.settings import AppSettings
+from src.infrastructure.adapters.kanban_query_repository_view import (
+    KanbanQueryRepositoryView,
+)
 from src.infrastructure.config.di.composition import (
     ManagedKanbanRepositoryPort,
     RuntimeRepositories,
@@ -37,7 +40,7 @@ def build_container(settings: AppSettings) -> ConfiguredAppContainer:
         settings=settings,
         repositories=runtime.repositories,
         query_handlers=KanbanQueryHandlers(
-            repository=kanban_repository,
+            repository=KanbanQueryRepositoryView(kanban_repository),
             readiness=runtime.readiness_probe,
         ),
         command_handlers_factory=lambda: KanbanCommandHandlers(

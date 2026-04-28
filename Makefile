@@ -2,7 +2,7 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev format lint lint-arch lint-fix typecheck check precommit-install precommit-run precommit-update test test-cov test-unit test-integration test-e2e test-fast
+.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check ci precommit-install precommit-run precommit-update test test-cov test-unit test-integration test-e2e test-fast
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -28,10 +28,14 @@ lint-fix: ## Run Ruff lint checks and auto-fix
 typecheck: ## Run static type checks (mypy)
 	uv run mypy
 
-check: lint lint-arch typecheck ## Run lint + architecture lint + type checks
+quality: lint lint-arch typecheck ## Run lint + architecture lint + type checks
 
-precommit-install: ## Install git pre-commit hooks
-	uv run pre-commit install
+check: quality ## Alias for the local quality gate
+
+ci: quality test-cov ## Run the same quality gate as GitHub Actions
+
+precommit-install: ## Install git pre-commit and pre-push hooks
+	uv run pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push
 
 precommit-run: ## Run all pre-commit hooks
 	uv run pre-commit run --all-files

@@ -12,6 +12,14 @@ class ApplicationError(StrEnum):
     COLUMN_NOT_FOUND = ("column_not_found", "Column not found")
     CARD_NOT_FOUND = ("card_not_found", "Card not found")
     INVALID_CARD_MOVE = ("invalid_card_move", "Invalid card move")
+    PATCH_NO_CHANGES = (
+        "patch_no_changes",
+        "At least one field must be provided",
+    )
+    UNMAPPED_DOMAIN_ERROR = (
+        "unmapped_domain_error",
+        "Unexpected domain error",
+    )
 
     _detail: str
 
@@ -35,4 +43,4 @@ _ERROR_MAP = {
 
 
 def from_domain_error(error: KanbanError) -> ApplicationError:
-    return _ERROR_MAP[error]
+    return _ERROR_MAP.get(error, ApplicationError.UNMAPPED_DOMAIN_ERROR)

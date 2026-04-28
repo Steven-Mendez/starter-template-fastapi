@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
-from src.api.dependencies import CommandHandlersDep, QueryHandlersDep
+from src.api.dependencies import CommandHandlersDep, QueryHandlersDep, WriteApiKeyDep
 from src.api.mappers.kanban import (
     to_board_detail_response,
     to_board_summary_response,
@@ -30,6 +30,7 @@ boards_router = APIRouter(tags=["boards"])
 def create_board(
     body: BoardCreate,
     commands: CommandHandlersDep,
+    _: WriteApiKeyDep,
 ) -> BoardSummary:
     match commands.handle_create_board(
         CreateBoardCommand(title=to_create_board_input(body))
@@ -68,15 +69,10 @@ def patch_board(
     board_id: UUID,
     body: BoardUpdate,
     commands: CommandHandlersDep,
+    _: WriteApiKeyDep,
 ) -> BoardSummary:
-    title = to_patch_board_input(body)
-    if title is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="At least one field must be provided",
-        )
     match commands.handle_patch_board(
-        PatchBoardCommand(board_id=str(board_id), title=title)
+        PatchBoardCommand(board_id=str(board_id), title=to_patch_board_input(body))
     ):
         case AppOk(value):
             return to_board_summary_response(value)
@@ -88,6 +84,7 @@ def patch_board(
 def delete_board(
     board_id: UUID,
     commands: CommandHandlersDep,
+    _: WriteApiKeyDep,
 ) -> None:
     match commands.handle_delete_board(DeleteBoardCommand(board_id=str(board_id))):
         case AppOk(_):

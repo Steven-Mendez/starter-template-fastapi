@@ -35,8 +35,7 @@ def _clean_database(postgresql_dsn: str) -> None:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    f"TRUNCATE TABLE {', '.join(table_names)} "
-                    "RESTART IDENTITY CASCADE"
+                    f"TRUNCATE TABLE {', '.join(table_names)} RESTART IDENTITY CASCADE"
                 )
             )
     engine.dispose()

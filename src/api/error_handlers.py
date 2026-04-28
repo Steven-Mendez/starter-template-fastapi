@@ -13,6 +13,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from src.api.dependencies import DependencyContainerNotReadyError
+from src.api.routers._errors import ApplicationHTTPException
+
 PROBLEM_JSON = "application/problem+json"
 
 
@@ -63,6 +66,30 @@ def problem_json_response(
 
 def register_problem_details(app: FastAPI) -> None:
     logger = logging.getLogger("api.error")
+
+    @app.exception_handler(DependencyContainerNotReadyError)
+    async def dependency_container_not_ready_handler(
+        request: Request, exc: DependencyContainerNotReadyError
+    ) -> JSONResponse:
+        return problem_json_response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            request=request,
+            detail=str(exc),
+            type_uri="https://starter-template-fastapi.dev/problems/service-unavailable",
+            extra={"code": "dependency_container_not_ready"},
+        )
+
+    @app.exception_handler(ApplicationHTTPException)
+    async def application_http_exception_handler(
+        request: Request, exc: ApplicationHTTPException
+    ) -> JSONResponse:
+        return problem_json_response(
+            status_code=exc.status_code,
+            request=request,
+            detail=str(exc.detail),
+            type_uri=exc.type_uri,
+            extra={"code": exc.code},
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(

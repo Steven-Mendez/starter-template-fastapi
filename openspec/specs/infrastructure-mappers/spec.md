@@ -21,4 +21,3 @@ The `_to_card_read` static helper is an ad-hoc inline mapper on the repository c
 - Given: `src/infrastructure/persistence/sqlmodel_repository.py`
 - When: the source is inspected for `_to_card_read`
 - Then: no reference appears
-

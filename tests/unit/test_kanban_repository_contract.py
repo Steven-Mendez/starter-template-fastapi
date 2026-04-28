@@ -13,7 +13,10 @@ from src.domain.kanban.models import Board, Card, CardPriority, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.persistence.lifecycle import ClosableResource
-from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
+from src.infrastructure.persistence.sqlmodel_repository import (
+    PersistenceConflictError,
+    SQLModelKanbanRepository,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -24,6 +27,8 @@ class RepositoryContract(Protocol):
     def list_all(self) -> list[AppBoardSummary]: ...
 
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]: ...
+
+    def find_card_by_id(self, card_id: str) -> Result[Card, KanbanError]: ...
 
     def remove(self, board_id: str) -> Result[None, KanbanError]: ...
 
@@ -67,7 +72,7 @@ def _append_column(
         + 1,
         cards=[],
     )
-    board.columns.append(column)
+    board.add_column(column)
     repository.save(board)
     return Ok(column)
 
@@ -203,6 +208,27 @@ def test_repository_contract_persists_card_sequence(
     assert titles == ["b", "a"]
 
 
+def test_repository_contract_rejects_stale_board_version(
+    repository_factory: Callable[[], RepositoryContract],
+) -> None:
+    repo_a = repository_factory()
+    repo_b = repository_factory()
+    board = _new_board("Concurrency")
+    repo_a.save(board)
+
+    loaded_a = repo_a.find_by_id(board.id)
+    loaded_b = repo_b.find_by_id(board.id)
+    assert isinstance(loaded_a, Ok)
+    assert isinstance(loaded_b, Ok)
+
+    loaded_a.value.rename("A")
+    repo_a.save(loaded_a.value)
+
+    loaded_b.value.rename("B")
+    with pytest.raises(PersistenceConflictError):
+        repo_b.save(loaded_b.value)
+
+
 def test_repository_contract_find_board_id_by_column(
     repository_factory: Callable[[], RepositoryContract],
 ) -> None:
@@ -213,6 +239,27 @@ def test_repository_contract_find_board_id_by_column(
     assert isinstance(col, Ok)
     assert repo.find_board_id_by_column(col.value.id) == board.id
     assert repo.find_board_id_by_column("nonexistent") is None
+
+
+def test_repository_contract_find_card_by_id(
+    repository_factory: Callable[[], RepositoryContract],
+) -> None:
+    repo = repository_factory()
+    board = _new_board("Cards")
+    repo.save(board)
+    column_result = _append_column(repo, board.id, "Todo")
+    assert isinstance(column_result, Ok)
+    card_result = _append_card(repo, column_result.value.id, "Task", None)
+    assert isinstance(card_result, Ok)
+
+    fetched = repo.find_card_by_id(card_result.value.id)
+    assert isinstance(fetched, Ok)
+    assert fetched.value.id == card_result.value.id
+    assert fetched.value.title == "Task"
+
+    missing = repo.find_card_by_id("00000000-0000-4000-8000-000000000099")
+    assert isinstance(missing, Err)
+    assert missing.error is KanbanError.CARD_NOT_FOUND
 
 
 def test_repository_contract_persists_priority_and_due_at(

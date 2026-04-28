@@ -47,3 +47,46 @@ def test_card_fields_are_mutable_for_domain_reordering() -> None:
 
     assert card.position == 3
     assert card.column_id == "col-2"
+
+
+def test_apply_patch_updates_selected_fields() -> None:
+    due_at = datetime(2031, 5, 20, tzinfo=UTC)
+    next_due_at = datetime(2031, 6, 10, tzinfo=UTC)
+    card = Card(
+        id="card-3",
+        column_id="col-1",
+        title="Task",
+        description="Old",
+        position=0,
+        priority=CardPriority.MEDIUM,
+        due_at=due_at,
+    )
+
+    card.apply_patch(
+        title="Task v2",
+        description="New",
+        priority=CardPriority.HIGH,
+        due_at=next_due_at,
+    )
+
+    assert card.title == "Task v2"
+    assert card.description == "New"
+    assert card.priority == CardPriority.HIGH
+    assert card.due_at == next_due_at
+
+
+def test_apply_patch_can_clear_due_at() -> None:
+    due_at = datetime(2031, 5, 20, tzinfo=UTC)
+    card = Card(
+        id="card-4",
+        column_id="col-1",
+        title="Task",
+        description=None,
+        position=0,
+        priority=CardPriority.MEDIUM,
+        due_at=due_at,
+    )
+
+    card.apply_patch(clear_due_at=True)
+
+    assert card.due_at is None

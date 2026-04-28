@@ -19,6 +19,4 @@ def test_ci_workflow_runs_quality_pipeline() -> None:
     workflow = ROOT / ".github" / "workflows" / "ci.yml"
     assert workflow.exists()
     content = workflow.read_text(encoding="utf-8")
-    assert "make lint" in content
-    assert "make typecheck" in content
-    assert "make test-fast" in content
+    assert "make ci" in content

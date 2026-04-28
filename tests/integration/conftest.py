@@ -15,12 +15,12 @@ from sqlalchemy import create_engine, text
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
 from alembic import command
-from main import app
-from src.api.dependencies import set_app_container
+from main import create_app
 from src.config.settings import AppSettings
-from src.infrastructure.config.di.container import build_container
 from src.infrastructure.persistence.sqlmodel.models import get_sqlmodel_metadata
 from tests.support.kanban_builders import ApiBuilder
+
+_TEST_WRITE_API_KEY = "integration-write-api-key"
 
 
 @pytest.fixture
@@ -28,17 +28,32 @@ def api_client(postgresql_dsn: str) -> Generator[TestClient, None, None]:
     settings = AppSettings(
         postgresql_dsn=postgresql_dsn,
     )
-    container = build_container(settings)
+    app = create_app(settings)
     with TestClient(app) as client:
-        set_app_container(app, container)
         yield client
     app.dependency_overrides.clear()
-    container.shutdown()
 
 
 @pytest.fixture
 def api_kanban(api_client: TestClient) -> ApiBuilder:
     return ApiBuilder(client=api_client)
+
+
+@pytest.fixture
+def api_client_with_write_key(postgresql_dsn: str) -> Generator[TestClient, None, None]:
+    settings = AppSettings(
+        postgresql_dsn=postgresql_dsn,
+        write_api_key=_TEST_WRITE_API_KEY,
+    )
+    app = create_app(settings)
+    with TestClient(app) as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def api_kanban_with_write_key(api_client_with_write_key: TestClient) -> ApiBuilder:
+    return ApiBuilder(client=api_client_with_write_key)
 
 
 @pytest.fixture(scope="session")
@@ -84,8 +99,7 @@ def _truncate_kanban_tables(database_url: str) -> None:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    f"TRUNCATE TABLE {', '.join(table_names)} "
-                    "RESTART IDENTITY CASCADE"
+                    f"TRUNCATE TABLE {', '.join(table_names)} RESTART IDENTITY CASCADE"
                 )
             )
     finally:

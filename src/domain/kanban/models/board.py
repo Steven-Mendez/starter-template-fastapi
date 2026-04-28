@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from src.domain.kanban.models.column import Column
 from src.domain.kanban.specifications.card_move import (
@@ -10,16 +11,41 @@ from src.domain.kanban.specifications.card_move import (
 )
 from src.domain.shared.errors import KanbanError
 
+if TYPE_CHECKING:
+    from src.domain.kanban.models.card import Card
+
 
 @dataclass(slots=True)
 class Board:
     id: str
     title: str
     created_at: datetime
+    version: int = 0
     columns: list[Column] = field(default_factory=list)
+
+    def rename(self, title: str) -> None:
+        self.title = title
+
+    def add_column(self, column: Column) -> None:
+        self.columns.append(column)
+
+    def next_column_position(self) -> int:
+        return len(self.columns)
 
     def get_column(self, column_id: str) -> Column | None:
         return next((c for c in self.columns if c.id == column_id), None)
+
+    def find_column_containing_card(self, card_id: str) -> Column | None:
+        for column in self.columns:
+            if any(card.id == card_id for card in column.cards):
+                return column
+        return None
+
+    def get_card(self, card_id: str) -> Card | None:
+        column = self.find_column_containing_card(card_id)
+        if column is None:
+            return None
+        return next((card for card in column.cards if card.id == card_id), None)
 
     def delete_column(self, column_id: str) -> KanbanError | None:
         column = self.get_column(column_id)

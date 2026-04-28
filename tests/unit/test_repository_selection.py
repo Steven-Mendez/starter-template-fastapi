@@ -32,4 +32,8 @@ def test_container_uses_postgresql_repository() -> None:
 
 def test_default_settings_use_local_postgresql_dsn() -> None:
     default_dsn = AppSettings.model_fields["postgresql_dsn"].default
+    default_health_backend = AppSettings.model_fields[
+        "health_persistence_backend"
+    ].default
     assert default_dsn == "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
+    assert default_health_backend == "postgresql"

@@ -27,9 +27,7 @@ pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
-RUNTIME_MODULE_FILES = (
-    "main.py",
-)
+RUNTIME_MODULE_FILES = ("main.py",)
 
 
 @dataclass

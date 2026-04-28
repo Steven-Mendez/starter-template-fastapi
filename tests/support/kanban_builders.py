@@ -32,6 +32,9 @@ from src.domain.kanban.models import (
 )
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result, expect_ok
+from src.infrastructure.adapters.kanban_query_repository_view import (
+    KanbanQueryRepositoryView,
+)
 from src.infrastructure.persistence.sqlmodel_repository import SQLModelKanbanRepository
 from src.infrastructure.persistence.sqlmodel_uow import SqlModelUnitOfWork
 from tests.support.fakes import FakeClock, FakeIdGenerator
@@ -99,7 +102,7 @@ class StoreBuilder:
             + 1,
             cards=[],
         )
-        board.columns.append(column)
+        board.add_column(column)
         self.repository.save(board)
         return column
 
@@ -159,7 +162,10 @@ class HandlerHarness:
                 id_gen=FakeIdGenerator(),
                 clock=FakeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
             ),
-            queries=KanbanQueryHandlers(repository=repository, readiness=repository),
+            queries=KanbanQueryHandlers(
+                repository=KanbanQueryRepositoryView(repository),
+                readiness=repository,
+            ),
         )
 
     def close(self) -> None:

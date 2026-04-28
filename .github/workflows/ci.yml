@@ -22,14 +22,5 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
-      - name: Lint
-        run: make lint
-
-      - name: Architecture lint
-        run: make lint-arch
-
-      - name: Typecheck
-        run: make typecheck
-
-      - name: Test (non-e2e)
-        run: make test-fast
+      - name: Quality gate
+        run: make ci

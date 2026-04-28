@@ -30,14 +30,13 @@ def handle_create_column(
             return AppErr(from_domain_error(board_result.error))
         board = board_result.value
 
-        max_pos = max((c.position for c in board.columns), default=-1)
         column = Column(
             id=id_gen.next_id(),
             board_id=command.board_id,
             title=command.title,
-            position=max_pos + 1,
+            position=board.next_column_position(),
         )
-        board.columns.append(column)
+        board.add_column(column)
 
         uow.kanban.save(board)
         uow.commit()

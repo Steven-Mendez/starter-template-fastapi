@@ -11,7 +11,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from src.application.contracts import AppBoardSummary
 from src.application.ports.kanban_repository import KanbanRepositoryPort
-from src.domain.kanban.models import Board, Column
+from src.domain.kanban.models import Board, Card, Column
 from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.persistence.sqlmodel.mappers import (
@@ -30,6 +30,10 @@ from src.infrastructure.persistence.sqlmodel.models import (
 )
 
 
+class PersistenceConflictError(RuntimeError):
+    """Raised when a stale aggregate write is detected."""
+
+
 class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
     def __init__(self) -> None:
         self._closed = False
@@ -42,7 +46,8 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
     def _session_scope(self) -> Iterator[Session]:
         raise NotImplementedError
 
-    def _commit(self, session: Session) -> None:
+    @contextmanager
+    def _write_session_scope(self) -> Iterator[Session]:
         raise NotImplementedError
 
     def is_ready(self) -> bool:
@@ -88,14 +93,21 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
                 )
             return Ok(board_table_to_domain(row=board, columns=out_columns))
 
-    def remove(self, board_id: str) -> Result[None, KanbanError]:
+    def find_card_by_id(self, card_id: str) -> Result[Card, KanbanError]:
         self._ensure_open()
         with self._session_scope() as session:
+            card = session.get(CardTable, card_id)
+            if card is None:
+                return Err(KanbanError.CARD_NOT_FOUND)
+            return Ok(card_table_to_domain(card))
+
+    def remove(self, board_id: str) -> Result[None, KanbanError]:
+        self._ensure_open()
+        with self._write_session_scope() as session:
             board = session.get(BoardTable, board_id)
             if board is None:
                 return Err(KanbanError.BOARD_NOT_FOUND)
             session.delete(board)
-            self._commit(session)
             return Ok(None)
 
     def find_board_id_by_card(self, card_id: str) -> str | None:
@@ -111,15 +123,21 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
 
     def save(self, board: Board) -> None:
         self._ensure_open()
-        with self._session_scope() as session:
+        with self._write_session_scope() as session:
             db_board = session.get(BoardTable, board.id)
             mapped_board = board_domain_to_table(board)
             if db_board is None:
                 db_board = mapped_board
+                db_board.version = 1
             else:
+                if db_board.version != board.version:
+                    msg = f"Stale board write detected for {board.id}"
+                    raise PersistenceConflictError(msg)
                 db_board.title = mapped_board.title
                 db_board.created_at = mapped_board.created_at
+                db_board.version += 1
             session.add(db_board)
+            board.version = db_board.version
 
             existing_columns = session.exec(
                 select(ColumnTable).where(ColumnTable.board_id == board.id)
@@ -172,8 +190,6 @@ class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
                         db_card.due_at = mapped_card.due_at
                     session.add(db_card)
 
-            self._commit(session)
-
     def find_board_id_by_column(self, column_id: str) -> str | None:
         self._ensure_open()
         with self._session_scope() as session:
@@ -221,8 +237,15 @@ class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
         with Session(self._engine, expire_on_commit=False) as session:
             yield session
 
-    def _commit(self, session: Session) -> None:
-        session.commit()
+    @contextmanager
+    def _write_session_scope(self) -> Iterator[Session]:
+        with Session(self._engine, expire_on_commit=False) as session:
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
 
 
 class SessionSQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
@@ -237,5 +260,6 @@ class SessionSQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
     def _session_scope(self) -> Iterator[Session]:
         yield self._session
 
-    def _commit(self, session: Session) -> None:
-        del session
+    @contextmanager
+    def _write_session_scope(self) -> Iterator[Session]:
+        yield self._session

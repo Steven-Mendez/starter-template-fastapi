@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 
 class HealthPersistence(BaseModel):
-    backend: Literal["postgresql"]
+    backend: str
     ready: bool
 
 

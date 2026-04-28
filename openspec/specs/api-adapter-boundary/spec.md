@@ -21,4 +21,3 @@ The root-level `problem_details.py` is removed. Its absence prevents the `RUNTIM
 - Given: the project root directory listing
 - When: `problem_details.py` is searched for
 - Then: it is not found
-

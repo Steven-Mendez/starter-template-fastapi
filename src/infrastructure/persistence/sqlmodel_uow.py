@@ -28,8 +28,9 @@ class SqlModelUnitOfWork(UnitOfWorkPort):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
+        del exc_val, exc_tb
         if self._session is not None:
-            if exc_type is not None:
+            if exc_type is not None or self._session.in_transaction():
                 self._session.rollback()
             self._session.close()
 

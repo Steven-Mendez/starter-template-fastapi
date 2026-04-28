@@ -13,7 +13,7 @@ pytestmark = pytest.mark.unit
 def _make_board(board_id: str = "b1", num_columns: int = 0) -> Board:
     board = Board(id=board_id, title="Project Board", created_at=datetime.now(UTC))
     for index in range(num_columns):
-        board.columns.append(
+        board.add_column(
             Column(
                 id=f"col-{index + 1}",
                 board_id=board_id,
@@ -31,7 +31,7 @@ def _append_column(board: Board, title: str) -> Column:
         title=title,
         position=len(board.columns),
     )
-    board.columns.append(column)
+    board.add_column(column)
     return column
 
 
@@ -64,6 +64,43 @@ def test_get_column_returns_none_for_missing_id() -> None:
     found = board.get_column("missing")
 
     assert found is None
+
+
+def test_find_column_containing_card_returns_column() -> None:
+    board = _make_board()
+    source = _append_column(board, "Todo")
+    _append_column(board, "Done")
+    card = _append_card(source, "Task")
+
+    found = board.find_column_containing_card(card.id)
+
+    assert found is not None
+    assert found.id == source.id
+
+
+def test_get_card_returns_card_by_id() -> None:
+    board = _make_board()
+    source = _append_column(board, "Todo")
+    card = _append_card(source, "Task")
+
+    found = board.get_card(card.id)
+
+    assert found is not None
+    assert found.id == card.id
+
+
+def test_next_column_position_returns_append_index() -> None:
+    board = _make_board(num_columns=2)
+
+    assert board.next_column_position() == 2
+
+
+def test_rename_updates_board_title() -> None:
+    board = _make_board()
+
+    board.rename("Renamed")
+
+    assert board.title == "Renamed"
 
 
 def test_delete_column_removes_column() -> None:
