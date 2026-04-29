@@ -15,11 +15,11 @@ from sqlalchemy import create_engine, text
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
 from alembic import command
-from main import create_app
-from src.config.settings import AppSettings
 from src.infrastructure.adapters.outbound.persistence.sqlmodel.models import (
     get_sqlmodel_metadata,
 )
+from src.infrastructure.config.settings import AppSettings
+from src.main import create_app
 from tests.support.kanban_builders import ApiBuilder
 
 _TEST_WRITE_API_KEY = "integration-write-api-key"

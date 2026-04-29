@@ -8,10 +8,11 @@ from sqlalchemy.engine import Engine
 
 from src.application.ports.clock_port import ClockPort
 from src.application.ports.id_generator_port import IdGeneratorPort
-from src.application.ports.kanban_repository import KanbanRepositoryPort
+from src.application.ports.kanban_command_repository import KanbanCommandRepositoryPort
+from src.application.ports.kanban_lookup_repository import KanbanLookupRepositoryPort
+from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.application.shared.readiness import ReadinessProbe
-from src.config.settings import AppSettings
 from src.infrastructure.adapters.outbound.clock.system_clock import SystemClock
 from src.infrastructure.adapters.outbound.id_generator.uuid_id_generator import (
     UUIDIdGenerator,
@@ -21,13 +22,16 @@ from src.infrastructure.adapters.outbound.persistence.lifecycle import ClosableR
 from src.infrastructure.adapters.outbound.persistence.sqlmodel.unit_of_work import (
     SqlModelUnitOfWork,
 )
+from src.infrastructure.config.settings import AppSettings
 
 UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWorkPort]
 ShutdownHook: TypeAlias = Callable[[], None]
 
 
 class ManagedKanbanRepositoryPort(
-    KanbanRepositoryPort,
+    KanbanQueryRepositoryPort,
+    KanbanCommandRepositoryPort,
+    KanbanLookupRepositoryPort,
     ReadinessProbe,
     ClosableResource,
     Protocol,
@@ -65,13 +69,6 @@ def create_runtime_repositories(settings: AppSettings) -> RuntimeRepositories:
     return RuntimeRepositories(
         kanban=create_kanban_repository_for_settings(settings),
     )
-
-
-def create_repository_for_settings(
-    settings: AppSettings,
-) -> ManagedKanbanRepositoryPort:
-    """Backward-compatible helper for callers expecting a single repository."""
-    return create_kanban_repository_for_settings(settings)
 
 
 def _create_sql_runtime_dependencies(

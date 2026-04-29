@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 
 import pytest
 
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models import Board
-from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, expect_ok
 from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelKanbanRepository,

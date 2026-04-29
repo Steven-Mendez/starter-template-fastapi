@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from main import create_app
-from src.config.settings import AppSettings
+from src.infrastructure.config.settings import AppSettings
+from src.main import create_app
 
 pytestmark = pytest.mark.integration
 

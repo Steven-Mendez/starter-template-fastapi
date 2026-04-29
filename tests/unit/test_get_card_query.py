@@ -4,10 +4,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from src.application.queries.get_card import GetCardQuery, handle_get_card
-from src.application.shared import AppErr, ApplicationError, AppOk
+from src.application.kanban.errors import ApplicationError
+from src.application.queries.get_card import GetCardQuery
+from src.application.use_cases.card.get_card import GetCardUseCase
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority
-from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 
 pytestmark = pytest.mark.unit
@@ -33,7 +34,7 @@ class SpyQueryRepository:
         return self.card_result
 
 
-def test_handle_get_card_uses_direct_lookup_without_board_read() -> None:
+def test_get_card_use_case_uses_direct_lookup_without_board_read() -> None:
     card = Card(
         id="card-1",
         column_id="column-1",
@@ -45,27 +46,25 @@ def test_handle_get_card_uses_direct_lookup_without_board_read() -> None:
     )
     repository = SpyQueryRepository(card_result=Ok(card))
 
-    result = handle_get_card(
-        repository=repository,
-        query=GetCardQuery(card_id=card.id),
+    result = GetCardUseCase(query_repository=repository).execute(
+        GetCardQuery(card_id=card.id)
     )
 
-    assert isinstance(result, AppOk)
+    assert isinstance(result, Ok)
     assert result.value.id == card.id
     assert result.value.title == "Task"
     assert repository.find_card_by_id_calls == 1
     assert repository.find_by_id_calls == 0
 
 
-def test_handle_get_card_maps_missing_card_error() -> None:
+def test_get_card_use_case_maps_missing_card_error() -> None:
     repository = SpyQueryRepository(card_result=Err(KanbanError.CARD_NOT_FOUND))
 
-    result = handle_get_card(
-        repository=repository,
-        query=GetCardQuery(card_id="missing-card"),
+    result = GetCardUseCase(query_repository=repository).execute(
+        GetCardQuery(card_id="missing-card")
     )
 
-    assert isinstance(result, AppErr)
+    assert isinstance(result, Err)
     assert result.error is ApplicationError.CARD_NOT_FOUND
     assert repository.find_card_by_id_calls == 1
     assert repository.find_by_id_calls == 0

@@ -7,9 +7,9 @@ import pytest
 from _pytest.logging import LogCaptureFixture
 from fastapi.testclient import TestClient
 
-from main import create_app
 from src.api.dependencies.use_cases import get_check_readiness_use_case
-from src.config.settings import AppSettings
+from src.infrastructure.config.settings import AppSettings
+from src.main import create_app
 
 pytestmark = pytest.mark.integration
 

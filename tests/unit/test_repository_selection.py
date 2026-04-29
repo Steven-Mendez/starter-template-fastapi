@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from src.config.settings import AppSettings
 from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelKanbanRepository,
 )
-from src.infrastructure.config.di.composition import create_repository_for_settings
+from src.infrastructure.config.di.composition import (
+    create_kanban_repository_for_settings,
+)
 from src.infrastructure.config.di.container import build_container
+from src.infrastructure.config.settings import AppSettings
 
 pytestmark = pytest.mark.unit
 
@@ -16,7 +18,7 @@ def test_factory_selects_postgresql_repository() -> None:
     settings = AppSettings(
         postgresql_dsn="postgresql+psycopg://postgres:postgres@localhost:5432/kanban",
     )
-    repository = create_repository_for_settings(settings)
+    repository = create_kanban_repository_for_settings(settings)
     assert isinstance(repository, SQLModelKanbanRepository)
     repository.close()
 
@@ -28,7 +30,7 @@ def test_container_uses_postgresql_repository() -> None:
 
     container = build_container(settings)
 
-    assert isinstance(container.repository, SQLModelKanbanRepository)
+    assert isinstance(container.repositories.kanban, SQLModelKanbanRepository)
     container.shutdown()
 
 

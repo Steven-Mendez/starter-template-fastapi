@@ -11,7 +11,7 @@ sync: ## Sync dependencies (uv lock + install)
 	uv sync
 
 dev: ## Run API with auto-reload
-	uv run uvicorn main:app --reload --host 0.0.0.0 --port $(PORT)
+	uv run uvicorn src.main:app --reload --host 0.0.0.0 --port $(PORT)
 
 format: ## Format code with Ruff formatter
 	uv run ruff format .

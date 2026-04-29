@@ -1,14 +1,6 @@
 """Shared application contracts and abstractions."""
 
-from src.application.shared.errors import ApplicationError, from_domain_error
 from src.application.shared.readiness import ReadinessProbe
-from src.application.shared.result import AppErr, AppOk, AppResult
+from src.domain.shared.result import Err, Ok, Result
 
-__all__ = [
-    "AppErr",
-    "AppOk",
-    "AppResult",
-    "ApplicationError",
-    "ReadinessProbe",
-    "from_domain_error",
-]
+__all__ = ["Err", "Ok", "ReadinessProbe", "Result"]

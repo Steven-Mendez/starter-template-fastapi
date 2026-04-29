@@ -7,7 +7,7 @@ from src.api.routers._errors import (
     _APPLICATION_ERROR_HTTP_MAP,
     ApplicationHTTPException,
 )
-from src.application.shared import ApplicationError
+from src.application.kanban.errors import ApplicationError
 
 pytestmark = pytest.mark.unit
 

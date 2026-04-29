@@ -24,7 +24,6 @@ from src.application.contracts import (
 from src.application.queries.get_board import GetBoardQuery
 from src.application.queries.get_card import GetCardQuery
 from src.application.queries.health_check import HealthCheckQuery
-from src.application.shared import AppErr, AppOk, AppResult
 from src.application.use_cases.board import (
     CreateBoardUseCase,
     DeleteBoardUseCase,
@@ -39,6 +38,7 @@ from src.application.use_cases.card import (
 )
 from src.application.use_cases.column import CreateColumnUseCase, DeleteColumnUseCase
 from src.application.use_cases.health.check_readiness import CheckReadinessUseCase
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models import (
     Board,
     BoardSummary,
@@ -48,8 +48,7 @@ from src.domain.kanban.models import (
 from src.domain.kanban.models import (
     CardPriority as DomainCardPriority,
 )
-from src.domain.shared.errors import KanbanError
-from src.domain.shared.result import Result, expect_ok
+from src.domain.shared.result import Err, Ok, Result, expect_ok
 from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelKanbanRepository,
 )
@@ -83,11 +82,11 @@ _T = TypeVar("_T")
 _E = TypeVar("_E")
 
 
-def _expect_app_ok(result: AppResult[_T, _E]) -> _T:
+def _expect_app_ok(result: Result[_T, _E]) -> _T:
     match result:
-        case AppOk(value=v):
+        case Ok(value=v):
             return v
-        case AppErr(error=e):
+        case Err(error=e):
             raise AssertionError(e)
 
 
@@ -183,10 +182,10 @@ class HandlerHarness:
             self.create_board_use_case.execute(CreateBoardCommand(title=title))
         )
 
-    def get_board(self, board_id: str) -> AppResult[Any, Any]:
+    def get_board(self, board_id: str) -> Result[Any, Any]:
         return self.get_board_use_case.execute(GetBoardQuery(board_id=board_id))
 
-    def get_card(self, card_id: str) -> AppResult[Any, Any]:
+    def get_card(self, card_id: str) -> Result[Any, Any]:
         return self.get_card_use_case.execute(GetCardQuery(card_id=card_id))
 
     @classmethod
@@ -243,7 +242,7 @@ class HandlerHarness:
             )
         )
 
-    def delete_column(self, column_id: str) -> AppResult[Any, Any]:
+    def delete_column(self, column_id: str) -> Result[Any, Any]:
         return self.delete_column_use_case.execute(
             DeleteColumnCommand(column_id=column_id)
         )
@@ -269,7 +268,7 @@ class HandlerHarness:
             )
         )
 
-    def patch_card(self, command: PatchCardCommand) -> AppResult[Any, Any]:
+    def patch_card(self, command: PatchCardCommand) -> Result[Any, Any]:
         return self.patch_card_use_case.execute(command)
 
     def health_ready(self) -> bool:

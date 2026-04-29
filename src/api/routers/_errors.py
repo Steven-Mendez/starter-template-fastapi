@@ -5,7 +5,7 @@ from typing import NoReturn
 
 from fastapi import HTTPException, status
 
-from src.application.shared import ApplicationError
+from src.application.kanban.errors import ApplicationError
 
 
 @dataclass(frozen=True)

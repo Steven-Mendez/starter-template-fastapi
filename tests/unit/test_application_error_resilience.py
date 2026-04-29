@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.application.shared import ApplicationError, from_domain_error
-from src.application.shared import errors as app_errors
-from src.domain.shared.errors import KanbanError
+from src.application.kanban import errors as app_errors
+from src.application.kanban.errors import ApplicationError, from_domain_error
+from src.domain.kanban.errors import KanbanError
 
 pytestmark = pytest.mark.unit
 

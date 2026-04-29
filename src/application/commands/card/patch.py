@@ -3,13 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.application.contracts import AppCard, AppCardPriority
-from src.application.contracts.mappers import to_app_card, to_domain_priority
-from src.application.ports.unit_of_work_port import UnitOfWorkPort
-from src.application.shared import AppErr, ApplicationError, AppOk, AppResult
-from src.application.shared.errors import from_domain_error, from_domain_exception
-from src.domain.kanban.exceptions import KanbanDomainError
-from src.domain.shared.result import Err
+from src.application.contracts import AppCardPriority
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,60 +31,3 @@ class PatchCardCommand:
                 self.due_at,
             )
         )
-
-
-def handle_patch_card(
-    *,
-    uow: UnitOfWorkPort,
-    command: PatchCardCommand,
-) -> AppResult[AppCard, ApplicationError]:
-    if not command.has_changes():
-        return AppErr(ApplicationError.PATCH_NO_CHANGES)
-
-    with uow:
-        board_id = uow.lookup.find_board_id_by_card(command.card_id)
-        if not board_id:
-            return AppErr(ApplicationError.CARD_NOT_FOUND)
-
-        board_result = uow.commands.find_by_id(board_id)
-        if isinstance(board_result, Err):
-            return AppErr(from_domain_error(board_result.error))
-        board = board_result.value
-
-        if command.column_id is not None or command.position is not None:
-            source_col = board.find_column_containing_card(command.card_id)
-            if source_col:
-                if command.column_id is not None:
-                    target_col_id = command.column_id
-                else:
-                    target_col_id = source_col.id
-                try:
-                    board.move_card(
-                        command.card_id,
-                        source_col.id,
-                        target_col_id,
-                        command.position,
-                    )
-                except KanbanDomainError as exc:
-                    return AppErr(from_domain_exception(exc))
-
-        updated_card = board.get_card(command.card_id)
-        if updated_card is not None:
-            updated_card.apply_patch(
-                title=command.title,
-                description=command.description,
-                priority=(
-                    to_domain_priority(command.priority)
-                    if command.priority is not None
-                    else None
-                ),
-                due_at=command.due_at,
-                clear_due_at=command.clear_due_at,
-            )
-
-        if not updated_card:
-            return AppErr(ApplicationError.CARD_NOT_FOUND)
-
-        uow.commands.save(board)
-        uow.commit()
-        return AppOk(to_app_card(updated_card))

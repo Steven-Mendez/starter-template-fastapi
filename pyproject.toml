@@ -28,7 +28,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src"]
 addopts = "--strict-markers"
 markers = [
     "architecture: static architecture conformance checks",
@@ -66,7 +66,6 @@ forbidden_modules = [
     "src.application",
     "src.api",
     "src.infrastructure",
-    "src.config",
     "fastapi",
     "starlette",
     "sqlmodel",
@@ -94,7 +93,6 @@ source_modules = ["src.application"]
 forbidden_modules = [
     "src.api",
     "src.infrastructure",
-    "src.config",
     "fastapi",
     "starlette",
     "sqlmodel",

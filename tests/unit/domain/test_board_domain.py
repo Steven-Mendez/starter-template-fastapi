@@ -4,12 +4,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.domain.kanban.exceptions import (
-    CardNotFoundError,
-    ColumnNotFoundError,
-    InvalidCardMoveError,
-)
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models import Board, Card, CardPriority, Column
+from src.domain.shared.result import Err
 
 pytestmark = pytest.mark.unit
 
@@ -110,7 +107,7 @@ def test_rename_updates_board_title() -> None:
 def test_delete_column_removes_column() -> None:
     board = _make_board(num_columns=2)
 
-    board.delete_column("col-1")
+    assert board.delete_column("col-1") != Err(KanbanError.COLUMN_NOT_FOUND)
 
     assert [column.id for column in board.columns] == ["col-2"]
 
@@ -118,17 +115,16 @@ def test_delete_column_removes_column() -> None:
 def test_delete_column_reindexes_remaining_columns() -> None:
     board = _make_board(num_columns=3)
 
-    board.delete_column("col-2")
+    assert board.delete_column("col-2") != Err(KanbanError.COLUMN_NOT_FOUND)
 
     assert [column.id for column in board.columns] == ["col-1", "col-3"]
     assert [column.position for column in board.columns] == [0, 1]
 
 
-def test_delete_missing_column_raises_error() -> None:
+def test_delete_missing_column_returns_error() -> None:
     board = _make_board(num_columns=1)
 
-    with pytest.raises(ColumnNotFoundError):
-        board.delete_column("does-not-exist")
+    assert board.delete_column("does-not-exist") == Err(KanbanError.COLUMN_NOT_FOUND)
 
 
 def test_move_card_cross_column_on_same_board() -> None:
@@ -137,7 +133,9 @@ def test_move_card_cross_column_on_same_board() -> None:
     target = _append_column(board, "Doing")
     card = _append_card(source, "Task")
 
-    board.move_card(card.id, source.id, target.id, requested_position=None)
+    assert board.move_card(
+        card.id, source.id, target.id, requested_position=None
+    ) != Err(KanbanError.INVALID_CARD_MOVE)
 
     assert source.cards == []
     assert [c.id for c in target.cards] == [card.id]
@@ -149,41 +147,41 @@ def test_move_card_reorder_within_same_column() -> None:
     first = _append_card(column, "First")
     second = _append_card(column, "Second")
 
-    board.move_card(first.id, column.id, column.id, requested_position=1)
+    assert board.move_card(first.id, column.id, column.id, requested_position=1) != Err(
+        KanbanError.INVALID_CARD_MOVE
+    )
 
     assert [card.id for card in column.cards] == [second.id, first.id]
     assert [card.position for card in column.cards] == [0, 1]
 
 
-def test_move_card_missing_source_column_raises_error() -> None:
+def test_move_card_missing_source_column_returns_error() -> None:
     board = _make_board()
     target = _append_column(board, "Done")
 
-    with pytest.raises(InvalidCardMoveError):
-        board.move_card("card-1", "missing-source", target.id, requested_position=0)
+    assert board.move_card(
+        "card-1", "missing-source", target.id, requested_position=0
+    ) == Err(KanbanError.INVALID_CARD_MOVE)
 
 
-def test_move_card_missing_target_column_raises_error() -> None:
+def test_move_card_missing_target_column_returns_error() -> None:
     board = _make_board()
     source = _append_column(board, "Todo")
     card = _append_card(source, "Task")
 
-    with pytest.raises(InvalidCardMoveError):
-        board.move_card(
-            card.id,
-            source.id,
-            "missing-target",
-            requested_position=None,
-        )
+    assert board.move_card(
+        card.id, source.id, "missing-target", requested_position=None
+    ) == Err(KanbanError.INVALID_CARD_MOVE)
 
 
-def test_move_card_missing_card_raises_error() -> None:
+def test_move_card_missing_card_returns_error() -> None:
     board = _make_board()
     source = _append_column(board, "Todo")
     target = _append_column(board, "Done")
 
-    with pytest.raises(CardNotFoundError):
-        board.move_card("missing-card", source.id, target.id, requested_position=None)
+    assert board.move_card(
+        "missing-card", source.id, target.id, requested_position=None
+    ) == Err(KanbanError.CARD_NOT_FOUND)
 
 
 def test_move_card_preserves_card_data() -> None:
@@ -202,7 +200,9 @@ def test_move_card_preserves_card_data() -> None:
     )
     source.insert_card(card)
 
-    board.move_card(card.id, source.id, target.id, requested_position=None)
+    assert board.move_card(
+        card.id, source.id, target.id, requested_position=None
+    ) != Err(KanbanError.INVALID_CARD_MOVE)
 
     assert len(target.cards) == 1
     moved = target.cards[0]

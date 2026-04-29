@@ -11,7 +11,6 @@ COPY pyproject.toml uv.lock README.md ./
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY src ./src
-COPY main.py ./
 
 RUN uv sync --frozen --no-dev
 
@@ -19,4 +18,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"]

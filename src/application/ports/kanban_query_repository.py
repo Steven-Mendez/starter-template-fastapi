@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models import Board, BoardSummary, Card
-from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result
 
 

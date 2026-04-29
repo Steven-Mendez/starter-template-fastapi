@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.application.shared import AppOk
+from src.domain.shared.result import Ok
 from tests.support.kanban_builders import HandlerHarness
 
 pytestmark = pytest.mark.unit
@@ -41,7 +41,7 @@ def test_router_use_case_can_be_done_with_split_handlers(
     created_card = handler_harness.card(created_column.id, "Task A")
 
     fetched_board = handler_harness.get_board(board.id)
-    assert isinstance(fetched_board, AppOk)
+    assert isinstance(fetched_board, Ok)
     todo_column = next(
         (
             column

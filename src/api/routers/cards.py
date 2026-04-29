@@ -19,7 +19,7 @@ from src.api.routers._errors import raise_http_from_application_error
 from src.api.schemas.kanban import CardCreate, CardRead, CardUpdate
 from src.application.commands import CreateCardCommand, PatchCardCommand
 from src.application.queries import GetCardQuery
-from src.application.shared import AppErr, AppOk
+from src.application.shared import Err, Ok
 
 cards_router = APIRouter(tags=["cards"])
 
@@ -45,9 +45,9 @@ def create_card(
             due_at=due_at,
         )
     ):
-        case AppOk(value):
+        case Ok(value):
             return to_card_response(value)
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)
 
 
@@ -57,9 +57,9 @@ def get_card(
     use_case: GetCardUseCaseDep,
 ) -> CardRead:
     match use_case.execute(GetCardQuery(card_id=str(card_id))):
-        case AppOk(value):
+        case Ok(value):
             return to_card_response(value)
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)
 
 
@@ -83,7 +83,7 @@ def patch_card(
             clear_due_at=input_data["clear_due_at"],
         )
     ):
-        case AppOk(value):
+        case Ok(value):
             return to_card_response(value)
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)

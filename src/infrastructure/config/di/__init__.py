@@ -5,7 +5,6 @@ from src.infrastructure.config.di.composition import (
     UnitOfWorkFactory,
     compose_runtime_dependencies,
     create_kanban_repository_for_settings,
-    create_repository_for_settings,
     create_runtime_repositories,
 )
 from src.infrastructure.config.di.container import (
@@ -23,5 +22,4 @@ __all__ = [
     "create_kanban_repository_for_settings",
     "compose_runtime_dependencies",
     "create_runtime_repositories",
-    "create_repository_for_settings",
 ]

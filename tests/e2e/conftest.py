@@ -42,7 +42,7 @@ def api_base_url() -> Generator[str, None, None]:
                     "uv",
                     "run",
                     "uvicorn",
-                    "main:app",
+                    "src.main:app",
                     "--host",
                     "127.0.0.1",
                     "--port",

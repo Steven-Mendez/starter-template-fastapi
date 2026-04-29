@@ -26,7 +26,7 @@ from src.application.commands import (
     PatchBoardCommand,
 )
 from src.application.queries import GetBoardQuery, ListBoardsQuery
-from src.application.shared import AppErr, AppOk
+from src.application.shared import Err, Ok
 
 boards_router = APIRouter(tags=["boards"])
 
@@ -40,9 +40,9 @@ def create_board(
     _: WriteApiKeyDep,
 ) -> BoardSummary:
     match use_case.execute(CreateBoardCommand(title=to_create_board_input(body))):
-        case AppOk(value):
+        case Ok(value):
             return to_board_summary_response(value)
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)
 
 
@@ -51,9 +51,9 @@ def list_boards(
     use_case: ListBoardsUseCaseDep,
 ) -> list[BoardSummary]:
     match use_case.execute(ListBoardsQuery()):
-        case AppOk(value):
+        case Ok(value):
             return [to_board_summary_response(board) for board in value]
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)
 
 
@@ -63,9 +63,9 @@ def get_board(
     use_case: GetBoardUseCaseDep,
 ) -> BoardDetail:
     match use_case.execute(GetBoardQuery(board_id=str(board_id))):
-        case AppOk(value):
+        case Ok(value):
             return to_board_detail_response(value)
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)
 
 
@@ -79,9 +79,9 @@ def patch_board(
     match use_case.execute(
         PatchBoardCommand(board_id=str(board_id), title=to_patch_board_input(body))
     ):
-        case AppOk(value):
+        case Ok(value):
             return to_board_summary_response(value)
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)
 
 
@@ -92,7 +92,7 @@ def delete_board(
     _: WriteApiKeyDep,
 ) -> None:
     match use_case.execute(DeleteBoardCommand(board_id=str(board_id))):
-        case AppOk(_):
+        case Ok(_):
             return
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)

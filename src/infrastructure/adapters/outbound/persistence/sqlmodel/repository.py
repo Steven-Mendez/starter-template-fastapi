@@ -9,9 +9,11 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from src.application.ports.kanban_repository import KanbanRepositoryPort
+from src.application.ports.kanban_command_repository import KanbanCommandRepositoryPort
+from src.application.ports.kanban_lookup_repository import KanbanLookupRepositoryPort
+from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models import Board, BoardSummary, Card, Column
-from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.adapters.outbound.persistence.sqlmodel.mappers import (
     board_domain_to_table,
@@ -33,7 +35,11 @@ class PersistenceConflictError(RuntimeError):
     """Raised when a stale aggregate write is detected."""
 
 
-class _BaseSQLModelKanbanRepository(KanbanRepositoryPort):
+class _BaseSQLModelKanbanRepository(
+    KanbanQueryRepositoryPort,
+    KanbanCommandRepositoryPort,
+    KanbanLookupRepositoryPort,
+):
     def __init__(self) -> None:
         self._closed = False
 

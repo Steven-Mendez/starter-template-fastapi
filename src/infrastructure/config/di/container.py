@@ -8,16 +8,15 @@ from src.application.ports.id_generator_port import IdGeneratorPort
 from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.application.shared.readiness import ReadinessProbe
-from src.config.settings import AppSettings
 from src.infrastructure.adapters.outbound.query.kanban_query_repository_view import (
     KanbanQueryRepositoryView,
 )
 from src.infrastructure.config.di.composition import (
-    ManagedKanbanRepositoryPort,
     RuntimeRepositories,
     ShutdownHook,
     compose_runtime_dependencies,
 )
+from src.infrastructure.config.settings import AppSettings
 
 UnitOfWorkFactory = Callable[[], UnitOfWorkPort]
 
@@ -32,11 +31,6 @@ class ConfiguredAppContainer:
     clock: ClockPort
     readiness_probe: ReadinessProbe
     shutdown: ShutdownHook
-
-    @property
-    def repository(self) -> ManagedKanbanRepositoryPort:
-        """Backward-compatible alias to the kanban repository."""
-        return self.repositories.kanban
 
 
 def build_container(settings: AppSettings) -> ConfiguredAppContainer:

@@ -65,19 +65,19 @@ PORT=9000 make dev
 Development server with auto-reload:
 
 ```bash
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 If you use a globally installed Uvicorn:
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 If your FastAPI install exposes the CLI:
 
 ```bash
-fastapi run main.py
+fastapi run src/main.py
 ```
 
 ## Quality gates
@@ -159,7 +159,7 @@ uv run alembic upgrade head
 3) Start the API locally:
 
 ```bash
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Run full stack in Docker (app + PostgreSQL)

@@ -11,8 +11,9 @@ from src.application.commands import (
 )
 from src.application.commands.board.patch import PatchBoardCommand
 from src.application.contracts import AppCardPriority
-from src.application.shared import AppErr, ApplicationError, AppOk
+from src.application.kanban.errors import ApplicationError
 from src.domain.kanban.models import Board, Card, Column
+from src.domain.shared.result import Err, Ok
 from tests.support.kanban_builders import HandlerHarness
 
 pytestmark = pytest.mark.unit
@@ -48,7 +49,7 @@ def test_create_column_handler_uses_board_add_column_intent(
         CreateColumnCommand(board_id=board.id, title="Todo")
     )
 
-    assert isinstance(created, AppOk)
+    assert isinstance(created, Ok)
     assert calls["count"] == 1
 
 
@@ -70,7 +71,7 @@ def test_create_column_handler_uses_board_next_column_position_intent(
         CreateColumnCommand(board_id=board.id, title="Todo")
     )
 
-    assert isinstance(created, AppOk)
+    assert isinstance(created, Ok)
     assert calls["count"] == 1
 
 
@@ -87,7 +88,7 @@ def test_card_cannot_move_to_column_on_another_board(
         PatchCardCommand(card_id=card.id, column_id=col_b.id)
     )
 
-    assert isinstance(result, AppErr)
+    assert isinstance(result, Err)
     assert result.error is ApplicationError.INVALID_CARD_MOVE
 
 
@@ -99,13 +100,13 @@ def test_patch_board_without_changes_returns_application_validation_error(
     result = handler_harness.create_board_use_case.execute(
         CreateBoardCommand(title="noop")
     )
-    assert isinstance(result, AppOk)
+    assert isinstance(result, Ok)
 
     result = handler_harness.patch_board_use_case.execute(
         PatchBoardCommand(board_id=board.id)
     )
 
-    assert isinstance(result, AppErr)
+    assert isinstance(result, Err)
     assert result.error is ApplicationError.PATCH_NO_CHANGES
 
 
@@ -118,7 +119,7 @@ def test_patch_board_renames_board_via_command_handler(
         PatchBoardCommand(board_id=board.id, title="After")
     )
 
-    assert isinstance(result, AppOk)
+    assert isinstance(result, Ok)
     assert result.value.title == "After"
 
 
@@ -133,7 +134,7 @@ def test_move_card_fails_when_target_column_does_not_exist(
         PatchCardCommand(card_id=card.id, column_id=_UNKNOWN_COLUMN_ID)
     )
 
-    assert isinstance(result, AppErr)
+    assert isinstance(result, Err)
     assert result.error is ApplicationError.INVALID_CARD_MOVE
 
 
@@ -149,11 +150,11 @@ def test_card_can_move_between_columns_on_same_board(
         PatchCardCommand(card_id=card.id, column_id=col_b.id)
     )
 
-    assert isinstance(moved, AppOk)
+    assert isinstance(moved, Ok)
     assert moved.value.column_id == col_b.id
 
     detail = handler_harness.get_board(board.id)
-    assert isinstance(detail, AppOk)
+    assert isinstance(detail, Ok)
     by_title = {column.title: column for column in detail.value.columns}
     assert len(by_title["A"].cards) == 0
     assert len(by_title["B"].cards) == 1
@@ -171,10 +172,10 @@ def test_card_order_within_column_follows_position_updates(
         PatchCardCommand(card_id=card_a.id, position=1)
     )
 
-    assert isinstance(reordered, AppOk)
+    assert isinstance(reordered, Ok)
 
     detail = handler_harness.get_board(board.id)
-    assert isinstance(detail, AppOk)
+    assert isinstance(detail, Ok)
     detail_column = next(
         (candidate for candidate in detail.value.columns if candidate.id == column.id),
         None,
@@ -195,7 +196,7 @@ def test_priority_preserved_when_moving_between_columns(
         PatchCardCommand(card_id=card.id, column_id=col_b.id)
     )
 
-    assert isinstance(moved, AppOk)
+    assert isinstance(moved, Ok)
     assert moved.value.priority is AppCardPriority.HIGH
 
 
@@ -212,7 +213,7 @@ def test_due_at_preserved_when_moving_between_columns(
         PatchCardCommand(card_id=card.id, column_id=col_b.id)
     )
 
-    assert isinstance(moved, AppOk)
+    assert isinstance(moved, Ok)
     assert moved.value.due_at == due_at
 
 
@@ -243,13 +244,13 @@ def test_patch_card_handler_uses_domain_card_lookup_intents(
         PatchCardCommand(card_id=card.id, title="updated")
     )
 
-    assert isinstance(patched, AppOk)
+    assert isinstance(patched, Ok)
     assert calls["find_column"] == 1
     assert calls["get_card"] == 1
 
     moved = handler_harness.patch_card(PatchCardCommand(card_id=card.id, position=0))
 
-    assert isinstance(moved, AppOk)
+    assert isinstance(moved, Ok)
     assert calls["find_column"] == 3
     assert calls["get_card"] == 2
 
@@ -266,7 +267,7 @@ def test_patch_card_clear_due_at_when_clear_due_at_is_true(
         PatchCardCommand(card_id=card.id, clear_due_at=True)
     )
 
-    assert isinstance(cleared, AppOk)
+    assert isinstance(cleared, Ok)
     assert cleared.value.due_at is None
 
 
@@ -279,7 +280,7 @@ def test_patch_card_without_changes_returns_application_validation_error(
 
     patched = handler_harness.patch_card(PatchCardCommand(card_id=card.id))
 
-    assert isinstance(patched, AppErr)
+    assert isinstance(patched, Err)
     assert patched.error is ApplicationError.PATCH_NO_CHANGES
 
 
@@ -295,7 +296,7 @@ def test_patch_card_keeps_due_at_when_updating_other_fields(
         PatchCardCommand(card_id=card.id, title="renamed")
     )
 
-    assert isinstance(patched, AppOk)
+    assert isinstance(patched, Ok)
     assert patched.value.due_at == due_at
 
 
@@ -308,10 +309,10 @@ def test_delete_middle_column_reindexes_remaining_columns(
     last = handler_harness.column(board.id, "C")
 
     deleted = handler_harness.delete_column(middle.id)
-    assert isinstance(deleted, AppOk)
+    assert isinstance(deleted, Ok)
 
     detail = handler_harness.get_board(board.id)
-    assert isinstance(detail, AppOk)
+    assert isinstance(detail, Ok)
 
     by_id = {column.id: column for column in detail.value.columns}
     assert middle.id not in by_id

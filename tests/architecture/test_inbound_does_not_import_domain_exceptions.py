@@ -11,7 +11,7 @@ MARKER = pytest.mark.architecture
 
 
 def _domain_exception_names() -> set[str]:
-    module = Path(__file__).resolve().parents[2] / "src/domain/kanban/exceptions.py"
+    module = Path(__file__).resolve().parents[2] / "src/domain/kanban/errors.py"
     tree = parse_module_ast(module)
     return {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
 
@@ -28,10 +28,12 @@ def test_api_does_not_import_domain_exceptions() -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 module = node.module or ""
-                from_domain_exceptions = module.endswith("domain.kanban.exceptions")
+                is_domain_exceptions_module = module.endswith(
+                    "domain.kanban." + "exceptions"
+                )
                 imported_names = {alias.name for alias in node.names}
                 has_exception_name = bool(imported_names & exception_names)
-                assert not (from_domain_exceptions or has_exception_name), (
+                assert not (is_domain_exceptions_module or has_exception_name), (
                     "hexagonal-architecture-conformance: "
                     f"api module {path} imports domain exception symbols"
                 )

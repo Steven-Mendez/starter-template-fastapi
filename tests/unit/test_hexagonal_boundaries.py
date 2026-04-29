@@ -14,8 +14,8 @@ from src.api import dependencies as api_dependencies
 from src.api.routers import kanban_router, root_router
 from src.application.ports import (
     KanbanCommandRepositoryPort,
+    KanbanLookupRepositoryPort,
     KanbanQueryRepositoryPort,
-    KanbanRepositoryPort,
 )
 from src.application.shared.readiness import ReadinessProbe
 from src.infrastructure.adapters.outbound.persistence.lifecycle import ClosableResource
@@ -27,7 +27,7 @@ pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
-RUNTIME_MODULE_FILES = ("main.py",)
+RUNTIME_MODULE_FILES: tuple[str, ...] = ()
 
 
 @dataclass
@@ -136,7 +136,6 @@ DENY_MATRIX = {
         "settings",
         "dependencies",
         "src.settings",
-        "src.config",
     ],
     "application": [
         "src.domain.kanban.repository",
@@ -148,7 +147,6 @@ DENY_MATRIX = {
         "settings",
         "dependencies",
         "src.settings",
-        "src.config",
     ],
     "api": [
         "src.domain.kanban.repository",
@@ -384,7 +382,11 @@ def test_api_routes_use_cqrs_handlers() -> None:
 
         for param_name, param in sig.parameters.items():
             annotation = type_hints.get(param_name, param.annotation)
-            if annotation_contains_type(annotation, KanbanRepositoryPort):
+            if (
+                annotation_contains_type(annotation, KanbanCommandRepositoryPort)
+                or annotation_contains_type(annotation, KanbanQueryRepositoryPort)
+                or annotation_contains_type(annotation, KanbanLookupRepositoryPort)
+            ):
                 has_repository = True
 
             annotation_text = str(annotation)

@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models import Board, BoardSummary, Card
-from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Result
 
 

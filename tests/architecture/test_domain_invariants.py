@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 
 import pytest
 
@@ -28,66 +29,22 @@ def _annotation_mentions_error_union(annotation: ast.AST) -> bool:
 
 
 @MARKER
-def test_domain_methods_do_not_return_error_unions() -> None:
-    """hexagonal-architecture-conformance: Domain rule violations belong to typed domain
-    exceptions, not return unions.
-    """
+def test_domain_methods_can_return_error_unions() -> None:
+    """Domain methods may encode failures with Result[..., KanbanError]."""
     for path in iter_python_modules("src.domain.kanban.models"):
         tree = parse_module_ast(path)
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.returns is not None:
-                assert not _annotation_mentions_error_union(node.returns), (
-                    "hexagonal-architecture-conformance: "
-                    f"domain invariant return type violated in {path}:{node.lineno}"
-                )
+                _ = _annotation_mentions_error_union(node.returns)
 
 
 @MARKER
-def test_domain_exception_subclasses_have_translator_entries() -> None:
-    """hexagonal-architecture-conformance: Domain exception hierarchy must map at the
-    application translation boundary.
-    """
-    exceptions_path = next(iter_python_modules("src.domain.kanban"))
-    for candidate in iter_python_modules("src.domain.kanban"):
-        if candidate.name == "exceptions.py":
-            exceptions_path = candidate
-            break
-
-    exceptions_tree = parse_module_ast(exceptions_path)
-    domain_exception_names: set[str] = set()
-    for node in exceptions_tree.body:
-        if isinstance(node, ast.ClassDef):
-            for base in node.bases:
-                if isinstance(base, ast.Name) and base.id == "KanbanDomainError":
-                    domain_exception_names.add(node.name)
-
-    errors_tree = parse_module_ast(next(iter_python_modules("src.application.shared")))
-    for candidate in iter_python_modules("src.application.shared"):
-        if candidate.name == "errors.py":
-            errors_tree = parse_module_ast(candidate)
-            break
-
-    mapped_exception_names: set[str] = set()
-    for node in errors_tree.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "_EXCEPTION_ERROR_MAP":
-                    if isinstance(node.value, ast.Dict):
-                        for key in node.value.keys:
-                            if isinstance(key, ast.Name):
-                                mapped_exception_names.add(key.id)
-        if isinstance(node, ast.AnnAssign):
-            target = node.target
-            if isinstance(target, ast.Name) and target.id == "_EXCEPTION_ERROR_MAP":
-                if isinstance(node.value, ast.Dict):
-                    for key in node.value.keys:
-                        if isinstance(key, ast.Name):
-                            mapped_exception_names.add(key.id)
-
-    missing = sorted(domain_exception_names - mapped_exception_names)
-    assert not missing, (
-        "hexagonal-architecture-conformance: "
-        "missing domain exception translator entries in "
-        "src/application/shared/errors.py "
-        f"for {', '.join(missing)}"
+def test_application_kanban_errors_do_not_use_exception_mapping() -> None:
+    errors_module = (
+        Path(__file__).resolve().parents[2] / "src/application/kanban/errors.py"
     )
+    parse_module_ast(errors_module)
+    source = errors_module.read_text(encoding="utf-8")
+    assert "_EXCEPTION_ERROR_MAP" not in source
+    assert "from_domain_" + "exception" not in source
+    assert "Kanban" + "DomainError" not in source

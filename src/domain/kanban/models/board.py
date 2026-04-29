@@ -4,16 +4,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from src.domain.kanban.exceptions import (
-    CardNotFoundError,
-    ColumnNotFoundError,
-    InvalidCardMoveError,
-)
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models.column import Column
 from src.domain.kanban.specifications.card_move import (
     CardMoveCandidate,
     ValidCardMoveSpecification,
 )
+from src.domain.shared.result import Err, Ok, Result
 
 if TYPE_CHECKING:
     from src.domain.kanban.models.card import Card
@@ -51,13 +48,14 @@ class Board:
             return None
         return next((card for card in column.cards if card.id == card_id), None)
 
-    def delete_column(self, column_id: str) -> None:
+    def delete_column(self, column_id: str) -> Result[None, KanbanError]:
         column = self.get_column(column_id)
         if column is None:
-            raise ColumnNotFoundError
+            return Err(KanbanError.COLUMN_NOT_FOUND)
 
         self.columns.remove(column)
         self._recalculate_column_positions()
+        return Ok(None)
 
     def move_card(
         self,
@@ -65,15 +63,15 @@ class Board:
         source_column_id: str,
         target_column_id: str,
         requested_position: int | None,
-    ) -> None:
+    ) -> Result[None, KanbanError]:
         source_col = self.get_column(source_column_id)
         target_col = self.get_column(target_column_id)
 
         if source_col is None:
-            raise InvalidCardMoveError
+            return Err(KanbanError.INVALID_CARD_MOVE)
 
         if target_col is None:
-            raise InvalidCardMoveError
+            return Err(KanbanError.INVALID_CARD_MOVE)
 
         candidate = CardMoveCandidate(
             target_column_exists=True,
@@ -81,18 +79,19 @@ class Board:
             target_board_id=target_col.board_id,
         )
         if not ValidCardMoveSpecification().is_satisfied_by(candidate):
-            raise InvalidCardMoveError
+            return Err(KanbanError.INVALID_CARD_MOVE)
 
         if source_column_id == target_column_id:
             if requested_position is not None:
                 source_col.move_card_within(card_id, requested_position)
-            return
+            return Ok(None)
 
         card = source_col.extract_card(card_id)
         if not card:
-            raise CardNotFoundError
+            return Err(KanbanError.CARD_NOT_FOUND)
 
         target_col.insert_card(card, requested_position)
+        return Ok(None)
 
     def _recalculate_column_positions(self) -> None:
         for i, column in enumerate(self.columns):

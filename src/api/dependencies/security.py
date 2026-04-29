@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Protocol, TypeAlias, cast
+from typing import Annotated, Any, Protocol, TypeAlias, cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 
@@ -10,7 +10,6 @@ from src.application.ports.id_generator_port import IdGeneratorPort
 from src.application.ports.kanban_query_repository import KanbanQueryRepositoryPort
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
 from src.application.shared.readiness import ReadinessProbe
-from src.config.settings import AppSettings
 
 UnitOfWorkFactory: TypeAlias = Callable[[], UnitOfWorkPort]
 
@@ -21,7 +20,7 @@ class DependencyContainerNotReadyError(RuntimeError):
 
 class AppContainer(Protocol):
     @property
-    def settings(self) -> AppSettings: ...
+    def settings(self) -> Any: ...
 
     @property
     def query_repository(self) -> KanbanQueryRepositoryPort: ...
@@ -52,7 +51,7 @@ def get_app_container(request: Request) -> AppContainer:
     return cast(AppContainer, container)
 
 
-def get_app_settings(request: Request) -> AppSettings:
+def get_app_settings(request: Request) -> Any:
     return get_app_container(request).settings
 
 
@@ -70,5 +69,5 @@ def require_write_api_key(
         )
 
 
-AppSettingsDep: TypeAlias = Annotated[AppSettings, Depends(get_app_settings)]
+AppSettingsDep: TypeAlias = Annotated[Any, Depends(get_app_settings)]
 WriteApiKeyDep: TypeAlias = Annotated[None, Depends(require_write_api_key)]

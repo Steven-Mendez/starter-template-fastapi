@@ -13,7 +13,7 @@ from src.api.mappers.kanban import to_column_response, to_create_column_input
 from src.api.routers._errors import raise_http_from_application_error
 from src.api.schemas.kanban import ColumnCreate, ColumnRead
 from src.application.commands import CreateColumnCommand, DeleteColumnCommand
-from src.application.shared import AppErr, AppOk
+from src.application.shared import Err, Ok
 
 columns_router = APIRouter(tags=["columns"])
 
@@ -32,9 +32,9 @@ def create_column(
     match use_case.execute(
         CreateColumnCommand(board_id=str(board_id), title=to_create_column_input(body))
     ):
-        case AppOk(value):
+        case Ok(value):
             return to_column_response(value)
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)
 
 
@@ -45,7 +45,7 @@ def delete_column(
     _: WriteApiKeyDep,
 ) -> None:
     match use_case.execute(DeleteColumnCommand(column_id=str(column_id))):
-        case AppOk(_):
+        case Ok(_):
             return
-        case AppErr(err):
+        case Err(err):
             raise_http_from_application_error(err)

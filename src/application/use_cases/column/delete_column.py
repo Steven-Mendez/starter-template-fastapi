@@ -4,17 +4,31 @@ from dataclasses import dataclass
 
 from src.application.commands.column.delete import (
     DeleteColumnCommand,
-    handle_delete_column,
 )
+from src.application.kanban.errors import ApplicationError, from_domain_error
 from src.application.ports.unit_of_work_port import UnitOfWorkPort
-from src.application.shared import ApplicationError, AppResult
+from src.domain.shared.result import Err, Ok, Result
 
 
 @dataclass(slots=True)
 class DeleteColumnUseCase:
     uow: UnitOfWorkPort
 
-    def execute(
-        self, command: DeleteColumnCommand
-    ) -> AppResult[None, ApplicationError]:
-        return handle_delete_column(uow=self.uow, command=command)
+    def execute(self, command: DeleteColumnCommand) -> Result[None, ApplicationError]:
+        with self.uow:
+            board_id = self.uow.lookup.find_board_id_by_column(command.column_id)
+            if not board_id:
+                return Err(ApplicationError.COLUMN_NOT_FOUND)
+
+            board_result = self.uow.commands.find_by_id(board_id)
+            if isinstance(board_result, Err):
+                return Err(from_domain_error(board_result.error))
+            board = board_result.value
+
+            delete_result = board.delete_column(command.column_id)
+            if isinstance(delete_result, Err):
+                return Err(from_domain_error(delete_result.error))
+
+            self.uow.commands.save(board)
+            self.uow.commit()
+            return Ok(None)

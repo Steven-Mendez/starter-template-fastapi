@@ -6,10 +6,10 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from src.config.settings import AppSettings
 from src.infrastructure.adapters.outbound.persistence.sqlmodel.models import (
     get_sqlmodel_metadata,
 )
+from src.infrastructure.config.settings import AppSettings
 
 config = context.config
 

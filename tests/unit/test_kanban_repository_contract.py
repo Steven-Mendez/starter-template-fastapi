@@ -8,8 +8,8 @@ from typing import Protocol
 import pytest
 
 from src.application.shared.readiness import ReadinessProbe
+from src.domain.kanban.errors import KanbanError
 from src.domain.kanban.models import Board, BoardSummary, Card, CardPriority, Column
-from src.domain.shared.errors import KanbanError
 from src.domain.shared.result import Err, Ok, Result
 from src.infrastructure.adapters.outbound.persistence.lifecycle import ClosableResource
 from src.infrastructure.adapters.outbound.persistence.sqlmodel.repository import (
