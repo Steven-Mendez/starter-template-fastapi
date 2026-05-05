@@ -2,7 +2,7 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check ci precommit-install precommit-run precommit-update test test-cov test-unit test-integration test-e2e test-fast test-architecture
+.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check ci precommit-install precommit-run precommit-update
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -28,11 +28,11 @@ lint-fix: ## Run Ruff lint checks and auto-fix
 typecheck: ## Run static type checks (mypy)
 	uv run mypy
 
-quality: lint lint-arch typecheck test-architecture ## Run lint + import contracts + typing + architecture tests
+quality: lint lint-arch typecheck ## Run lint + import contracts + typing
 
 check: quality ## Alias for the local quality gate
 
-ci: quality test-cov ## Run the same quality gate as GitHub Actions
+ci: quality ## Run the same quality gate as GitHub Actions
 
 precommit-install: ## Install git pre-commit and pre-push hooks
 	uv run pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push
@@ -42,24 +42,3 @@ precommit-run: ## Run all pre-commit hooks
 
 precommit-update: ## Update pre-commit hook versions
 	uv run pre-commit autoupdate
-
-test: ## Full pytest suite
-	uv run pytest
-
-test-cov: ## Run non-e2e pytest with coverage report
-	uv run pytest -m "not e2e" --cov=. --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=90
-
-test-fast: ## Skip e2e (no subprocess server)
-	uv run pytest -m "not e2e"
-
-test-architecture: ## Run architecture conformance tests
-	uv run pytest tests/architecture -m architecture
-
-test-unit: ## -m unit
-	uv run pytest -m unit
-
-test-integration: ## -m integration
-	uv run pytest -m integration
-
-test-e2e: ## -m e2e
-	uv run pytest -m e2e

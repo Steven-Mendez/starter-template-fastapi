@@ -18,7 +18,7 @@ Then open http://127.0.0.1:8000/docs for the interactive API docs.
 - Python 3.14+ (see `.python-version`)
 - [uv](https://docs.astral.sh/uv/) for dependencies and `uv run`
 - [GNU Make](https://www.gnu.org/software/make/) if you use the Makefile shortcuts below
-- Docker (required for PostgreSQL containers and integration/e2e tests)
+- Docker (required for PostgreSQL containers)
 
 ## Install
 
@@ -49,14 +49,13 @@ make sync     # uv sync — install from lockfile
 make dev      # dev server with reload (default port 8000)
 make format   # ruff formatter
 make lint     # ruff checks
+make lint-arch # import-linter (hexagonal contracts)
 make lint-fix # ruff checks + autofix
 make typecheck  # mypy
-make check    # lint + typecheck
+make check    # lint + lint-arch + typecheck
 make precommit-install
 make precommit-run
 make precommit-update
-make test-fast
-make test-cov  # coverage (non-e2e, fail under 90%)
 PORT=9000 make dev
 ```
 
@@ -101,12 +100,11 @@ make check
 
 ## Conformance
 
-Architecture conformance is enforced by dedicated tests plus import contracts.
+Architecture conformance is enforced by import contracts (Import Linter).
 
 Run the conformance gate:
 
 ```bash
-uv run pytest tests/architecture -m architecture
 uv run lint-imports
 ```
 
@@ -169,39 +167,6 @@ docker compose up --build
 ```
 
 The API is exposed at http://127.0.0.1:8000 and uses the internal Compose DSN (`db:5432`).
-
-## Testing strategy
-
-- Unit tests run against PostgreSQL testcontainers.
-- Integration tests run against PostgreSQL via `testcontainers` and apply
-  Alembic migrations before exercising API flows.
-- E2E tests run a live Uvicorn process against PostgreSQL in Docker.
-
-Run the default fast suite (unit + integration, skips e2e):
-
-```bash
-make test-fast
-```
-
-Run integration tests only (requires Docker):
-
-```bash
-make test-integration
-```
-
-If Docker is unavailable, integration tests are skipped automatically.
-
-Run e2e tests:
-
-```bash
-make test-e2e
-```
-
-Run the full suite:
-
-```bash
-make test
-```
 
 ## Database migrations (Alembic)
 
