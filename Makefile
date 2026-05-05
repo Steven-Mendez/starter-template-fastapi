@@ -2,16 +2,16 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check ci precommit-install precommit-run precommit-update
+.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check ci precommit-install precommit-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports
 
 help: ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
 sync: ## Sync dependencies (uv lock + install)
 	uv sync
 
-dev: ## Run API with auto-reload
-	uv run uvicorn src.main:app --reload --host 0.0.0.0 --port $(PORT)
+dev: ## Run API with auto-reload (FastAPI CLI)
+	uv run fastapi dev src/main.py --host 0.0.0.0 --port $(PORT)
 
 format: ## Format code with Ruff formatter
 	uv run ruff format .
@@ -32,7 +32,56 @@ quality: lint lint-arch typecheck ## Run lint + import contracts + typing
 
 check: quality ## Alias for the local quality gate
 
-ci: quality ## Run the same quality gate as GitHub Actions
+test: ## Run unit + e2e tests (no docker)
+	uv run pytest -m "not integration"
+
+test-integration: ## Run integration tests (requires Docker)
+	uv run pytest -m integration
+
+test-e2e: ## Run only end-to-end tests
+	uv run pytest -m e2e
+
+test-feature: ## Run tests for a single feature: make test-feature FEATURE=kanban
+	@if [ -z "$(FEATURE)" ]; then echo "Usage: make test-feature FEATURE=<name>"; exit 2; fi
+	uv run pytest src/features/$(FEATURE)/tests
+
+cov: ## Run tests with terminal coverage report
+	uv run pytest -m "not integration" --cov --cov-report=term-missing --cov-fail-under=70
+
+cov-html: ## Run tests and generate fancy HTML coverage report at reports/coverage/index.html
+	@mkdir -p reports
+	uv run pytest -m "not integration" \
+	    --cov --cov-report=html:reports/coverage --cov-report=term --cov-fail-under=70
+	@echo ""
+	@echo "Coverage report: file://$(CURDIR)/reports/coverage/index.html"
+
+cov-xml: ## Run tests and emit Cobertura XML at reports/coverage.xml (CI artifacts)
+	@mkdir -p reports
+	uv run pytest -m "not integration" \
+	    --cov --cov-report=xml:reports/coverage.xml --cov-fail-under=70
+
+cov-open: ## Open the latest HTML coverage report in the default browser
+	@if [ ! -f reports/coverage/index.html ]; then echo "Run 'make cov-html' first."; exit 1; fi
+	@open reports/coverage/index.html 2>/dev/null || xdg-open reports/coverage/index.html 2>/dev/null || echo "Open: file://$(CURDIR)/reports/coverage/index.html"
+
+report: ## Generate HTML test report + HTML coverage at reports/
+	@mkdir -p reports
+	uv run pytest -m "not integration" \
+	    --cov --cov-report=html:reports/coverage --cov-report=term --cov-fail-under=70 \
+	    --html=reports/tests.html --self-contained-html
+	@echo ""
+	@echo "Test report:     file://$(CURDIR)/reports/tests.html"
+	@echo "Coverage report: file://$(CURDIR)/reports/coverage/index.html"
+
+report-open: ## Open the latest test report and coverage report
+	@open reports/tests.html reports/coverage/index.html 2>/dev/null \
+	  || (xdg-open reports/tests.html; xdg-open reports/coverage/index.html) 2>/dev/null \
+	  || echo "Open: file://$(CURDIR)/reports/tests.html and file://$(CURDIR)/reports/coverage/index.html"
+
+clean-reports: ## Remove generated reports/ and .coverage artifacts
+	rm -rf reports/ .coverage .coverage.* htmlcov/
+
+ci: quality test ## Quality gate + unit + e2e (Docker-free, used by GitHub Actions fast job)
 
 precommit-install: ## Install git pre-commit and pre-push hooks
 	uv run pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push

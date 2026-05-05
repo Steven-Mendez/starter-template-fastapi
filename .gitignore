@@ -23,6 +23,8 @@ dist/
 .coverage.*
 coverage.xml
 htmlcov/
+reports/
+assets/
 .tox/
 .nox/
 .hypothesis/

@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+from src.features.kanban.application.commands.column.delete import DeleteColumnCommand
+from src.features.kanban.application.errors import ApplicationError
+from src.platform.shared.result import Result
+
+
+class DeleteColumnUseCasePort(Protocol):
+    def execute(
+        self, command: DeleteColumnCommand
+    ) -> Result[None, ApplicationError]: ...

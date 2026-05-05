@@ -1,21 +1,103 @@
 A good hexagonal architecture FastAPI application is not "FastAPI with many folders." It is an application where FastAPI is only one adapter around a business core that can be tested, used, and evolved without depending on HTTP, databases, ORMs, queues, or cloud SDKs.
 
-## Project conformance notes
+## Reading order
 
-This repository enforces hexagonal conformance with an automated architecture
-suite in `tests/architecture/` plus import contracts (`uv run lint-imports`).
+1. This guide (theory + project conventions).
+2. The Kanban feature: [`src/features/kanban/`](src/features/kanban/) — the canonical reference implementation.
+3. The feature scaffold: [`src/features/_template/`](src/features/_template/) and its [README](src/features/_template/README.md) — the recipe to add a new feature.
+4. The test suites under `src/features/kanban/tests/`.
 
-- Use cases are decomposed into classes under `src/application/use_cases/`.
-- Persistence adapters live under `src/infrastructure/adapters/outbound/persistence/`.
-- Domain exceptions are declared in `src/domain/kanban/exceptions.py` and translated
-  at the application/API boundary.
+## Project conformance notes (feature-first)
 
-When changing boundaries, run:
+This repository uses a **feature-first** layout with a small shared **platform**
+package. Everything specific to a bounded context lives inside its own feature
+folder; only truly cross-cutting concerns (settings, app factory, error
+handlers, request middleware, persistence engine, shared kernel: `Result`,
+`ClockPort`, `IdGeneratorPort`) live under `src/platform/`.
+
+```
+src/
+  main.py
+  platform/
+    api/{app_factory,error_handlers,middleware/,dependencies/,root.py}
+    config/settings.py
+    persistence/{readiness,lifecycle,sqlmodel/engine.py}
+    shared/{result,clock_port,id_generator_port,adapters/}
+  features/
+    _template/         # scaffold (inert; not registered in main.py)
+    kanban/            # canonical reference feature
+      domain/          # pure: aggregates, value objects, specs, errors
+      application/
+        ports/{inbound,outbound}/
+        commands/, queries/, contracts/, errors.py, use_cases/
+      adapters/
+        inbound/http/  # routers, schemas, mappers, errors
+        outbound/{persistence/sqlmodel,query}/
+      composition/     # KanbanContainer + register_kanban
+      tests/{fakes,contracts,unit,integration,e2e}/
+```
+
+Conformance is enforced by:
+
+- **Import-linter** (`pyproject.toml`, `[tool.importlinter]`) — eight contracts
+  including: domain purity per feature, application is framework-free,
+  inbound/outbound adapter layering, cross-feature isolation, platform isolation,
+  test scoping per feature.
+- **Mypy strict** (`disallow_untyped_defs`).
+- **Pytest** with markers `unit`, `integration`, `e2e` and co-located test
+  suites under each feature.
+
+Run the gate:
 
 ```bash
-uv run pytest tests/architecture -m architecture
-uv run lint-imports
+make ci    # ruff + lint-imports + mypy + unit + e2e
+make test-integration   # docker-backed integration tests (testcontainers Postgres)
 ```
+
+### Inbound port convention
+
+For every use case, declare a `Protocol` in
+`src/features/<F>/application/ports/inbound/<verb>_<noun>.py` named
+`<UseCase>UseCasePort`. The HTTP adapter parameter type is the Protocol; the
+composition root binds the Protocol to the concrete class. This keeps the
+inbound adapter dependency-direction-correct and makes mocking trivial.
+
+Example: [`src/features/kanban/application/ports/inbound/create_board.py`](src/features/kanban/application/ports/inbound/create_board.py).
+
+### Outbound port convention
+
+Outbound ports for a feature live in
+`src/features/<F>/application/ports/outbound/`. Concrete adapters live in
+`src/features/<F>/adapters/outbound/`. Cross-feature outbound abstractions
+(clock, id generator) live in `src/platform/shared/`.
+
+### Platform vs feature
+
+Allowed in `src/platform/`:
+
+- App factory, error handlers, middleware, top-level dependencies.
+- Settings.
+- Persistence engine + readiness + lifecycle types.
+- Shared kernel (Result/Ok/Err, generic Clock/IdGenerator ports & default adapters).
+
+**Forbidden in `src/platform/`:** any business logic, any feature import
+(enforced by import-linter contract `Platform isolation: no feature imports`).
+
+### Conformance contracts (cheat-sheet)
+
+Each contract lives in `pyproject.toml`. A failure points to the offending
+import; fix the boundary, do not soften the contract.
+
+| Contract | Rule |
+|---|---|
+| Platform isolation | `src.platform` MUST NOT import `src.features.*` |
+| Kanban domain: pure | `src.features.kanban.domain` MUST NOT import application/adapters/composition or any framework |
+| Kanban application: framework-free | `src.features.kanban.application` MUST NOT import adapters/composition or framework (Pydantic OK) |
+| Kanban inbound adapter: no outbound bypass | inbound MUST NOT import outbound nor domain directly |
+| Kanban outbound adapter: isolated | outbound MUST NOT import inbound nor use_cases nor inbound ports |
+| Kanban inward dependency direction | layered: `adapters → application → domain` |
+| Cross-feature isolation: kanban | features MUST NOT import each other |
+| Kanban tests scope | a feature's tests MUST NOT import another feature |
 
 Hexagonal architecture is also called Ports and Adapters. The central idea is that the application should be equally drivable by users, tests, batch jobs, scripts, message consumers, or other programs, while being isolated from runtime devices such as databases and external APIs. That framing comes from Alistair Cockburn’s original hexagonal architecture article.  ￼ FastAPI fits this style well because it has routers, dependency injection, request/response validation, and testing support, but those features should live mostly at the edges, not in the domain core. FastAPI’s own docs describe dependency injection as a simple way to integrate components, and its “bigger applications” guidance encourages splitting larger APIs into multiple files and routers.  ￼
 
@@ -1825,3 +1907,30 @@ The shortest accurate summary:
 
 A good hexagonal FastAPI app treats FastAPI as an adapter, not as the application.
 The business core should be usable without HTTP, without a database, and without the framework.
+
+---
+
+## Appendix: Migration from layer-first
+
+Earlier versions of this template used `src/{api,application,domain,infrastructure}/`
+(layer-first). The repository is now feature-first; old paths map as follows:
+
+| Old path                                                                  | New path                                                       |
+|---------------------------------------------------------------------------|----------------------------------------------------------------|
+| `src.domain.kanban.*`                                                     | `src.features.kanban.domain.*`                                 |
+| `src.domain.shared.result`                                                | `src.platform.shared.result`                                   |
+| `src.application.use_cases.*`                                             | `src.features.kanban.application.use_cases.*`                  |
+| `src.application.commands.*` / `queries.*` / `contracts.*` / `kanban.errors` | `src.features.kanban.application.{commands,queries,contracts,errors}` |
+| `src.application.ports.kanban_*` / `unit_of_work_port`                    | `src.features.kanban.application.ports.outbound.*`             |
+| `src.application.ports.{clock,id_generator}_port`                         | `src.platform.shared.{clock,id_generator}_port`                |
+| `src.application.shared.readiness`                                        | `src.platform.persistence.readiness`                           |
+| `src.api.routers.*` / `schemas.*` / `mappers.kanban.*`                    | `src.features.kanban.adapters.inbound.http.*`                  |
+| `src.infrastructure.adapters.outbound.persistence.sqlmodel.*`             | `src.features.kanban.adapters.outbound.persistence.sqlmodel.*` |
+| `src.infrastructure.adapters.outbound.query.*`                            | `src.features.kanban.adapters.outbound.query.*`                |
+| `src.infrastructure.adapters.outbound.{clock,id_generator}.*`             | `src.platform.shared.adapters.{system_clock,uuid_id_generator}` |
+| `src.infrastructure.config.settings`                                      | `src.platform.config.settings`                                 |
+
+The dependency direction rules (Section 1) still apply at the **per-feature**
+level: every feature has its own `domain → application → adapters` ordering,
+plus the global rule that platform never imports features and features never
+import each other.

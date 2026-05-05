@@ -16,10 +16,87 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "freezegun>=1.5.5",
+    "httpx>=0.28.1",
     "import-linter>=2.1",
     "mypy>=1.18.2",
+    "polyfactory>=3.3.0",
     "pre-commit>=4.3.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-clarity>=1.0.1",
+    "pytest-cov>=7.1.0",
+    "pytest-html>=4.2.0",
+    "pytest-randomly>=4.1.0",
+    "pytest-sugar>=1.1.1",
     "ruff>=0.14.0",
+    "testcontainers[postgresql]>=4.14.2",
+]
+
+[tool.fastapi]
+entrypoint = "src.main:app"
+
+[tool.pytest.ini_options]
+testpaths = ["src"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "unit: fast, no IO",
+    "integration: requires docker / external services",
+    "e2e: full flow through HTTP layer",
+]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    # pytest-randomly: deterministic-by-default, override with `--randomly-seed=...`
+    "-p", "randomly",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "src/**/tests/**",
+    "src/**/conftest.py",
+    "src/conftest.py",
+    "src/main.py",
+]
+data_file = ".coverage"
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+skip_covered = false
+precision = 2
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "pragma: no cover",
+    "\\.\\.\\.\\s*$",
+]
+
+[tool.coverage.html]
+directory = "reports/coverage"
+title = "starter-template-fastapi coverage"
+show_contexts = true
+
+[tool.coverage.xml]
+output = "reports/coverage.xml"
+
+[tool.coverage.json]
+output = "reports/coverage.json"
+pretty_print = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+exclude = [
+    "**/tests/**",
+    "**/conftest.py",
 ]
 
 [tool.ruff]
@@ -42,15 +119,27 @@ no_implicit_optional = true
 root_packages = ["src"]
 include_external_packages = true
 
-# hex-design-guide.md §3, §16, §29 Rule 1
+# Platform must never depend on a feature.
 [[tool.importlinter.contracts]]
-name = "Domain layer: no outward or framework dependencies"
+name = "Platform isolation: no feature imports"
 type = "forbidden"
-source_modules = ["src.domain"]
+source_modules = ["src.platform"]
+forbidden_modules = ["src.features"]
+
+# === Kanban feature contracts ===
+
+# Domain purity: no application, adapters, framework, or other feature imports.
+[[tool.importlinter.contracts]]
+name = "Kanban domain: pure"
+type = "forbidden"
+source_modules = ["src.features.kanban.domain"]
 forbidden_modules = [
-    "src.application",
-    "src.api",
-    "src.infrastructure",
+    "src.features.kanban.application",
+    "src.features.kanban.adapters",
+    "src.features.kanban.composition",
+    "src.platform.api",
+    "src.platform.persistence",
+    "src.platform.config",
     "fastapi",
     "starlette",
     "sqlmodel",
@@ -63,21 +152,16 @@ forbidden_modules = [
     "pydantic",
 ]
 
+# Application: no adapters/composition/api/framework. Pydantic allowed for DTOs.
 [[tool.importlinter.contracts]]
-name = "Persistence adapters: no application contracts coupling"
+name = "Kanban application: framework-free"
 type = "forbidden"
-source_modules = ["src.infrastructure.adapters.outbound.persistence"]
-forbidden_modules = ["src.application.contracts"]
-
-# hex-design-guide.md §4, §16, §29 Rule 2
-# pydantic intentionally NOT forbidden - see hex-design-guide.md §35
-[[tool.importlinter.contracts]]
-name = "Application layer: no infrastructure or framework dependencies"
-type = "forbidden"
-source_modules = ["src.application"]
+source_modules = ["src.features.kanban.application"]
 forbidden_modules = [
-    "src.api",
-    "src.infrastructure",
+    "src.features.kanban.adapters",
+    "src.features.kanban.composition",
+    "src.platform.api",
+    "src.platform.persistence",
     "fastapi",
     "starlette",
     "sqlmodel",
@@ -89,17 +173,15 @@ forbidden_modules = [
     "psycopg",
 ]
 
-# hex-design-guide.md §7, §8, §16
+# Inbound adapters do not reach into outbound adapters or domain directly.
 [[tool.importlinter.contracts]]
-name = "API adapter: no infrastructure bypass or direct domain access"
+name = "Kanban inbound adapter: no outbound bypass"
 type = "forbidden"
-source_modules = ["src.api"]
-# API depends on application, and application legitimately depends on domain.
-# This contract forbids direct adapter-to-domain/infrastructure coupling only.
+source_modules = ["src.features.kanban.adapters.inbound"]
 allow_indirect_imports = true
 forbidden_modules = [
-    "src.infrastructure",
-    "src.domain",
+    "src.features.kanban.adapters.outbound",
+    "src.features.kanban.domain",
     "sqlmodel",
     "sqlalchemy",
     "alembic",
@@ -107,15 +189,39 @@ forbidden_modules = [
     "psycopg",
 ]
 
-# hex-design-guide.md §6, §16
+# Outbound adapters do not import inbound, use cases, or inbound ports.
 [[tool.importlinter.contracts]]
-name = "Infrastructure: no inbound adapter imports"
+name = "Kanban outbound adapter: isolated from inbound and use cases"
 type = "forbidden"
-source_modules = ["src.infrastructure"]
-forbidden_modules = ["src.api"]
+source_modules = ["src.features.kanban.adapters.outbound"]
+forbidden_modules = [
+    "src.features.kanban.adapters.inbound",
+    "src.features.kanban.application.use_cases",
+    "src.features.kanban.application.ports.inbound",
+]
 
-# hex-design-guide.md §1 "Dependencies point inward"
+# Inbound dependency direction inside Kanban.
 [[tool.importlinter.contracts]]
-name = "Core inward dependency direction"
+name = "Kanban inward dependency direction"
 type = "layers"
-layers = ["src.api", "src.application", "src.domain"]
+layers = [
+    "src.features.kanban.adapters",
+    "src.features.kanban.application",
+    "src.features.kanban.domain",
+]
+
+# Cross-feature isolation: features must not import each other.
+# Currently only kanban exists; this contract is the template enforced here
+# (extend ``forbidden_modules`` when new features are added).
+[[tool.importlinter.contracts]]
+name = "Cross-feature isolation: kanban"
+type = "forbidden"
+source_modules = ["src.features.kanban"]
+forbidden_modules = []
+
+# Tests scope: a feature's tests cannot import another feature.
+[[tool.importlinter.contracts]]
+name = "Kanban tests scope"
+type = "forbidden"
+source_modules = ["src.features.kanban.tests"]
+forbidden_modules = []

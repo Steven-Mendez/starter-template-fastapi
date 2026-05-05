@@ -1,0 +1,14 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+from src.features.kanban.application.commands.board.create import CreateBoardCommand
+from src.features.kanban.application.contracts import AppBoardSummary
+from src.features.kanban.application.errors import ApplicationError
+from src.platform.shared.result import Result
+
+
+class CreateBoardUseCasePort(Protocol):
+    def execute(
+        self, command: CreateBoardCommand
+    ) -> Result[AppBoardSummary, ApplicationError]: ...

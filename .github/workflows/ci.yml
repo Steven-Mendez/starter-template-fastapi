@@ -22,5 +22,24 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
-      - name: Quality gate
+      - name: Quality + tests
         run: make ci
+
+  integration:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Python
+        run: uv python install
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Run integration tests (Docker via testcontainers)
+        run: make test-integration

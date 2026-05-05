@@ -8,7 +8,7 @@ Minimal [FastAPI](https://fastapi.tiangolo.com/) service with Uvicorn, OpenAPI d
 uv sync
 docker compose up -d db
 uv run alembic upgrade head
-make dev
+make dev   # uv run fastapi dev
 ```
 
 Then open http://127.0.0.1:8000/docs for the interactive API docs.
@@ -61,23 +61,20 @@ PORT=9000 make dev
 
 ## Run (without Make)
 
-Development server with auto-reload:
+Development server with auto-reload via the FastAPI CLI:
 
 ```bash
-uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+uv run fastapi dev src/main.py
 ```
 
-If you use a globally installed Uvicorn:
+Production server:
 
 ```bash
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+uv run fastapi run src/main.py --host 0.0.0.0 --port 8000
 ```
 
-If your FastAPI install exposes the CLI:
-
-```bash
-fastapi run src/main.py
-```
+The entrypoint is declared in `pyproject.toml` under `[tool.fastapi]`. Plain
+`uvicorn src.main:app --reload` continues to work too.
 
 ## Quality gates
 
@@ -197,6 +194,58 @@ uv run alembic revision --autogenerate -m "describe-change"
 ## Git
 
 The root `.gitignore` keeps virtualenvs, caches, coverage output, and `.env` files out of Git. **Commit** `uv.lock` and `.python-version` for reproducible installs; put secrets in `.env` (ignored). You can commit a template as `.env.example` if you add one.
+
+## Add a new feature
+
+Copy `src/features/_template/` and follow its [README](src/features/_template/README.md).
+The Kanban feature (`src/features/kanban/`) is the canonical worked example for
+every step.
+
+## Project layout (feature-first)
+
+```
+src/
+  main.py                       # composition root: builds platform + registers features
+  platform/                     # cross-feature infra (no business logic)
+    config/settings.py
+    api/{app_factory,error_handlers,root,middleware/,dependencies/}
+    persistence/{readiness,lifecycle,sqlmodel/engine}
+    shared/{result, clock_port, id_generator_port, adapters/}
+  features/
+    kanban/                     # canonical example feature
+      domain/                   # pure: aggregates, value objects, specs, errors
+      application/
+        ports/{inbound,outbound}/
+        commands/, queries/, contracts/, errors.py, use_cases/
+      adapters/
+        inbound/http/           # routers, schemas, mappers, errors
+        outbound/{persistence/sqlmodel, query}/
+      composition/              # KanbanContainer + register_kanban
+```
+
+Architecture conformance is enforced by [import-linter](https://import-linter.readthedocs.io/)
+contracts in `pyproject.toml`. See `hex-design-guide.md` for the full set of
+boundaries and rationale.
+
+### Migration from layer-first
+
+The previous version of this template used `src/{api,application,domain,infrastructure}`.
+Old imports map to:
+
+| Old path                                                                  | New path                                                       |
+|---------------------------------------------------------------------------|----------------------------------------------------------------|
+| `src.domain.kanban.*`                                                     | `src.features.kanban.domain.*`                                 |
+| `src.domain.shared.result`                                                | `src.platform.shared.result`                                   |
+| `src.application.use_cases.*`                                             | `src.features.kanban.application.use_cases.*`                  |
+| `src.application.commands.*` / `queries.*` / `contracts.*` / `kanban.errors` | `src.features.kanban.application.{commands,queries,contracts,errors}` |
+| `src.application.ports.kanban_*` / `unit_of_work_port`                    | `src.features.kanban.application.ports.outbound.*`             |
+| `src.application.ports.{clock,id_generator}_port`                         | `src.platform.shared.{clock,id_generator}_port`                |
+| `src.application.shared.readiness`                                        | `src.platform.persistence.readiness`                           |
+| `src.api.routers.*` / `schemas.*` / `mappers.kanban.*`                    | `src.features.kanban.adapters.inbound.http.*`                  |
+| `src.infrastructure.adapters.outbound.persistence.sqlmodel.*`             | `src.features.kanban.adapters.outbound.persistence.sqlmodel.*` |
+| `src.infrastructure.adapters.outbound.query.*`                            | `src.features.kanban.adapters.outbound.query.*`                |
+| `src.infrastructure.adapters.outbound.{clock,id_generator}.*`             | `src.platform.shared.adapters.{system_clock,uuid_id_generator}`|
+| `src.infrastructure.config.settings`                                      | `src.platform.config.settings`                                 |
 
 ## OpenSpec
 
