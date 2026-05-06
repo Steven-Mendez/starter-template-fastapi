@@ -14,12 +14,15 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class DeleteBoardUseCase:
+    """Delete a board permanently, cascading columns and cards via the repo."""
+
     uow: UnitOfWorkPort
 
     def execute(
         self,
         command: DeleteBoardCommand,
     ) -> Result[None, ApplicationError]:
+        """Remove the board in a UoW, mapping domain errors to application errors."""
         with self.uow:
             result = self.uow.commands.remove(command.board_id)
             if isinstance(result, Err):

@@ -1,3 +1,5 @@
+"""Tests for FastAPI lifespan attaching and clearing the platform container."""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager

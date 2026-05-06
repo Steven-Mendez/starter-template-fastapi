@@ -7,6 +7,10 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
+# Importing the auth models module registers its SQLModel metadata with the
+# shared MetaData instance so Alembic can detect auth table changes.
+# The noqa suppresses the "imported but unused" warning; the side-effect is intentional.
+import src.features.auth.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
 from alembic import context
 from src.features.kanban.adapters.outbound.persistence.sqlmodel.models import (
     get_sqlmodel_metadata,
@@ -20,6 +24,13 @@ if config.config_file_name is not None:
 
 
 def _resolve_database_url() -> str:
+    """Resolve the migration target DSN, preferring an explicit env var.
+
+    Reading ``APP_POSTGRESQL_DSN`` directly avoids loading the full
+    settings stack — which would require a ``.env`` file — when migrations
+    run inside CI or a Docker container where the DSN is injected as a
+    plain environment variable.
+    """
     env_dsn = os.getenv("APP_POSTGRESQL_DSN")
     if env_dsn:
         return env_dsn
@@ -31,6 +42,11 @@ target_metadata = get_sqlmodel_metadata()
 
 
 def run_migrations_offline() -> None:
+    """Emit migration SQL to stdout without connecting to the database.
+
+    Used when generating SQL for review or applying it through an external
+    tool (e.g. as part of a managed-DB change-review process).
+    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -45,6 +61,12 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    """Apply migrations through a live database connection.
+
+    ``NullPool`` prevents Alembic from keeping a connection alive after
+    migrations finish, which would otherwise block subsequent
+    schema-altering DDL on some databases.
+    """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

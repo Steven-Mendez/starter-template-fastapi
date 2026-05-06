@@ -13,12 +13,19 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class PatchBoardUseCase:
+    """Apply a sparse update to an existing board (currently just ``title``).
+
+    Empty patches are rejected explicitly so an idle ``PATCH`` request
+    never produces an unnecessary write or an audit-log entry.
+    """
+
     uow: UnitOfWorkPort
 
     def execute(
         self,
         command: PatchBoardCommand,
     ) -> Result[AppBoardSummary, ApplicationError]:
+        """Patch the board in a UoW and return its summary projection."""
         if not command.has_changes():
             return Err(ApplicationError.PATCH_NO_CHANGES)
 

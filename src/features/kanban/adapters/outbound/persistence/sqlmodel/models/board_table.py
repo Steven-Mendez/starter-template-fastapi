@@ -9,6 +9,13 @@ from sqlmodel import Field, SQLModel
 
 
 class BoardTable(SQLModel, table=True):
+    """Persistence row for the Kanban :class:`Board` aggregate root.
+
+    ``version`` is incremented on every write and used as an optimistic
+    lock so two concurrent saves of the same aggregate do not overwrite
+    each other silently.
+    """
+
     __tablename__ = "boards"
 
     id: str = Field(primary_key=True)

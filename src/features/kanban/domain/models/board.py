@@ -20,6 +20,22 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class Board:
+    """Aggregate root that owns columns and orchestrates legal card moves.
+
+    Acts as the consistency boundary for the Kanban domain: callers
+    interact only with :class:`Board` methods and never mutate the
+    underlying columns or cards directly, so invariants like contiguous
+    column positions and card containment are enforced in one place.
+
+    Attributes:
+        id: Stable identifier for the board.
+        title: Human-readable board name.
+        created_at: Creation timestamp (UTC).
+        version: Optimistic-lock counter incremented by the persistence
+            adapter on every save.
+        columns: Ordered list of columns making up the board.
+    """
+
     id: str
     title: str
     created_at: datetime
@@ -27,30 +43,42 @@ class Board:
     columns: list[Column] = field(default_factory=list)
 
     def rename(self, title: str) -> None:
+        """Replace the board title in place."""
         self.title = title
 
     def add_column(self, column: Column) -> None:
+        """Append a column to the end of the board."""
         self.columns.append(column)
 
     def next_column_position(self) -> int:
+        """Return the position a new column should take if appended."""
         return len(self.columns)
 
     def get_column(self, column_id: str) -> Column | None:
+        """Return the column with the given id, or ``None`` if absent."""
         return next((c for c in self.columns if c.id == column_id), None)
 
     def find_column_containing_card(self, card_id: str) -> Column | None:
+        """Return the column that currently holds ``card_id``, or ``None``."""
         for column in self.columns:
             if any(card.id == card_id for card in column.cards):
                 return column
         return None
 
     def get_card(self, card_id: str) -> Card | None:
+        """Return the card with the given id, searching across all columns."""
         column = self.find_column_containing_card(card_id)
         if column is None:
             return None
         return next((card for card in column.cards if card.id == card_id), None)
 
     def delete_column(self, column_id: str) -> Result[None, KanbanError]:
+        """Remove a column and re-compact the remaining column positions.
+
+        Returns:
+            :class:`Ok` on success, or :class:`Err` with
+            ``COLUMN_NOT_FOUND`` if no such column exists.
+        """
         column = self.get_column(column_id)
         if column is None:
             return Err(KanbanError.COLUMN_NOT_FOUND)
@@ -66,6 +94,24 @@ class Board:
         target_column_id: str,
         requested_position: int | None,
     ) -> Result[None, KanbanError]:
+        """Move a card across (or within) columns, enforcing the move specification.
+
+        The :class:`ValidCardMoveSpecification` ensures the card stays on
+        the same board and that the target column actually exists.
+        Within-column moves only re-order; cross-column moves transfer
+        the card and re-compact positions in both columns.
+
+        Args:
+            card_id: Identifier of the card to move.
+            source_column_id: Column the card currently belongs to.
+            target_column_id: Column the card should end up in.
+            requested_position: Optional position inside the target column;
+                ``None`` appends to the end.
+
+        Returns:
+            :class:`Ok` on success, or :class:`Err` with the appropriate
+            :class:`KanbanError` on failure.
+        """
         source_col = self.get_column(source_column_id)
         target_col = self.get_column(target_column_id)
 
@@ -96,5 +142,6 @@ class Board:
         return Ok(None)
 
     def _recalculate_column_positions(self) -> None:
+        """Renumber columns so positions stay contiguous after a deletion."""
         for i, column in enumerate(self.columns):
             column.position = i

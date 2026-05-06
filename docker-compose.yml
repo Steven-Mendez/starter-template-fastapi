@@ -7,6 +7,10 @@ x-app-environment: &app-environment
   APP_ENVIRONMENT: development
   APP_ENABLE_DOCS: "true"
   APP_POSTGRESQL_DSN: ${APP_POSTGRESQL_DSN_DOCKER:-postgresql+psycopg://postgres:postgres@db:5432/kanban}
+  APP_AUTH_REDIS_URL: redis://redis:6379/0
+  APP_AUTH_SEED_ON_STARTUP: ${APP_AUTH_SEED_ON_STARTUP:-true}
+  APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL: ${APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL:-root@example.com}
+  APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD: ${APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD:-root}
 
 x-app-volumes: &app-volumes
   - ./src:/app/src
@@ -14,9 +18,20 @@ x-app-volumes: &app-volumes
   - ./alembic.ini:/app/alembic.ini
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: starter-template-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   db:
     image: postgres:16-alpine
-    container_name: kanban-db
+    container_name: starter-template-db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -33,18 +48,25 @@ services:
 
   migrate:
     build: *app-build
+    container_name: starter-template-migrate
     command: alembic upgrade head
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment: *app-environment
     volumes: *app-volumes
 
   app:
     build: *app-build
-    container_name: kanban-app
+    container_name: starter-template-app
+    env_file:
+      - .env
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully

@@ -37,6 +37,7 @@ def create_column(
     body: ColumnCreate,
     use_case: CreateColumnUseCaseDep,
 ) -> ColumnRead:
+    """Append a new column to the given board and return its public projection."""
     match use_case.execute(
         CreateColumnCommand(board_id=str(board_id), title=to_create_column_input(body))
     ):
@@ -53,6 +54,7 @@ def delete_column(
     column_id: UUID,
     use_case: DeleteColumnUseCaseDep,
 ) -> None:
+    """Delete a column and re-compact the remaining column positions on the board."""
     match use_case.execute(DeleteColumnCommand(column_id=str(column_id))):
         case Ok(_):
             return

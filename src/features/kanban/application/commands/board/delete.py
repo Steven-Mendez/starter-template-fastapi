@@ -7,4 +7,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class DeleteBoardCommand:
+    """Input payload for the delete-board use case."""
+
     board_id: str

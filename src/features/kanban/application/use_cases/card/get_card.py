@@ -16,9 +16,12 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class GetCardUseCase:
+    """Fetch a single card by id without loading its parent board aggregate."""
+
     query_repository: KanbanQueryRepositoryPort
 
     def execute(self, query: GetCardQuery) -> Result[AppCard, ApplicationError]:
+        """Return ``AppCard`` or map a domain error to ``ApplicationError``."""
         card_result = self.query_repository.find_card_by_id(query.card_id)
         if isinstance(card_result, Err):
             return Err(from_domain_error(card_result.error))

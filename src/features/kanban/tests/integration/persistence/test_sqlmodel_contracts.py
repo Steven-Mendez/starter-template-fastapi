@@ -1,3 +1,10 @@
+"""Run the shared repository contract suites against the real SQLModel adapter.
+
+Each contract function is parametrised so the same scenarios that
+validate the in-memory fake also run against PostgreSQL via
+testcontainers, catching any drift between the two implementations.
+"""
+
 from __future__ import annotations
 
 import pytest

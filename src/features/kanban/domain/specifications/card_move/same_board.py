@@ -9,6 +9,13 @@ from src.features.kanban.domain.specifications.card_move.candidate import (
 
 
 class SameBoardMoveSpecification(Specification[CardMoveCandidate]):
+    """Holds when both the current and the target column belong to the same board.
+
+    Cross-board moves are intentionally rejected because each board is
+    its own consistency boundary and shuffling cards across them would
+    require coordinated updates to two aggregates.
+    """
+
     def is_satisfied_by(self, candidate: CardMoveCandidate) -> bool:
         return (
             candidate.current_board_id is not None

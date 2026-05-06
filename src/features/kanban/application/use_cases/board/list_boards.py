@@ -16,12 +16,20 @@ from src.platform.shared.result import Ok, Result
 
 @dataclass(slots=True)
 class ListBoardsUseCase:
+    """Return a lightweight summary for every board in the system."""
+
     query_repository: KanbanQueryRepositoryPort
 
     def execute(
         self,
         query: ListBoardsQuery,
     ) -> Result[list[AppBoardSummary], ApplicationError]:
+        """Project every persisted board to ``AppBoardSummary``.
+
+        ``query`` currently carries no filters; it is accepted as a
+        parameter to keep the signature stable when pagination or
+        filtering is added later.
+        """
         del query
         return Ok(
             [

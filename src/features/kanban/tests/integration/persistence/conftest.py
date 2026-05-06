@@ -1,3 +1,10 @@
+"""Pytest fixtures that spin up a real PostgreSQL container for integration tests.
+
+The fixtures fall back to skipping when Docker is unavailable, so the
+integration suite still passes on machines that cannot run
+testcontainers.
+"""
+
 from __future__ import annotations
 
 import os

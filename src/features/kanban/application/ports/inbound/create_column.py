@@ -11,6 +11,8 @@ from src.platform.shared.result import Result
 
 
 class CreateColumnUseCasePort(Protocol):
+    """Inbound port that appends a new column to an existing board."""
+
     def execute(
         self, command: CreateColumnCommand
     ) -> Result[AppColumn, ApplicationError]: ...

@@ -1,3 +1,11 @@
+"""Application entry point.
+
+Composes the FastAPI app, mounts every feature router, and wires the
+per-feature containers inside the lifespan event so resource ownership
+matches the process lifetime: routes are visible from boot, but DB
+pools and Redis connections only exist while the app is serving.
+"""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -6,6 +14,12 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 
+from src.features.auth.composition import (
+    AuthContainer,
+    attach_auth_container,
+    build_auth_container,
+    mount_auth_routes,
+)
 from src.features.kanban.composition import (
     attach_kanban_container,
     build_kanban_container,
@@ -18,26 +32,68 @@ from src.platform.config.settings import AppSettings, get_settings
 
 @dataclass(frozen=True, slots=True)
 class _PlatformAppContainer:
+    """Thin wrapper on ``app.state`` exposing settings to platform code."""
+
     settings: AppSettings
 
 
+def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
+    """Seed RBAC data and optionally create a first super-admin on startup."""
+    if not settings.auth_seed_on_startup:
+        return
+    auth.rbac_service.seed_initial_data()
+
+    email = settings.auth_bootstrap_super_admin_email
+    password = settings.auth_bootstrap_super_admin_password
+    if bool(email) != bool(password):
+        raise RuntimeError(
+            "APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL and "
+            "APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD must be set together."
+        )
+    if email and password:
+        auth.rbac_service.bootstrap_super_admin(
+            auth_service=auth.auth_service,
+            email=email,
+            password=password,
+        )
+
+
 def create_app(settings: AppSettings | None = None) -> FastAPI:
+    """Build the FastAPI application and configure its lifespan.
+
+    Args:
+        settings: Optional pre-built settings. Defaults to the cached
+            :func:`get_settings` instance, which reads the environment.
+
+    Returns:
+        A ready-to-serve FastAPI application with auth and kanban features
+        mounted and a lifespan that initialises and disposes their
+        containers in the correct order.
+    """
     app_settings = settings or get_settings()
     app = build_fastapi_app(app_settings)
 
     # Routes are mounted eagerly so OpenAPI reflects them and routing works
-    # before lifespan startup completes.
+    # before lifespan startup completes. Containers are attached in lifespan
+    # because they require DB connections that should not outlive the process.
+    mount_auth_routes(app)
     mount_kanban_routes(app)
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
+        auth = build_auth_container(settings=app_settings)
+        _run_auth_bootstrap(auth, app_settings)
         kanban = build_kanban_container(postgresql_dsn=app_settings.postgresql_dsn)
         set_app_container(lifespan_app, _PlatformAppContainer(settings=app_settings))
+        attach_auth_container(lifespan_app, auth)
         attach_kanban_container(lifespan_app, kanban)
         try:
             yield
         finally:
+            # Shutdown order is reverse of startup so dependent resources
+            # (e.g. connection pools) are closed after the services that use them.
             kanban.shutdown()
+            auth.shutdown()
             lifespan_app.state.container = None
 
     app.router.lifespan_context = lifespan

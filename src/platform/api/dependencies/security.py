@@ -1,3 +1,5 @@
+"""Optional API-key gate for write endpoints in shared deployments."""
+
 from __future__ import annotations
 
 from typing import Annotated, TypeAlias
@@ -11,10 +13,18 @@ def require_write_api_key(
     request: Request,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
 ) -> None:
+    """Reject the request unless ``X-API-Key`` matches ``APP_WRITE_API_KEY``.
+
+    Acts as a no-op when no key is configured so local and template
+    deployments stay open by default. Shared environments enable the
+    guard by setting ``APP_WRITE_API_KEY``.
+
+    Raises:
+        HTTPException 401: If a key is configured but the header is
+            missing or does not match.
+    """
     configured_key = get_app_settings(request).write_api_key
     if not configured_key:
-        # Local and template deployments start open; shared environments opt in
-        # to write protection by setting APP_WRITE_API_KEY.
         return
     if x_api_key != configured_key:
         raise HTTPException(

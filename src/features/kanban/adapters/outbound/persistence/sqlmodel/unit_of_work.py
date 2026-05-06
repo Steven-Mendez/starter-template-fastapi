@@ -1,3 +1,5 @@
+"""SQLModel-backed implementation of the Kanban :class:`UnitOfWorkPort`."""
+
 from __future__ import annotations
 
 from types import TracebackType
@@ -19,14 +21,18 @@ from src.features.kanban.application.ports.outbound.unit_of_work import UnitOfWo
 
 
 class SqlModelUnitOfWork(UnitOfWorkPort):
+    """UoW that opens one SQLModel session shared by command and lookup repos."""
+
     commands: KanbanCommandRepositoryPort
     lookup: KanbanLookupRepositoryPort
 
     def __init__(self, engine: Engine):
+        """Capture the engine but defer session creation until ``__enter__``."""
         self._engine = engine
         self._session: Session | None = None
 
     def __enter__(self) -> Self:
+        """Open a fresh session and bind both repositories to it."""
         self._session = Session(self._engine, expire_on_commit=False)
         repository = SessionSQLModelKanbanRepository(self._session)
         self.commands = repository
@@ -39,18 +45,24 @@ class SqlModelUnitOfWork(UnitOfWorkPort):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
+        """Roll back any uncommitted transaction and close the session.
+
+        Use cases may return ``Err`` after staging writes but before
+        committing, so any still-open transaction here must be discarded
+        to keep partial writes from leaking out of the unit-of-work.
+        """
         del exc_val, exc_tb
         if self._session is not None:
-            # Use cases can return Err before commit. Roll back any open
-            # transaction so partially staged writes never leak out of the UoW.
             if exc_type is not None or self._session.in_transaction():
                 self._session.rollback()
             self._session.close()
 
     def commit(self) -> None:
+        """Flush pending writes and commit if a session is currently open."""
         if self._session is not None:
             self._session.commit()
 
     def rollback(self) -> None:
+        """Discard pending writes for the current session."""
         if self._session is not None:
             self._session.rollback()

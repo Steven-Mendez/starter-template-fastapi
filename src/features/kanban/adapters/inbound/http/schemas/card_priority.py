@@ -6,6 +6,8 @@ from enum import StrEnum
 
 
 class CardPrioritySchema(StrEnum):
+    """HTTP mirror of :class:`AppCardPriority` for request and response bodies."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"

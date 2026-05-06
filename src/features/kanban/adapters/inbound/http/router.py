@@ -1,3 +1,5 @@
+"""Composers that bundle every Kanban-facing router into mountable APIRouters."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter

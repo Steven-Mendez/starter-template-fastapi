@@ -1,3 +1,14 @@
+"""SQLModel-backed implementation of the Kanban outbound repository ports.
+
+Provides two flavours of the same logic:
+
+* :class:`SQLModelKanbanRepository` owns its own engine, sessions, and
+  shutdown lifecycle; suitable for production use.
+* :class:`SessionSQLModelKanbanRepository` borrows an existing session
+  driven by the unit-of-work, so writes participate in the transaction
+  the use case has opened explicitly.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -46,10 +57,18 @@ class _BaseSQLModelKanbanRepository(
     KanbanCommandRepositoryPort,
     KanbanLookupRepositoryPort,
 ):
+    """Shared implementation of the three repository ports backed by SQLModel.
+
+    Subclasses provide the session strategy (own-engine vs unit-of-work
+    session) by overriding :meth:`_session_scope` and
+    :meth:`_write_session_scope`.
+    """
+
     def __init__(self) -> None:
         self._closed = False
 
     def _ensure_open(self) -> None:
+        """Raise ``RuntimeError`` if :meth:`close` has already been invoked."""
         if self._closed:
             raise RuntimeError("SQLModelKanbanRepository is closed")
 
@@ -62,6 +81,7 @@ class _BaseSQLModelKanbanRepository(
         raise NotImplementedError
 
     def is_ready(self) -> bool:
+        """Probe the database with ``SELECT 1`` to power the readiness endpoint."""
         if self._closed:
             return False
         try:
@@ -72,12 +92,14 @@ class _BaseSQLModelKanbanRepository(
             return False
 
     def list_all(self) -> list[BoardSummary]:
+        """List boards as :class:`BoardSummary`, ordered by creation time."""
         self._ensure_open()
         with self._session_scope() as session:
             boards = session.exec(select(BoardTable).order_by("created_at")).all()
         return [board_table_to_read_model(board) for board in boards]
 
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
+        """Hydrate a complete :class:`Board` aggregate (columns + cards) by id."""
         self._ensure_open()
         with self._session_scope() as session:
             board = session.get(BoardTable, board_id)
@@ -105,6 +127,7 @@ class _BaseSQLModelKanbanRepository(
             return Ok(board_table_to_domain(row=board, columns=out_columns))
 
     def find_card_by_id(self, card_id: str) -> Result[Card, KanbanError]:
+        """Load a single card by id without traversing its parent board."""
         self._ensure_open()
         with self._session_scope() as session:
             card = session.get(CardTable, card_id)
@@ -113,6 +136,7 @@ class _BaseSQLModelKanbanRepository(
             return Ok(card_table_to_domain(card))
 
     def remove(self, board_id: str) -> Result[None, KanbanError]:
+        """Delete the board row, cascading to its columns and cards via foreign keys."""
         self._ensure_open()
         with self._write_session_scope() as session:
             board = session.get(BoardTable, board_id)
@@ -122,6 +146,7 @@ class _BaseSQLModelKanbanRepository(
             return Ok(None)
 
     def find_board_id_by_card(self, card_id: str) -> str | None:
+        """Return the parent board id for a card, walking through its column."""
         self._ensure_open()
         with self._session_scope() as session:
             card = session.get(CardTable, card_id)
@@ -133,6 +158,17 @@ class _BaseSQLModelKanbanRepository(
             return column.board_id
 
     def save(self, board: Board) -> None:
+        """Persist the entire board aggregate as a single snapshot.
+
+        Treating the board as a snapshot keeps cross-row consistency in
+        one place: rows that are no longer present in the in-memory
+        aggregate are deleted, and a stale ``version`` raises
+        :class:`PersistenceConflictError` instead of clobbering newer data.
+
+        Raises:
+            PersistenceConflictError: If the in-memory ``version`` does
+                not match the persisted one (optimistic-lock failure).
+        """
         self._ensure_open()
         with self._write_session_scope() as session:
             db_board = session.get(BoardTable, board.id)
@@ -141,8 +177,6 @@ class _BaseSQLModelKanbanRepository(
                 db_board = mapped_board
                 db_board.version = 1
             else:
-                # Board is saved as an aggregate snapshot. The version check
-                # prevents an older snapshot from overwriting a newer one.
                 if db_board.version != board.version:
                     msg = f"Stale board write detected for {board.id}"
                     raise PersistenceConflictError(msg)
@@ -207,6 +241,7 @@ class _BaseSQLModelKanbanRepository(
                     session.add(db_card)
 
     def find_board_id_by_column(self, column_id: str) -> str | None:
+        """Return the parent board id for a column directly from the row."""
         self._ensure_open()
         with self._session_scope() as session:
             column = session.get(ColumnTable, column_id)
@@ -216,7 +251,20 @@ class _BaseSQLModelKanbanRepository(
 
 
 class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
+    """Production-flavour repository that owns its own engine and connection pool."""
+
     def __init__(self, database_url: str, *, create_schema: bool = True) -> None:
+        """Build a repository connected to a PostgreSQL DSN.
+
+        Args:
+            database_url: SQLAlchemy-compatible PostgreSQL DSN.
+            create_schema: Create tables before use; convenient for local
+                development but disabled in production where Alembic owns
+                the schema.
+
+        Raises:
+            ValueError: If ``database_url`` is not a PostgreSQL DSN.
+        """
         super().__init__()
         if not database_url.startswith("postgresql"):
             msg = "SQLModelKanbanRepository supports PostgreSQL DSNs only"
@@ -230,6 +278,11 @@ class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
     def from_engine(
         cls, engine: Engine, *, create_schema: bool = False
     ) -> "SQLModelKanbanRepository":
+        """Build a repository on top of an existing engine, bypassing the DSN guard.
+
+        Used by tests to inject a SQLite in-memory engine that the
+        ``__init__`` validator would otherwise reject.
+        """
         instance = cls.__new__(cls)
         _BaseSQLModelKanbanRepository.__init__(instance)
         instance._engine = engine
@@ -239,9 +292,11 @@ class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
 
     @property
     def engine(self) -> Engine:
+        """Expose the underlying engine for tooling that needs raw access."""
         return self._engine
 
     def __enter__(self) -> Self:
+        """Allow use as a context manager; the engine is disposed on exit."""
         return self
 
     def __exit__(
@@ -250,10 +305,12 @@ class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        """Dispose the connection pool when leaving the ``with`` block."""
         del exc_type, exc, tb
         self.close()
 
     def close(self) -> None:
+        """Dispose the engine; idempotent so it can be called more than once safely."""
         if self._closed:
             return
         self._engine.dispose()
@@ -276,11 +333,21 @@ class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
 
 
 class SessionSQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
+    """Repository flavour that borrows an existing session managed by the unit-of-work.
+
+    Use cases that need atomic multi-step writes hold the unit-of-work
+    open and pass its session to this repository; closing here only
+    flips the internal flag because the session lifecycle belongs to the
+    unit-of-work.
+    """
+
     def __init__(self, session: Session) -> None:
+        """Wrap the given session and reuse it for both reads and writes."""
         super().__init__()
         self._session = session
 
     def close(self) -> None:
+        """Mark the repository closed without touching the borrowed session."""
         self._closed = True
 
     @contextmanager

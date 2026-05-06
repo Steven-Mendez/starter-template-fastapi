@@ -8,6 +8,8 @@ from src.features.kanban.adapters.inbound.http.schemas.card_read import CardRead
 
 
 class ColumnRead(BaseModel):
+    """Public projection of a column with its ordered cards."""
+
     id: str
     board_id: str
     title: str

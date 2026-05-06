@@ -1,3 +1,5 @@
+"""Placeholder domain aggregate used as a starting point for copied features."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -20,6 +20,7 @@ PROBLEM_JSON = "application/problem+json"
 
 
 def _status_title(code: int) -> str:
+    """HTTP status phrase for ``code``, or ``"Error"`` if unknown."""
     try:
         return HTTPStatus(code).phrase
     except ValueError:
@@ -27,6 +28,7 @@ def _status_title(code: int) -> str:
 
 
 def _http_exception_detail(exc: StarletteHTTPException) -> str | None:
+    """Stringify HTTPException ``detail``, JSON-encoding non-string values."""
     d = exc.detail
     if d is None:
         return None
@@ -44,6 +46,24 @@ def problem_json_response(
     type_uri: str = "about:blank",
     extra: dict[str, Any] | None = None,
 ) -> JSONResponse:
+    """Build an RFC 9457 Problem Details JSON response.
+
+    The current request's ``request_id`` (set by
+    :class:`RequestContextMiddleware`) is automatically included so
+    error responses are easy to correlate with server-side logs.
+
+    Args:
+        status_code: HTTP status code to return.
+        request: Incoming request, used to derive ``instance`` and ``request_id``.
+        title: Human-readable summary; defaults to the status phrase.
+        detail: Optional human-readable explanation of this specific occurrence.
+        type_uri: URI identifying the problem type. ``"about:blank"`` is the
+            RFC-recommended default when no specific type exists.
+        extra: Optional extra fields merged into the payload (e.g. ``code``).
+
+    Returns:
+        A ``JSONResponse`` with ``application/problem+json`` media type.
+    """
     payload: dict[str, Any] = {
         "type": type_uri,
         "title": title if title is not None else _status_title(status_code),
@@ -65,6 +85,13 @@ def problem_json_response(
 
 
 def register_problem_details(app: FastAPI) -> None:
+    """Install the platform-wide exception handlers that produce RFC 9457 responses.
+
+    Covers the dependency-container readiness error, application-level
+    HTTP exceptions, generic Starlette HTTP exceptions, request-validation
+    failures, and any otherwise-unhandled exception (which is logged
+    structurally before being mapped to a 500).
+    """
     logger = logging.getLogger("api.error")
 
     @app.exception_handler(DependencyContainerNotReadyError)

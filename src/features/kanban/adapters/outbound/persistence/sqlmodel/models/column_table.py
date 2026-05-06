@@ -1,3 +1,5 @@
+"""SQLModel table definition for Kanban columns."""
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -5,6 +7,13 @@ from sqlmodel import Field, SQLModel
 
 
 class ColumnTable(SQLModel, table=True):
+    """Persistence row for a Kanban column belonging to a single board.
+
+    Reordering columns inside a single transaction can briefly produce
+    duplicate ``position`` values, which is why the unique constraint
+    is deferred until commit.
+    """
+
     __tablename__ = "columns_"
     # Reordering columns can temporarily duplicate positions inside a transaction.
     # Deferring the unique check validates only the final committed order.

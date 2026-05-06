@@ -12,6 +12,8 @@ T = TypeVar("T")
 
 @dataclass(frozen=True, slots=True)
 class NotSpecification(Specification[T]):
+    """Composite that inverts the result of the wrapped specification."""
+
     inner: Specification[T]
 
     def is_satisfied_by(self, candidate: T) -> bool:

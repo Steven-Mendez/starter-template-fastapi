@@ -10,8 +10,21 @@ from src.platform.shared.result import Result
 
 
 class KanbanQueryRepositoryPort(Protocol):
-    def list_all(self) -> list[BoardSummary]: ...
+    """Outbound port for read-only access to Kanban data.
 
-    def find_by_id(self, board_id: str) -> Result[Board, KanbanError]: ...
+    Kept separate from the command repository so reads can use a
+    cheaper, possibly cached or replica-backed path without sharing the
+    write transaction lifecycle.
+    """
 
-    def find_card_by_id(self, card_id: str) -> Result[Card, KanbanError]: ...
+    def list_all(self) -> list[BoardSummary]:
+        """Return a lightweight summary for every board, ordered by creation time."""
+        ...
+
+    def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
+        """Load a read-only :class:`Board` aggregate, or return ``BOARD_NOT_FOUND``."""
+        ...
+
+    def find_card_by_id(self, card_id: str) -> Result[Card, KanbanError]:
+        """Load a card directly by id without traversing its parent board."""
+        ...

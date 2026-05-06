@@ -1,3 +1,5 @@
+"""End-to-end coverage for the RFC 9457 Problem Details error responses."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator

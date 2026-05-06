@@ -93,6 +93,52 @@ Alembic resolves the database URL in this order:
 1. `APP_POSTGRESQL_DSN` environment variable.
 2. `AppSettings().postgresql_dsn` default or `.env` value.
 
+## Auth And RBAC Bootstrap
+
+Set auth configuration before issuing tokens:
+
+```bash
+export APP_AUTH_JWT_SECRET_KEY="set-a-strong-local-secret-outside-git"
+```
+
+By default, startup can seed RBAC data and bootstrap the first super admin
+automatically when these settings are present:
+
+```bash
+export APP_AUTH_SEED_ON_STARTUP=true
+export APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL=root@example.com
+export APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD=root
+```
+
+For local Docker Compose, those defaults are already provided unless overridden.
+The management commands remain available for manual/one-off operations:
+
+```bash
+uv run python -m src.features.auth.management seed
+export AUTH_BOOTSTRAP_PASSWORD="set-a-temporary-password-outside-git"
+uv run python -m src.features.auth.management create-super-admin \
+  --email admin@example.com \
+  --password-env AUTH_BOOTSTRAP_PASSWORD
+unset AUTH_BOOTSTRAP_PASSWORD
+```
+
+Public registration never grants administrative permissions. Use the admin RBAC
+endpoints only after authenticating as a user with explicit permissions such as
+`roles:manage`, `permissions:manage`, or `users:roles:manage`.
+
+### OAuth Preparation
+
+The service exposes configuration placeholders for a future OAuth provider
+integration:
+
+- `APP_AUTH_OAUTH_ENABLED`
+- `APP_AUTH_OAUTH_GOOGLE_CLIENT_ID`
+- `APP_AUTH_OAUTH_GOOGLE_CLIENT_SECRET`
+- `APP_AUTH_OAUTH_GOOGLE_REDIRECT_URI`
+
+OAuth browser/provider flows are not implemented yet; current authentication
+is first-party email/password login that returns JWT bearer tokens.
+
 ## Health Checks
 
 Use:

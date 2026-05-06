@@ -46,6 +46,7 @@ def create_board(
     body: BoardCreate,
     use_case: CreateBoardUseCaseDep,
 ) -> BoardSummary:
+    """Create a new board and return its summary projection."""
     match use_case.execute(CreateBoardCommand(title=to_create_board_input(body))):
         case Ok(value):
             return to_board_summary_response(value)
@@ -55,6 +56,7 @@ def create_board(
 
 @boards_read_router.get("/boards")
 def list_boards(use_case: ListBoardsUseCaseDep) -> list[BoardSummary]:
+    """Return every board as a list of summaries."""
     match use_case.execute(ListBoardsQuery()):
         case Ok(value):
             return [to_board_summary_response(board) for board in value]
@@ -64,6 +66,7 @@ def list_boards(use_case: ListBoardsUseCaseDep) -> list[BoardSummary]:
 
 @boards_read_router.get("/boards/{board_id}")
 def get_board(board_id: UUID, use_case: GetBoardUseCaseDep) -> BoardDetail:
+    """Return one board with its columns and cards expanded."""
     match use_case.execute(GetBoardQuery(board_id=str(board_id))):
         case Ok(value):
             return to_board_detail_response(value)
@@ -77,6 +80,7 @@ def patch_board(
     body: BoardUpdate,
     use_case: PatchBoardUseCaseDep,
 ) -> BoardSummary:
+    """Apply a sparse update to a board and return the refreshed summary."""
     match use_case.execute(
         PatchBoardCommand(board_id=str(board_id), title=to_patch_board_input(body))
     ):
@@ -94,6 +98,7 @@ def delete_board(
     board_id: UUID,
     use_case: DeleteBoardUseCaseDep,
 ) -> None:
+    """Delete a board, cascading to its columns and cards."""
     match use_case.execute(DeleteBoardCommand(board_id=str(board_id))):
         case Ok(_):
             return

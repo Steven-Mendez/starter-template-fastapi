@@ -1,3 +1,5 @@
+"""Pytest fixtures that wire a fully composed FastAPI app for Kanban e2e tests."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator

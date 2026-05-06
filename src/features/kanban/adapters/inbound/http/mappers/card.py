@@ -1,3 +1,10 @@
+"""Transport-to-application mappers for card payloads.
+
+The patch mapper is more involved than its peers because the HTTP API
+needs to distinguish a "due_at omitted" patch (leave the existing date
+alone) from a "due_at set to null" patch (clear the date).
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,6 +20,8 @@ from src.features.kanban.application.contracts import AppCard, AppCardPriority
 
 
 class PatchCardInput(TypedDict):
+    """Strongly-typed shape consumed by :class:`PatchCardCommand`."""
+
     title: str | None
     description: str | None
     column_id: str | None
@@ -25,6 +34,7 @@ class PatchCardInput(TypedDict):
 def to_create_card_input(
     body: CardCreate,
 ) -> tuple[str, str | None, AppCardPriority, datetime | None]:
+    """Map a :class:`CardCreate` body to the create-card use case inputs."""
     return (
         body.title,
         body.description,
@@ -34,6 +44,12 @@ def to_create_card_input(
 
 
 def to_patch_card_input(body: CardUpdate) -> PatchCardInput:
+    """Translate a :class:`CardUpdate` into the structured input the use case expects.
+
+    Uses ``model_dump(exclude_unset=True)`` so the mapper can tell apart
+    "field omitted" from "field explicitly set to ``None``", which is the
+    cue that the caller wants to clear ``due_at`` rather than leave it.
+    """
     # exclude_unset preserves the API contract: omitted fields mean unchanged,
     # while an explicit JSON null for due_at means clear the due date.
     updates = body.model_dump(exclude_unset=True)
@@ -52,6 +68,7 @@ def to_patch_card_input(body: CardUpdate) -> PatchCardInput:
 
 
 def to_card_response(value: AppCard) -> CardRead:
+    """Project an :class:`AppCard` into the public :class:`CardRead` HTTP shape."""
     return CardRead(
         id=value.id,
         column_id=value.column_id,

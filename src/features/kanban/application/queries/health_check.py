@@ -7,4 +7,4 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class HealthCheckQuery:
-    pass
+    """Empty payload for the readiness/health-check use case."""

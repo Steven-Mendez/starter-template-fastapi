@@ -12,6 +12,8 @@ T = TypeVar("T")
 
 @dataclass(frozen=True, slots=True)
 class PredicateSpecification(Specification[T]):
+    """Adapt a plain callable into a :class:`Specification` so it can be composed."""
+
     predicate: Callable[[T], bool]
 
     def is_satisfied_by(self, candidate: T) -> bool:

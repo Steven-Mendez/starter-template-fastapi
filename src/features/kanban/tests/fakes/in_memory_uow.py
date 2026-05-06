@@ -1,3 +1,5 @@
+"""In-memory unit-of-work and recording factory used by application-layer tests."""
+
 from __future__ import annotations
 
 from types import TracebackType
@@ -14,12 +16,18 @@ from src.features.kanban.tests.fakes.in_memory_repository import (
 
 
 class InMemoryUnitOfWork(UnitOfWorkPort):
-    """In-memory UoW backed by the same repository for read and write."""
+    """In-memory UoW backed by the same repository for read and write.
+
+    The counters and flags expose the unit-of-work's lifecycle to tests
+    so they can assert that a use case really committed (or rolled back)
+    instead of just running the happy-path code.
+    """
 
     commands: KanbanCommandRepositoryPort
     lookup: KanbanLookupRepositoryPort
 
     def __init__(self, repository: InMemoryKanbanRepository) -> None:
+        """Wire the unit-of-work to a shared in-memory repository."""
         self._repository = repository
         self.commands = repository
         self.lookup = repository
@@ -54,18 +62,22 @@ class RecordingUnitOfWorkFactory:
     """Factory that records every UoW it creates for transactional assertions."""
 
     def __init__(self, repository: InMemoryKanbanRepository) -> None:
+        """Bind the factory to the shared in-memory repository."""
         self._repository = repository
         self.created: list[InMemoryUnitOfWork] = []
 
     def __call__(self) -> InMemoryUnitOfWork:
+        """Build and remember a new :class:`InMemoryUnitOfWork`."""
         uow = InMemoryUnitOfWork(self._repository)
         self.created.append(uow)
         return uow
 
     @property
     def total_commits(self) -> int:
+        """Sum of commits across every UoW handed out by this factory."""
         return sum(u.commit_count for u in self.created)
 
     @property
     def total_rollbacks(self) -> int:
+        """Sum of rollbacks across every UoW handed out by this factory."""
         return sum(u.rollback_count for u in self.created)

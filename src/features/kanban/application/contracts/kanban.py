@@ -8,6 +8,8 @@ from enum import StrEnum
 
 
 class AppCardPriority(StrEnum):
+    """Application-level mirror of :class:`CardPriority` used in DTOs."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -15,6 +17,8 @@ class AppCardPriority(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class AppCard:
+    """Immutable card projection returned to inbound adapters."""
+
     id: str
     column_id: str
     title: str
@@ -26,6 +30,8 @@ class AppCard:
 
 @dataclass(frozen=True, slots=True)
 class AppColumn:
+    """Immutable column projection containing its ordered cards."""
+
     id: str
     board_id: str
     title: str
@@ -35,6 +41,8 @@ class AppColumn:
 
 @dataclass(frozen=True, slots=True)
 class AppBoard:
+    """Immutable board projection returned by full-board read use cases."""
+
     id: str
     title: str
     created_at: datetime
@@ -43,6 +51,8 @@ class AppBoard:
 
 @dataclass(frozen=True, slots=True)
 class AppBoardSummary:
+    """Lightweight board projection used by listing endpoints."""
+
     id: str
     title: str
     created_at: datetime

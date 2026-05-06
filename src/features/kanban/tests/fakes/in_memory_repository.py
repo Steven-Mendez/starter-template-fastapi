@@ -1,3 +1,5 @@
+"""In-memory test fake that implements every Kanban outbound port."""
+
 from __future__ import annotations
 
 from copy import deepcopy

@@ -11,4 +11,6 @@ from src.platform.shared.result import Result
 
 
 class GetBoardUseCasePort(Protocol):
+    """Inbound port to read one board with its columns and cards."""
+
     def execute(self, query: GetBoardQuery) -> Result[AppBoard, ApplicationError]: ...

@@ -6,4 +6,8 @@ from typing import Protocol
 
 
 class ReadinessProbe(Protocol):
-    def is_ready(self) -> bool: ...
+    """Outbound port used by health checks to query the readiness of a dependency."""
+
+    def is_ready(self) -> bool:
+        """Return ``True`` only when the underlying dependency is fully usable."""
+        ...

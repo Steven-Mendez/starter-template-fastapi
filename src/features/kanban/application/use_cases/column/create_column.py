@@ -18,12 +18,15 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class CreateColumnUseCase:
+    """Append a new column to an existing board, taking the next available position."""
+
     uow: UnitOfWorkPort
     id_gen: IdGeneratorPort
 
     def execute(
         self, command: CreateColumnCommand
     ) -> Result[AppColumn, ApplicationError]:
+        """Build the column, attach it to the board, save, and return its projection."""
         with self.uow:
             board_result = self.uow.commands.find_by_id(command.board_id)
             if isinstance(board_result, Err):

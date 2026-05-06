@@ -1,3 +1,5 @@
+"""Middleware for ``X-Request-ID`` and structured JSON access logs."""
+
 from __future__ import annotations
 
 import json
@@ -11,9 +13,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Inject ``X-Request-ID`` and emit a JSON access log per request."""
+    """Inject ``X-Request-ID`` and emit a JSON access log per request.
+
+    If the client supplies its own ``X-Request-ID``, the value is reused;
+    otherwise a random UUID4 is generated. The id is exposed on
+    ``request.state`` so downstream code (logs, error responses) can
+    reference it for correlation.
+    """
 
     def __init__(self, app: object, *, logger_name: str = "api.request") -> None:
+        """Initialise the middleware with the logger name used for access logs."""
         super().__init__(app)  # type: ignore[arg-type]
         self._logger = logging.getLogger(logger_name)
 
@@ -22,6 +31,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        """Handle the request, set request id, and emit one JSON access log."""
         started = time.perf_counter()
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id

@@ -8,6 +8,18 @@ from src.features.kanban.domain.models.card_priority import CardPriority
 
 @dataclass(slots=True)
 class Card:
+    """Kanban card entity owned by a single column.
+
+    Attributes:
+        id: Stable identifier for the card.
+        column_id: Identifier of the owning column.
+        title: Required short label.
+        description: Optional long-form description.
+        position: Index inside the owning column.
+        priority: Closed-set priority level.
+        due_at: Optional UTC due date.
+    """
+
     id: str
     column_id: str
     title: str

@@ -1,3 +1,5 @@
+"""SQLModel table definition for Kanban cards."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,6 +9,13 @@ from sqlmodel import Field, SQLModel
 
 
 class CardTable(SQLModel, table=True):
+    """Persistence row for a card belonging to a single column.
+
+    Card priorities are stored as plain strings instead of an enum so
+    new priority levels can be introduced without an Alembic migration
+    that would otherwise need to alter a database-side type.
+    """
+
     __tablename__ = "cards"
     # Reordering cards can temporarily duplicate positions inside a transaction.
     # Deferring the unique check validates only the final committed order.

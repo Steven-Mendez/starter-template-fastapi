@@ -1,11 +1,15 @@
+"""Inert wiring stub for the template feature.
+
+The hook is intentionally not registered in ``src/main.py``; copied
+features replace it with proper route mounting and container
+attachment, following the kanban feature's pattern.
+"""
+
 from __future__ import annotations
 
 from fastapi import FastAPI
 
 from src.features._template.composition.container import TemplateContainer
-
-# This stub is intentionally inert and is not registered in src/main.py. Copied
-# features should replace it with route mounting and container attachment.
 
 
 def register_template(app: FastAPI, container: TemplateContainer) -> None:

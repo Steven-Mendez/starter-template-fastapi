@@ -10,5 +10,8 @@ from src.platform.shared.id_generator_port import IdGeneratorPort
 
 @dataclass(frozen=True, slots=True)
 class UUIDIdGenerator(IdGeneratorPort):
+    """Default :class:`IdGeneratorPort` implementation backed by UUID4."""
+
     def next_id(self) -> str:
+        """Return a freshly generated UUID4 string."""
         return str(uuid.uuid4())

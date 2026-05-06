@@ -13,6 +13,8 @@ from src.features.kanban.adapters.inbound.http.schemas.card_priority import (
 
 
 class CardUpdate(BaseModel):
+    """Request body for ``PATCH /api/cards/{id}``. ``None`` means leave unchanged."""
+
     title: str | None = Field(default=None, min_length=1, max_length=500)
     description: str | None = None
     column_id: UUID | None = None

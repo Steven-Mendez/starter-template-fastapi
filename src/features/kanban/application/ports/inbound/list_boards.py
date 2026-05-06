@@ -11,6 +11,8 @@ from src.platform.shared.result import Result
 
 
 class ListBoardsUseCasePort(Protocol):
+    """Inbound port that returns lightweight summaries for every board."""
+
     def execute(
         self, query: ListBoardsQuery
     ) -> Result[list[AppBoardSummary], ApplicationError]: ...

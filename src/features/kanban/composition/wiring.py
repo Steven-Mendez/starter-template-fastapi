@@ -1,3 +1,5 @@
+"""Glue functions that mount Kanban routes and bind the container to ``app.state``."""
+
 from __future__ import annotations
 
 from fastapi import FastAPI

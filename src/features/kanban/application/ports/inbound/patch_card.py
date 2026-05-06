@@ -11,6 +11,8 @@ from src.platform.shared.result import Result
 
 
 class PatchCardUseCasePort(Protocol):
+    """Inbound port for sparse updates and moves applied to an existing card."""
+
     def execute(
         self, command: PatchCardCommand
     ) -> Result[AppCard, ApplicationError]: ...

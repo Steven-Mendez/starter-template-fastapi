@@ -11,4 +11,6 @@ from src.platform.shared.result import Result
 
 
 class GetCardUseCasePort(Protocol):
+    """Inbound port to fetch one card by id across boards."""
+
     def execute(self, query: GetCardQuery) -> Result[AppCard, ApplicationError]: ...

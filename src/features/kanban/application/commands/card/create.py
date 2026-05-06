@@ -10,6 +10,8 @@ from src.features.kanban.application.contracts import AppCardPriority
 
 @dataclass(frozen=True, slots=True)
 class CreateCardCommand:
+    """Input payload for the create-card use case."""
+
     column_id: str
     title: str
     description: str | None

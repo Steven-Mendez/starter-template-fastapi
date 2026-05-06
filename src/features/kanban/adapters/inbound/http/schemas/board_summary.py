@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 
 class BoardSummary(BaseModel):
+    """Compact response shape used by listing endpoints."""
+
     id: str
     title: str
     created_at: datetime

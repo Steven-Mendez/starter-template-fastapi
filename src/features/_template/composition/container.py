@@ -1,3 +1,5 @@
+"""Composition root placeholder for the template feature scaffold."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,4 +20,5 @@ class TemplateContainer:
     repository: ExampleRepositoryPort
 
     def get_example_use_case(self) -> GetExampleUseCasePort:
+        """Build a fresh :class:`GetExampleUseCase` reusing the shared repository."""
         return GetExampleUseCase(repository=self.repository)

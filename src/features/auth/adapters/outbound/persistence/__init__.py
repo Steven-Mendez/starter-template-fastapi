@@ -1,0 +1,1 @@
+"""Auth persistence adapter package."""

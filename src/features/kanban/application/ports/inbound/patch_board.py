@@ -11,6 +11,8 @@ from src.platform.shared.result import Result
 
 
 class PatchBoardUseCasePort(Protocol):
+    """Inbound port for sparse updates to an existing board."""
+
     def execute(
         self, command: PatchBoardCommand
     ) -> Result[AppBoardSummary, ApplicationError]: ...

@@ -45,6 +45,7 @@ def create_card(
     body: CardCreate,
     use_case: CreateCardUseCaseDep,
 ) -> CardRead:
+    """Create a card inside the given column and return the persisted view."""
     title, description, priority, due_at = to_create_card_input(body)
     match use_case.execute(
         CreateCardCommand(
@@ -63,6 +64,7 @@ def create_card(
 
 @cards_read_router.get("/cards/{card_id}")
 def get_card(card_id: UUID, use_case: GetCardUseCaseDep) -> CardRead:
+    """Return one card by id without loading its parent board."""
     match use_case.execute(GetCardQuery(card_id=str(card_id))):
         case Ok(value):
             return to_card_response(value)
@@ -76,6 +78,7 @@ def patch_card(
     body: CardUpdate,
     use_case: PatchCardUseCaseDep,
 ) -> CardRead:
+    """Apply a sparse update and/or move to an existing card."""
     input_data = to_patch_card_input(body)
     match use_case.execute(
         PatchCardCommand(

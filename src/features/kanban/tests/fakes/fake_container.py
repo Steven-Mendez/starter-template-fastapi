@@ -1,3 +1,5 @@
+"""Helpers that wire a real :class:`KanbanContainer` against in-memory fakes."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

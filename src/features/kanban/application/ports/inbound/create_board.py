@@ -11,6 +11,8 @@ from src.platform.shared.result import Result
 
 
 class CreateBoardUseCasePort(Protocol):
+    """Inbound port that the HTTP layer calls to create a new board."""
+
     def execute(
         self, command: CreateBoardCommand
     ) -> Result[AppBoardSummary, ApplicationError]: ...

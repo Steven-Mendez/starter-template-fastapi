@@ -1,0 +1,1 @@
+"""Auth outbound adapters package."""

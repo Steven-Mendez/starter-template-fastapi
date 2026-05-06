@@ -12,6 +12,8 @@ T = TypeVar("T")
 
 @dataclass(frozen=True, slots=True)
 class AndSpecification(Specification[T]):
+    """Composite that holds only when both wrapped specifications are satisfied."""
+
     left: Specification[T]
     right: Specification[T]
 

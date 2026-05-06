@@ -10,6 +10,8 @@ from src.platform.shared.result import Result
 
 
 class DeleteBoardUseCasePort(Protocol):
+    """Inbound port to delete a board and cascade to its columns and cards."""
+
     def execute(
         self, command: DeleteBoardCommand
     ) -> Result[None, ApplicationError]: ...

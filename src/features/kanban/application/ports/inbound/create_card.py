@@ -11,6 +11,8 @@ from src.platform.shared.result import Result
 
 
 class CreateCardUseCasePort(Protocol):
+    """Inbound port that creates a card in a given column."""
+
     def execute(
         self, command: CreateCardCommand
     ) -> Result[AppCard, ApplicationError]: ...

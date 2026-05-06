@@ -1,3 +1,5 @@
+"""Run the shared repository contract suites against the in-memory fake adapter."""
+
 from __future__ import annotations
 
 import pytest

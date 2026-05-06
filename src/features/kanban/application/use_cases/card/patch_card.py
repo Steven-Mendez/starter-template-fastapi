@@ -17,9 +17,18 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class PatchCardUseCase:
+    """Apply a sparse update and/or move to an existing card.
+
+    Field updates and card moves are processed in a single transaction
+    so a partial failure cannot leave the board in an intermediate state
+    where the card lives in one column but its other fields belong to
+    another revision.
+    """
+
     uow: UnitOfWorkPort
 
     def execute(self, command: PatchCardCommand) -> Result[AppCard, ApplicationError]:
+        """Optionally move the card, patch fields, persist, and return the DTO."""
         if not command.has_changes():
             return Err(ApplicationError.PATCH_NO_CHANGES)
 

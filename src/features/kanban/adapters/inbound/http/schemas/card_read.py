@@ -12,6 +12,8 @@ from src.features.kanban.adapters.inbound.http.schemas.card_priority import (
 
 
 class CardRead(BaseModel):
+    """Public projection of a card."""
+
     id: str
     column_id: str
     title: str

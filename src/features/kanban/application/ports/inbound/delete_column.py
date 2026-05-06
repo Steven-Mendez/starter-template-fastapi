@@ -10,6 +10,8 @@ from src.platform.shared.result import Result
 
 
 class DeleteColumnUseCasePort(Protocol):
+    """Inbound port for deleting a column and re-compacting its sibling positions."""
+
     def execute(
         self, command: DeleteColumnCommand
     ) -> Result[None, ApplicationError]: ...

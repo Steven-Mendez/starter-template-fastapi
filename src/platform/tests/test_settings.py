@@ -1,3 +1,5 @@
+"""Unit tests for :class:`AppSettings` defaults, env overrides, and validation."""
+
 from __future__ import annotations
 
 import pytest

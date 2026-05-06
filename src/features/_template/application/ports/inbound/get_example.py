@@ -1,3 +1,5 @@
+"""Inbound port placeholder for the template feature."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -13,4 +15,6 @@ class GetExampleUseCasePort(Protocol):
 
     def execute(
         self, query: GetExampleQuery
-    ) -> Result[ExampleAggregate, ApplicationError]: ...
+    ) -> Result[ExampleAggregate, ApplicationError]:
+        """Run the use case and return either the aggregate or a typed error."""
+        ...

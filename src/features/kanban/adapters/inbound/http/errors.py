@@ -15,6 +15,8 @@ from src.platform.api.error_handlers_app_exception import (
 
 @dataclass(frozen=True)
 class _Contract:
+    """Pair an HTTP status code with the Problem Details ``type`` URI for one error."""
+
     status_code: int
     type_uri: str
 
@@ -47,12 +49,17 @@ _APPLICATION_ERROR_HTTP_MAP: dict[ApplicationError, _Contract] = {
 }
 
 
+# Fail at import time if any new ApplicationError is added without a
+# matching HTTP contract, instead of silently falling back to 500 at runtime.
 if set(_APPLICATION_ERROR_HTTP_MAP) != set(ApplicationError):
     raise RuntimeError("ApplicationError to HTTP mapping is not exhaustive")
 
 
 class KanbanApplicationHTTPException(PlatformApplicationHTTPException):
+    """Kanban-specific :class:`ApplicationHTTPException` for an application error."""
+
     def __init__(self, error: ApplicationError) -> None:
+        """Map ``error`` to its HTTP contract and forward to the platform exception."""
         contract = _APPLICATION_ERROR_HTTP_MAP[error]
         super().__init__(
             status_code=contract.status_code,
@@ -64,4 +71,5 @@ class KanbanApplicationHTTPException(PlatformApplicationHTTPException):
 
 
 def raise_http_from_application_error(err: ApplicationError) -> NoReturn:
+    """Raise a Kanban HTTP exception from an :class:`ApplicationError`."""
     raise KanbanApplicationHTTPException(err)

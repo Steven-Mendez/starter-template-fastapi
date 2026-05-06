@@ -1,3 +1,5 @@
+"""Closed enumeration of domain failures for the template feature scaffold."""
+
 from __future__ import annotations
 
 from enum import StrEnum

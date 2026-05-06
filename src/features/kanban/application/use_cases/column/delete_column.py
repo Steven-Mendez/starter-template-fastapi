@@ -14,9 +14,12 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class DeleteColumnUseCase:
+    """Delete a column from its parent board, re-compacting sibling positions."""
+
     uow: UnitOfWorkPort
 
     def execute(self, command: DeleteColumnCommand) -> Result[None, ApplicationError]:
+        """Remove the column on its parent board and persist the change atomically."""
         with self.uow:
             board_id = self.uow.lookup.find_board_id_by_column(command.column_id)
             if not board_id:

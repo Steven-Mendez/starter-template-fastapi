@@ -16,9 +16,12 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class GetBoardUseCase:
+    """Load a single board with all its columns and cards through the query side."""
+
     query_repository: KanbanQueryRepositoryPort
 
     def execute(self, query: GetBoardQuery) -> Result[AppBoard, ApplicationError]:
+        """Return ``AppBoard`` or map a domain error to ``ApplicationError``."""
         board_result = self.query_repository.find_by_id(query.board_id)
         if isinstance(board_result, Err):
             return Err(from_domain_error(board_result.error))

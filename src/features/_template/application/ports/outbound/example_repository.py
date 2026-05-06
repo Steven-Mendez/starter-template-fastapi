@@ -1,3 +1,5 @@
+"""Outbound port placeholder for the template feature."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -12,6 +14,10 @@ class ExampleRepositoryPort(Protocol):
 
     def find_by_id(
         self, entity_id: str
-    ) -> Result[ExampleAggregate, TemplateDomainError]: ...
+    ) -> Result[ExampleAggregate, TemplateDomainError]:
+        """Load an aggregate by id or return ``NOT_FOUND``."""
+        ...
 
-    def save(self, entity: ExampleAggregate) -> None: ...
+    def save(self, entity: ExampleAggregate) -> None:
+        """Persist or replace the aggregate snapshot."""
+        ...

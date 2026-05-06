@@ -1,3 +1,5 @@
+"""HTTPException subclass carrying metadata for Problem Details responses."""
+
 from __future__ import annotations
 
 from fastapi import HTTPException
@@ -19,6 +21,7 @@ class ApplicationHTTPException(HTTPException):
         code: str,
         type_uri: str,
     ) -> None:
+        """Build an exception for Problem+JSON with ``code`` and ``type_uri``."""
         super().__init__(status_code=status_code, detail=detail)
         self.code = code
         self.type_uri = type_uri

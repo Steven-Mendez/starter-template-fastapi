@@ -7,4 +7,13 @@ from typing import Protocol
 
 
 class ClockPort(Protocol):
-    def now(self) -> datetime: ...
+    """Outbound port that returns the current time.
+
+    Wrapping ``datetime.now`` behind a port lets tests freeze or fast-
+    forward time and lets production swap timezones without touching
+    business logic.
+    """
+
+    def now(self) -> datetime:
+        """Current time; implementations must return timezone-aware datetimes."""
+        ...

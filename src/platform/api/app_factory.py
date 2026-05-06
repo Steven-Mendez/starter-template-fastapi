@@ -1,3 +1,12 @@
+"""FastAPI factory that wires platform-level middleware and error handlers.
+
+The factory is deliberately stateless: it returns a fresh app configured
+with CORS, trusted-host filtering, request-context logging, and Problem
+Details error handlers. Lifespan, container wiring, and feature
+registration are left to the caller in ``main.py`` so the platform layer
+stays unaware of which features are mounted.
+"""
+
 from __future__ import annotations
 
 from fastapi import FastAPI
@@ -11,9 +20,10 @@ from src.platform.config.settings import AppSettings
 
 
 def build_fastapi_app(settings: AppSettings) -> FastAPI:
-    """Build a FastAPI app with platform-level middleware and error handlers wired up.
+    """Return FastAPI with platform middleware and error handlers.
 
-    Lifespan, container wiring and feature registration are caller responsibilities.
+    Lifespan, container wiring and feature registration remain the
+    caller's responsibility, keeping the platform layer feature-agnostic.
     """
     docs_url = "/docs" if settings.enable_docs else None
     redoc_url = "/redoc" if settings.enable_docs else None
@@ -28,7 +38,7 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
 
     if settings.cors_origins == ["*"]:
         # Starlette cannot combine credentialed CORS with a literal wildcard
-        # origin, so the regex path allows it to echo the requesting origin.
+        # origin, so the regex path makes it echo the requesting origin.
         app.add_middleware(
             CORSMiddleware,
             allow_origin_regex=".*",

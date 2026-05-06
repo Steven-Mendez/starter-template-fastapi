@@ -19,10 +19,19 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class CreateCardUseCase:
+    """Create a new card inside an existing column.
+
+    The board id is resolved from the column id through the lookup port
+    so the use case can load the parent aggregate, append the card via
+    the column's invariant-preserving methods, and persist a single
+    consistent state in one transaction.
+    """
+
     uow: UnitOfWorkPort
     id_gen: IdGeneratorPort
 
     def execute(self, command: CreateCardCommand) -> Result[AppCard, ApplicationError]:
+        """Add the card to its board, persist, and return the projected DTO."""
         with self.uow:
             board_id = self.uow.lookup.find_board_id_by_column(command.column_id)
             if not board_id:

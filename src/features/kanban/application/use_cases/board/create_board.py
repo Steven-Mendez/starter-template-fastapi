@@ -16,6 +16,8 @@ from src.platform.shared.result import Ok, Result
 
 @dataclass(slots=True)
 class CreateBoardUseCase:
+    """Create a new empty board and persist it under a fresh identifier."""
+
     uow: UnitOfWorkPort
     id_gen: IdGeneratorPort
     clock: ClockPort
@@ -24,6 +26,7 @@ class CreateBoardUseCase:
         self,
         command: CreateBoardCommand,
     ) -> Result[AppBoardSummary, ApplicationError]:
+        """Save the new board in a UoW and return its summary projection."""
         board = Board(
             id=self.id_gen.next_id(),
             title=command.title,

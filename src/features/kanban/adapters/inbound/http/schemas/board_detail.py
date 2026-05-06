@@ -10,6 +10,8 @@ from src.features.kanban.adapters.inbound.http.schemas.column_read import Column
 
 
 class BoardDetail(BaseModel):
+    """Response shape for ``GET /api/boards/{id}`` with the full board hierarchy."""
+
     id: str
     title: str
     created_at: datetime

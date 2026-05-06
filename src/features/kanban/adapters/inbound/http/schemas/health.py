@@ -8,10 +8,14 @@ from pydantic import BaseModel
 
 
 class HealthPersistence(BaseModel):
+    """Per-backend readiness payload included inside :class:`HealthRead`."""
+
     backend: str
     ready: bool
 
 
 class HealthRead(BaseModel):
+    """Top-level response shape for the readiness endpoint."""
+
     status: Literal["ok", "degraded"]
     persistence: HealthPersistence

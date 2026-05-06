@@ -9,5 +9,7 @@ from src.features.kanban.domain.specifications.card_move.candidate import (
 
 
 class TargetColumnExistsSpecification(Specification[CardMoveCandidate]):
+    """Holds when the destination column for a move actually exists on the board."""
+
     def is_satisfied_by(self, candidate: CardMoveCandidate) -> bool:
         return candidate.target_column_exists

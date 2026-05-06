@@ -22,6 +22,12 @@ def health(
     use_case: CheckReadinessUseCaseDep,
     settings: AppSettingsDep,
 ) -> HealthRead:
+    """Report whether the persistence backend is reachable.
+
+    Returns ``"ok"`` when the underlying store responds successfully and
+    ``"degraded"`` otherwise so orchestrators can route traffic away
+    without taking the pod offline entirely.
+    """
     ready = use_case.execute(HealthCheckQuery())
     return HealthRead(
         status="ok" if ready else "degraded",

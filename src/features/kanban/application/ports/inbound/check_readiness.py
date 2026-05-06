@@ -8,4 +8,6 @@ from src.features.kanban.application.queries.health_check import HealthCheckQuer
 
 
 class CheckReadinessUseCasePort(Protocol):
+    """Port for ``GET /health/ready``; ``True`` only when dependencies are usable."""
+
     def execute(self, query: HealthCheckQuery) -> bool: ...
