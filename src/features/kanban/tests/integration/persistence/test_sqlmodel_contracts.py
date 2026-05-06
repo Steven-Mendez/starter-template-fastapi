@@ -19,8 +19,11 @@ pytestmark = pytest.mark.integration
 
 @pytest.mark.parametrize("contract", REPO_SUITE, ids=lambda f: f.__name__)
 def test_sqlmodel_repository_contract(contract, postgres_engine: Engine) -> None:  # type: ignore[no-untyped-def]
+    sessions: list[Session] = []
+
     def make() -> SessionSQLModelKanbanRepository:
         session = Session(postgres_engine, expire_on_commit=False)
+        sessions.append(session)
         repo = SessionSQLModelKanbanRepository(session)
 
         original_save = repo.save
@@ -41,13 +44,20 @@ def test_sqlmodel_repository_contract(contract, postgres_engine: Engine) -> None
         repo.remove = commit_remove  # type: ignore[method-assign]
         return repo
 
-    contract(make)
+    try:
+        contract(make)
+    finally:
+        for session in sessions:
+            session.close()
 
 
 @pytest.mark.parametrize("contract", QUERY_SUITE, ids=lambda f: f.__name__)
 def test_sqlmodel_query_contract(contract, postgres_engine: Engine) -> None:  # type: ignore[no-untyped-def]
+    sessions: list[Session] = []
+
     def make() -> SessionSQLModelKanbanRepository:
         session = Session(postgres_engine, expire_on_commit=False)
+        sessions.append(session)
         repo = SessionSQLModelKanbanRepository(session)
 
         original_save = repo.save
@@ -59,4 +69,8 @@ def test_sqlmodel_query_contract(contract, postgres_engine: Engine) -> None:  # 
         repo.save = commit_save  # type: ignore[method-assign]
         return repo
 
-    contract(make)
+    try:
+        contract(make)
+    finally:
+        for session in sessions:
+            session.close()

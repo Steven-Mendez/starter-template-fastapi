@@ -81,7 +81,7 @@ report-open: ## Open the latest test report and coverage report
 clean-reports: ## Remove generated reports/ and .coverage artifacts
 	rm -rf reports/ .coverage .coverage.* htmlcov/
 
-ci: quality test ## Quality gate + unit + e2e (Docker-free, used by GitHub Actions fast job)
+ci: quality test test-integration ## Full gate: quality + unit + e2e + integration
 
 precommit-install: ## Install git pre-commit and pre-push hooks
 	uv run pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push
