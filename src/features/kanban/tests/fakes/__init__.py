@@ -1,3 +1,5 @@
+"""Test package namespace for features.kanban.tests.fakes."""
+
 from src.features.kanban.tests.fakes.fake_container import (
     FakeKanbanWiring,
     build_fake_kanban_wiring,

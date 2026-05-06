@@ -1,3 +1,5 @@
+"""Outbound port protocol for Kanban kanban lookup repository persistence behavior."""
+
 from __future__ import annotations
 
 from typing import Protocol

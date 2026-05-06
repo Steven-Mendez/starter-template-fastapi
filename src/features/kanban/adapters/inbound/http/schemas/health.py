@@ -1,3 +1,5 @@
+"""Pydantic HTTP schema for Kanban health payloads."""
+
 from __future__ import annotations
 
 from typing import Literal

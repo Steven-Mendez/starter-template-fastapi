@@ -1,3 +1,5 @@
+"""ID generator abstraction used by application use cases."""
+
 from __future__ import annotations
 
 from typing import Protocol

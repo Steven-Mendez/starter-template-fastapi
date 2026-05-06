@@ -1,1 +1,14 @@
-Generic single-database configuration.
+Alembic migrations for the FastAPI Kanban service.
+
+The migration environment reads the database URL from APP_POSTGRESQL_DSN. If the
+environment variable is not set, it falls back to AppSettings().postgresql_dsn.
+
+Apply migrations:
+
+    uv run alembic upgrade head
+
+Create a migration after updating SQLModel table definitions:
+
+    uv run alembic revision --autogenerate -m "describe change"
+
+See ../docs/operations.md for deployment and rollback notes.

@@ -1,3 +1,5 @@
+"""Protocol for dependencies that can report readiness."""
+
 from __future__ import annotations
 
 from typing import Protocol

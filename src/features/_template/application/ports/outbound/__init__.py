@@ -1,0 +1,1 @@
+"""Template outbound port namespace."""

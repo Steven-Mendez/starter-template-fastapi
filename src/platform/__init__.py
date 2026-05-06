@@ -1,3 +1,5 @@
+"""Public exports for platform-level services and shared ports."""
+
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import (
     AppContainer,

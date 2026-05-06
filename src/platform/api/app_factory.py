@@ -27,6 +27,8 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
     )
 
     if settings.cors_origins == ["*"]:
+        # Starlette cannot combine credentialed CORS with a literal wildcard
+        # origin, so the regex path allows it to echo the requesting origin.
         app.add_middleware(
             CORSMiddleware,
             allow_origin_regex=".*",

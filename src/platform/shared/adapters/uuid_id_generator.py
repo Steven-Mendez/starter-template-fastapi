@@ -1,3 +1,5 @@
+"""UUID-based ID generator adapter for production use cases."""
+
 from __future__ import annotations
 
 import uuid

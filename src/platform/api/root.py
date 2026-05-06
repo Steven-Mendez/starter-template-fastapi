@@ -1,3 +1,5 @@
+"""Root service status route for the platform API."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter

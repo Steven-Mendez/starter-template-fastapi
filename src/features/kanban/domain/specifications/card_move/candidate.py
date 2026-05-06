@@ -1,3 +1,5 @@
+"""Value object describing the facts needed to validate a card move."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

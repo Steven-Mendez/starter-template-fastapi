@@ -1,3 +1,5 @@
+"""Kanban package namespace for features.kanban.application.use_cases.board."""
+
 from src.features.kanban.application.use_cases.board.create_board import (
     CreateBoardUseCase,
 )

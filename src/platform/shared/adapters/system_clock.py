@@ -1,3 +1,5 @@
+"""System clock adapter that returns timezone-aware UTC timestamps."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

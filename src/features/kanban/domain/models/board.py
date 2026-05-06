@@ -1,3 +1,5 @@
+"""Board aggregate root and Kanban column/card coordination rules."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

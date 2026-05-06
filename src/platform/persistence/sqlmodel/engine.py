@@ -1,3 +1,5 @@
+"""SQLModel engine factory for PostgreSQL persistence."""
+
 from __future__ import annotations
 
 from sqlalchemy.engine import Engine

@@ -1,3 +1,5 @@
+"""Specification that requires the target card column to exist."""
+
 from __future__ import annotations
 
 from src.features.kanban.domain.specifications.base import Specification

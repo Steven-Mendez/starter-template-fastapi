@@ -1,3 +1,5 @@
+"""Application use case for Kanban create column behavior."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

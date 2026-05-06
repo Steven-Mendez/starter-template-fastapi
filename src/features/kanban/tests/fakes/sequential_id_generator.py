@@ -7,7 +7,7 @@ class SequentialIdGenerator(IdGeneratorPort):
     """Generates monotonic UUID-shaped strings for deterministic tests.
 
     Produces values like ``00000001-0000-0000-0000-000000000000`` that satisfy
-    the UUID v4 string format expected by FastAPI's ``UUID`` path parameters.
+    the UUID string format accepted by FastAPI's ``UUID`` path parameters.
     """
 
     def __init__(self, prefix: str = "00000000") -> None:

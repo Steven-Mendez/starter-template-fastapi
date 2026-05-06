@@ -1,3 +1,5 @@
+"""Kanban package namespace for features.kanban.composition."""
+
 from src.features.kanban.composition.app_state import (
     KANBAN_CONTAINER_ATTR,
     get_kanban_container,

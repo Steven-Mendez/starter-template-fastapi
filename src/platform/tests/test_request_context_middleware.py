@@ -1,3 +1,5 @@
+"""Test support for request context middleware."""
+
 from __future__ import annotations
 
 import pytest

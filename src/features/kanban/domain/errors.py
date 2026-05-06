@@ -1,3 +1,5 @@
+"""Domain error codes for Kanban business rule failures."""
+
 from __future__ import annotations
 
 from enum import StrEnum

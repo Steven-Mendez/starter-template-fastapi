@@ -1,21 +1,62 @@
-FROM python:3.14-slim
+# syntax=docker/dockerfile:1.7
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+FROM python:3.14-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
-
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY pyproject.toml uv.lock README.md ./
+
+FROM base AS builder
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY src ./src
 
-RUN uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+FROM base AS dev
 
 ENV PATH="/app/.venv/bin:$PATH"
 
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+COPY alembic.ini ./
+COPY alembic ./alembic
+COPY src ./src
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
+
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && fastapi run src/main.py --host 0.0.0.0 --port 8000"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+FROM python:3.14-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+RUN addgroup --system app && adduser --system --ingroup app app
+
+COPY --chown=app:app --from=builder /app /app
+
+USER app
+
+EXPOSE 8000
+
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

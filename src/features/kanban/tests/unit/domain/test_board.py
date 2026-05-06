@@ -1,3 +1,5 @@
+"""Unit tests for Kanban domain board behavior."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

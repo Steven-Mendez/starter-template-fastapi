@@ -8,6 +8,8 @@ from sqlmodel import Field, SQLModel
 
 class CardTable(SQLModel, table=True):
     __tablename__ = "cards"
+    # Reordering cards can temporarily duplicate positions inside a transaction.
+    # Deferring the unique check validates only the final committed order.
     __table_args__ = (
         sa.UniqueConstraint(
             "column_id",

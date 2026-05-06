@@ -1,3 +1,5 @@
+"""Query DTO for Kanban health check operations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

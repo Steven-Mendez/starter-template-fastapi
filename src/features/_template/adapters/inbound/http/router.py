@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-# TODO(template): build read/write routers, wire dependencies against inbound
-# Protocols, and apply RFC 9457 Problem+JSON via the platform's app exception.
-# See src/features/kanban/adapters/inbound/http/ for the canonical example.
+# This template stays inert until copied. A real feature should compose its
+# read/write routers here and map application errors to Problem Details.
 
 
 def build_router() -> APIRouter:
-    """TODO(template): replace with the actual feature router."""
+    """Return an empty router until a copied feature defines HTTP routes."""
     return APIRouter()

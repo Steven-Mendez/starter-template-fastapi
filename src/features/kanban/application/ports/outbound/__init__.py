@@ -1,3 +1,5 @@
+"""Kanban package namespace for features.kanban.application.ports.outbound."""
+
 from src.features.kanban.application.ports.outbound.kanban_command_repository import (
     KanbanCommandRepositoryPort,
 )

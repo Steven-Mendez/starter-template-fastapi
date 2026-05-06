@@ -6,6 +6,8 @@ from sqlmodel import Field, SQLModel
 
 class ColumnTable(SQLModel, table=True):
     __tablename__ = "columns_"
+    # Reordering columns can temporarily duplicate positions inside a transaction.
+    # Deferring the unique check validates only the final committed order.
     __table_args__ = (
         sa.UniqueConstraint(
             "board_id",

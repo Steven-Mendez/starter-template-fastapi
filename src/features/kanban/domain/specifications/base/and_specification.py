@@ -1,3 +1,5 @@
+"""Specification combinator that requires both predicates to pass."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

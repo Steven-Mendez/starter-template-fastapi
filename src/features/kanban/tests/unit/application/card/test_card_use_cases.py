@@ -1,3 +1,5 @@
+"""Unit tests for Kanban application card use cases behavior."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

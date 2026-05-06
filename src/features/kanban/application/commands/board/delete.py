@@ -1,3 +1,5 @@
+"""Command DTO for Kanban delete operations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

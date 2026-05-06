@@ -1,3 +1,5 @@
+"""Mapping functions between Kanban domain objects and SQLModel rows."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

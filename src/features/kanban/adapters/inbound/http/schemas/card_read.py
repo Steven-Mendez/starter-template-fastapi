@@ -1,3 +1,5 @@
+"""Pydantic HTTP schema for Kanban card read payloads."""
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,3 +1,5 @@
+"""Application use case for Kanban patch board behavior."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

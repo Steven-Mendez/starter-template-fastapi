@@ -1,3 +1,5 @@
+"""HTTP error mapping for Kanban application failures."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

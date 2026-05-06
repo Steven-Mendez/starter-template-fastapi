@@ -1,3 +1,5 @@
+"""Application-facing Kanban DTOs returned by use cases."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

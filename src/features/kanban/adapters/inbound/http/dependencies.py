@@ -1,3 +1,5 @@
+"""FastAPI dependency aliases that resolve Kanban use-case ports."""
+
 from __future__ import annotations
 
 from typing import Annotated, TypeAlias

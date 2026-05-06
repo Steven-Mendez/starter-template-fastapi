@@ -59,9 +59,6 @@ def _card(card_id: str, column_id: str, position: int = 0) -> Card:
     )
 
 
-# --------------- Test suite ---------------
-
-
 def contract_save_creates_and_increments_version(make: RepoFactory) -> None:
     repo = make()
     board = _board()

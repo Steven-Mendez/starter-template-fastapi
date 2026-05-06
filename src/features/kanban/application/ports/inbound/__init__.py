@@ -1,3 +1,5 @@
+"""Kanban package namespace for features.kanban.application.ports.inbound."""
+
 from src.features.kanban.application.ports.inbound.check_readiness import (
     CheckReadinessUseCasePort,
 )

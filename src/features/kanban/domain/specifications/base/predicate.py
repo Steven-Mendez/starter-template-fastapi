@@ -1,3 +1,5 @@
+"""Specification wrapper for callable predicates."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -4,7 +4,7 @@ from enum import StrEnum
 
 
 class ApplicationError(StrEnum):
-    """TODO(template): application errors (mapped to HTTP by the inbound adapter)."""
+    """Application errors that the copied feature maps at its inbound edge."""
 
     NOT_FOUND = ("not_found", "Resource not found")
 

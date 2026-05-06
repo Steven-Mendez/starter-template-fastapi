@@ -1,3 +1,5 @@
+"""Specification combinator that accepts either predicate."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

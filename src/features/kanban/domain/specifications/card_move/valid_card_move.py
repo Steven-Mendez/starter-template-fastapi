@@ -1,3 +1,5 @@
+"""Composite specification for legal Kanban card moves."""
+
 from __future__ import annotations
 
 from src.features.kanban.domain.specifications.base import Specification

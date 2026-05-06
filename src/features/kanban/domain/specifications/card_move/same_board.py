@@ -1,3 +1,5 @@
+"""Specification that keeps card moves within one board."""
+
 from __future__ import annotations
 
 from src.features.kanban.domain.specifications.base import Specification

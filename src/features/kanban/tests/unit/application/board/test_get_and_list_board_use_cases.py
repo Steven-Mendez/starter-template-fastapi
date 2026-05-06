@@ -1,3 +1,5 @@
+"""Unit tests for Kanban application get and list board use cases behavior."""
+
 from __future__ import annotations
 
 import pytest

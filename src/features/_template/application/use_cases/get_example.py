@@ -12,14 +12,14 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(frozen=True, slots=True)
 class GetExampleQuery:
-    """TODO(template): replace with your query DTO."""
+    """Query DTO placeholder for the copied feature."""
 
     entity_id: str
 
 
 @dataclass(slots=True)
 class GetExampleUseCase:
-    """TODO(template): orchestrate domain + outbound ports.
+    """Example orchestration point for domain logic and outbound ports.
 
     Use cases:
     - depend on outbound ports via constructor injection,

@@ -1,3 +1,5 @@
+"""Application error codes for expected Kanban failures."""
+
 from __future__ import annotations
 
 from enum import StrEnum

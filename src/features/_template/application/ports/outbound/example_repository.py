@@ -8,7 +8,7 @@ from src.platform.shared.result import Result
 
 
 class ExampleRepositoryPort(Protocol):
-    """TODO(template): outbound contract that infrastructure adapters implement."""
+    """Outbound contract implemented by infrastructure adapters."""
 
     def find_by_id(
         self, entity_id: str

@@ -13,6 +13,8 @@ def require_write_api_key(
 ) -> None:
     configured_key = get_app_settings(request).write_api_key
     if not configured_key:
+        # Local and template deployments start open; shared environments opt in
+        # to write protection by setting APP_WRITE_API_KEY.
         return
     if x_api_key != configured_key:
         raise HTTPException(

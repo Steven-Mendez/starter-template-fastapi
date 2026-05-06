@@ -1,3 +1,5 @@
+"""Kanban column entity and card ordering behavior."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

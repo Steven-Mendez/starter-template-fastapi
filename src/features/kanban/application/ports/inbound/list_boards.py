@@ -1,3 +1,5 @@
+"""Inbound use-case protocol for Kanban list boards operations."""
+
 from __future__ import annotations
 
 from typing import Protocol

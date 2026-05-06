@@ -1,3 +1,5 @@
+"""Base specification contract for composable domain predicates."""
+
 from __future__ import annotations
 
 from typing import Generic, TypeVar

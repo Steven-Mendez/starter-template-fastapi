@@ -1,3 +1,5 @@
+"""Transport-to-application mappers for column payloads."""
+
 from __future__ import annotations
 
 from src.features.kanban.adapters.inbound.http.mappers.card import to_card_response

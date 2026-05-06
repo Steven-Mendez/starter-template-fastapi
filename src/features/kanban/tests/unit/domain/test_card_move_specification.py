@@ -1,3 +1,5 @@
+"""Unit tests for Kanban domain card move specification behavior."""
+
 from __future__ import annotations
 
 import pytest

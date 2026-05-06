@@ -1,3 +1,5 @@
+"""End-to-end tests for write api key auth."""
+
 from __future__ import annotations
 
 import pytest

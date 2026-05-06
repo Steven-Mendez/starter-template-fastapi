@@ -1,3 +1,5 @@
+"""Read model for lightweight Kanban board listings."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

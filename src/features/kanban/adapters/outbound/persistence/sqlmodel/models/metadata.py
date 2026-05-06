@@ -1,3 +1,5 @@
+"""SQLModel metadata accessor used by Alembic."""
+
 from __future__ import annotations
 
 import sqlalchemy as sa

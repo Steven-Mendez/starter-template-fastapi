@@ -34,6 +34,8 @@ def to_create_card_input(
 
 
 def to_patch_card_input(body: CardUpdate) -> PatchCardInput:
+    # exclude_unset preserves the API contract: omitted fields mean unchanged,
+    # while an explicit JSON null for due_at means clear the due date.
     updates = body.model_dump(exclude_unset=True)
     wire_priority = cast(CardPrioritySchema | None, updates.get("priority"))
     return {

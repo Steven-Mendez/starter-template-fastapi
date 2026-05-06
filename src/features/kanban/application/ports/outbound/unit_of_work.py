@@ -1,3 +1,5 @@
+"""Outbound port protocol for Kanban unit of work persistence behavior."""
+
 from __future__ import annotations
 
 from types import TracebackType

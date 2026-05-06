@@ -42,7 +42,6 @@ def _build(settings: AppSettings, *, container: bool = True) -> FastAPI:
 
     @app.get("/__needs_container")
     def _needs_container() -> dict[str, str]:
-        # Will be invoked only when container is unset
         raise DependencyContainerNotReadyError("nope")
 
     @asynccontextmanager

@@ -1,3 +1,5 @@
+"""End-to-end tests for boards flow."""
+
 from __future__ import annotations
 
 import pytest

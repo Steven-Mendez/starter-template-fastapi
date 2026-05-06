@@ -1,3 +1,5 @@
+"""Kanban SQLModel persistence adapter namespace."""
+
 from src.features.kanban.adapters.outbound.persistence.sqlmodel.mappers import (
     board_domain_to_table,
     board_table_to_domain,

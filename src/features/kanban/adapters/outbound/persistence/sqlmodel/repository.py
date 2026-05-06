@@ -141,6 +141,8 @@ class _BaseSQLModelKanbanRepository(
                 db_board = mapped_board
                 db_board.version = 1
             else:
+                # Board is saved as an aggregate snapshot. The version check
+                # prevents an older snapshot from overwriting a newer one.
                 if db_board.version != board.version:
                     msg = f"Stale board write detected for {board.id}"
                     raise PersistenceConflictError(msg)
@@ -153,6 +155,8 @@ class _BaseSQLModelKanbanRepository(
             existing_columns = session.exec(
                 select(ColumnTable).where(ColumnTable.board_id == board.id)
             ).all()
+            # The domain aggregate is authoritative. Rows missing from the
+            # current snapshot are intentionally removed from persistence.
             existing_column_ids = {column.id for column in existing_columns}
             current_column_ids = {column.id for column in board.columns}
             for column_id in existing_column_ids - current_column_ids:
@@ -181,6 +185,7 @@ class _BaseSQLModelKanbanRepository(
                 card.id for column in board.columns for card in column.cards
             }
 
+            # Card deletion follows the same aggregate-snapshot rule as columns.
             for card_id in existing_board_card_ids - current_board_card_ids:
                 card_to_delete = session.get(CardTable, card_id)
                 if card_to_delete is not None:

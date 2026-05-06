@@ -1,3 +1,5 @@
+"""Platform package namespace for platform.shared."""
+
 from src.platform.shared.clock_port import ClockPort
 from src.platform.shared.id_generator_port import IdGeneratorPort
 from src.platform.shared.result import (

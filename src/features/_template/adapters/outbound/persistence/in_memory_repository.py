@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-# TODO(template): replace this in-memory adapter with a real implementation
-# (e.g. SQLModel under sqlmodel/).
-# See src/features/kanban/adapters/outbound/persistence/ for the canonical example.
+# This scaffold adapter keeps copied features runnable while their real outbound
+# adapter is still being designed.
 from src.features._template.application.ports.outbound.example_repository import (
     ExampleRepositoryPort,
 )
@@ -12,7 +11,7 @@ from src.platform.shared.result import Err, Ok, Result
 
 
 class InMemoryExampleRepository(ExampleRepositoryPort):
-    """TODO(template): swap for a real persistence adapter."""
+    """Minimal in-memory repository for the copied feature scaffold."""
 
     def __init__(self) -> None:
         self._store: dict[str, ExampleAggregate] = {}

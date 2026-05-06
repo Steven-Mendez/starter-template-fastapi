@@ -41,6 +41,8 @@ class SqlModelUnitOfWork(UnitOfWorkPort):
     ) -> None:
         del exc_val, exc_tb
         if self._session is not None:
+            # Use cases can return Err before commit. Roll back any open
+            # transaction so partially staged writes never leak out of the UoW.
             if exc_type is not None or self._session.in_transaction():
                 self._session.rollback()
             self._session.close()

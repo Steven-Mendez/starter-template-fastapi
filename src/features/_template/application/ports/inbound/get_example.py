@@ -9,7 +9,7 @@ from src.platform.shared.result import Result
 
 
 class GetExampleUseCasePort(Protocol):
-    """TODO(template): one Protocol per use case the HTTP adapter calls."""
+    """Inbound contract used by adapters instead of concrete use cases."""
 
     def execute(
         self, query: GetExampleQuery

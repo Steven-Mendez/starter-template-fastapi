@@ -1,3 +1,5 @@
+"""Pydantic HTTP schema for Kanban column read payloads."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

@@ -13,7 +13,7 @@ from src.features._template.application.use_cases.get_example import GetExampleU
 
 @dataclass(slots=True)
 class TemplateContainer:
-    """TODO(template): per-feature container — factory methods per use case."""
+    """Per-feature container placeholder with one factory per use case."""
 
     repository: ExampleRepositoryPort
 

@@ -25,6 +25,11 @@ class Card:
         due_at: datetime | None = None,
         clear_due_at: bool = False,
     ) -> None:
+        """Apply sparse updates where ``None`` normally means unchanged.
+
+        ``clear_due_at`` exists because the HTTP API must distinguish an
+        omitted due date from an explicit JSON null that clears the field.
+        """
         if title is not None:
             self.title = title
         if description is not None:
