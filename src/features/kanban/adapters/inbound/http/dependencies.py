@@ -22,6 +22,7 @@ from src.features.kanban.application.ports.inbound import (
     RestoreBoardUseCasePort,
 )
 from src.features.kanban.composition.app_state import get_kanban_container
+from src.platform.api.request_state import get_actor_id as _platform_get_actor_id
 
 
 def _get_create_board(request: Request) -> CreateBoardUseCasePort:
@@ -110,10 +111,10 @@ def get_actor_id(request: Request) -> UUID | None:
     """Return the authenticated user's id stamped on ``request.state``.
 
     Auth's ``get_current_principal`` populates ``request.state.actor_id``;
-    reading it via ``getattr`` keeps anonymous deployments (no auth dep
+    delegating to the platform getter keeps anonymous deployments (no auth dep
     wired) working — they get ``None``, which the audit columns accept.
     """
-    return getattr(request.state, "actor_id", None)
+    return _platform_get_actor_id(request)
 
 
 ActorIdDep: TypeAlias = Annotated[UUID | None, Depends(get_actor_id)]

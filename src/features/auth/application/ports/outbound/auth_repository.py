@@ -7,8 +7,8 @@ framework-specific types.
 Sub-protocols follow the Interface Segregation Principle — each service
 declares only the slice of persistence it actually uses:
 
-  AuthService  → UserRepositoryPort + TokenRepositoryPort + AuditRepositoryPort
-  RBACService  → RBACRepositoryPort + AuditRepositoryPort + (user read/authz)
+  Auth use cases  → UserRepositoryPort + TokenRepositoryPort + AuditRepositoryPort
+  RBAC use cases  → RBACRepositoryPort + AuditRepositoryPort + (user read/authz)
 
 ``AuthRepositoryPort`` is the full composite used by the concrete adapter and
 the container; it inherits all sub-protocols so the existing wiring is unchanged.
@@ -20,7 +20,6 @@ from datetime import datetime
 from typing import Any, ContextManager, Protocol
 from uuid import UUID
 
-from src.features.auth.application.types import Principal
 from src.features.auth.domain.models import (
     AuditEvent,
     InternalToken,
@@ -29,6 +28,7 @@ from src.features.auth.domain.models import (
     Role,
     User,
 )
+from src.platform.shared.principal import Principal
 
 # ── Transaction protocols ─────────────────────────────────────────────────────
 

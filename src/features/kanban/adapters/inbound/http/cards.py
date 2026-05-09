@@ -30,11 +30,10 @@ from src.features.kanban.application.commands import (
     PatchCardCommand,
 )
 from src.features.kanban.application.queries import GetCardQuery
-from src.platform.api.dependencies.security import RequireWriteApiKey
 from src.platform.shared.result import Err, Ok
 
 cards_read_router = APIRouter(tags=["cards"])
-cards_write_router = APIRouter(tags=["cards"], dependencies=[RequireWriteApiKey])
+cards_write_router = APIRouter(tags=["cards"])
 
 
 @cards_write_router.post(

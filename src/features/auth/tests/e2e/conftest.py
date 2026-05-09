@@ -120,9 +120,8 @@ def _build_app(settings: AppSettings, repository: SQLModelAuthRepository) -> Fas
     app = build_fastapi_app(settings)
     mount_auth_routes(app)
     auth = build_auth_container(settings=settings, repository=repository)
-    auth.rbac_service.seed_initial_data()
-    auth.rbac_service.bootstrap_super_admin(
-        auth_service=auth.auth_service,
+    auth.seed_initial_data.execute()
+    auth.bootstrap_super_admin.execute(
         email="admin@example.com",
         password="AdminPassword123!",
     )

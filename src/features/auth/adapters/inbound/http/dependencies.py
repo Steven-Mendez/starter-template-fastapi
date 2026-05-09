@@ -16,11 +16,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from src.features.auth.adapters.inbound.http.errors import raise_http_from_auth_error
 from src.features.auth.application.authorization import ensure_permissions, ensure_roles
 from src.features.auth.application.errors import (
-    AuthError,
     PermissionDeniedError,
 )
-from src.features.auth.application.types import Principal
 from src.features.auth.composition.app_state import get_auth_container
+from src.platform.api.request_state import set_actor_id
+from src.platform.shared.principal import Principal
+from src.platform.shared.result import Err, Ok
 
 # HTTPBearer (not OAuth2 password) so Swagger UI "Authorize" accepts a pasted
 # JWT: OAuth2PasswordBearer would POST form username/password to /auth/login,
@@ -55,7 +56,8 @@ def get_current_principal(
 ) -> Principal:
     """Resolve the authenticated principal from the Bearer token.
 
-    Delegates token validation and principal resolution to ``AuthService``.
+    Delegates token validation and principal resolution to the
+    ``resolve_principal`` use case.
     Resolved principals may be cached for up to 30 seconds, so emergency
     permission revocations are not guaranteed to take effect instantly.
 
@@ -74,15 +76,16 @@ def get_current_principal(
         raise _credentials_exception()
     token = creds.credentials
     container = get_auth_container(request)
-    try:
-        principal = container.auth_service.principal_from_access_token(token)
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
-    # Publish the actor id onto request.state so other features (e.g. kanban)
-    # can stamp audit columns without importing from auth and crossing a
-    # feature-isolation boundary.
-    request.state.actor_id = principal.user_id
-    return principal
+    result = container.resolve_principal.execute(token)
+    match result:
+        case Ok(value=principal):
+            # Publish the actor id onto request.state so other features (e.g. kanban)
+            # can stamp audit columns without importing from auth and crossing a
+            # feature-isolation boundary.
+            set_actor_id(request, principal.user_id)
+            return principal
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 def get_current_user(principal: "CurrentPrincipalDep") -> Principal:

@@ -2,9 +2,9 @@
 
 Every endpoint is gated by an RBAC dependency declared in the route
 decorator (``require_permissions`` / ``require_any_permission``) and any
-mutation is delegated to :class:`RBACService`, which records audit events
-and bumps ``authz_version`` so already-issued tokens reflect the change
-on their next request.
+mutation is delegated to the relevant RBAC use-case, which records audit
+events and bumps ``authz_version`` so already-issued tokens reflect the
+change on their next request.
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ from src.features.auth.adapters.inbound.http.schemas import (
     UserPublic,
     UserRoleAssignmentRequest,
 )
-from src.features.auth.application.errors import AuthError
 from src.features.auth.composition.app_state import get_auth_container
+from src.platform.shared.result import Err, Ok
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -52,10 +52,12 @@ def list_users(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[UserPublic]:
     """Return user accounts ordered by email, paginated at the database level."""
-    users = get_auth_container(request).rbac_service.list_users(
-        limit=limit, offset=offset
-    )
-    return [UserPublic.model_validate(u) for u in users]
+    result = get_auth_container(request).list_users.execute(limit=limit, offset=offset)
+    match result:
+        case Ok(value=users):
+            return [UserPublic.model_validate(u) for u in users]
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.get(
@@ -71,14 +73,18 @@ def list_audit_log(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> AuditLogRead:
     """Return filtered auth/RBAC audit events for super-admin inspection."""
-    events = get_auth_container(request).rbac_service.list_audit_events(
+    result = get_auth_container(request).list_audit_events.execute(
         user_id=user_id,
         event_type=event_type,
         since=since,
         limit=limit,
     )
-    items = [AuditEventRead.model_validate(event) for event in events]
-    return AuditLogRead(items=items, count=len(items), limit=limit)
+    match result:
+        case Ok(value=events):
+            items = [AuditEventRead.model_validate(event) for event in events]
+            return AuditLogRead(items=items, count=len(items), limit=limit)
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.get(
@@ -92,10 +98,12 @@ def list_roles(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[RoleRead]:
     """Return roles ordered by name, paginated at the database level."""
-    roles = get_auth_container(request).rbac_service.list_roles(
-        limit=limit, offset=offset
-    )
-    return [RoleRead.model_validate(r) for r in roles]
+    result = get_auth_container(request).list_roles.execute(limit=limit, offset=offset)
+    match result:
+        case Ok(value=roles):
+            return [RoleRead.model_validate(r) for r in roles]
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.post(
@@ -110,17 +118,18 @@ def create_role(
     request: Request,
 ) -> RoleRead:
     """Create a new role from a normalised name and optional description."""
-    try:
-        role = get_auth_container(request).rbac_service.create_role(
-            actor=principal,
-            name=body.name,
-            description=body.description,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        return RoleRead.model_validate(role)
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).create_role.execute(
+        actor=principal,
+        name=body.name,
+        description=body.description,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok(value=role):
+            return RoleRead.model_validate(role)
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.patch(
@@ -138,19 +147,20 @@ def patch_role(
 
     Toggling ``is_active`` revokes affected tokens immediately.
     """
-    try:
-        role = get_auth_container(request).rbac_service.update_role(
-            actor=principal,
-            role_id=role_id,
-            name=body.name,
-            description=body.description,
-            is_active=body.is_active,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        return RoleRead.model_validate(role)
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).update_role.execute(
+        actor=principal,
+        role_id=role_id,
+        name=body.name,
+        description=body.description,
+        is_active=body.is_active,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok(value=role):
+            return RoleRead.model_validate(role)
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.get(
@@ -164,10 +174,14 @@ def list_permissions(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[PermissionRead]:
     """Return permissions ordered by name, paginated at the database level."""
-    permissions = get_auth_container(request).rbac_service.list_permissions(
+    result = get_auth_container(request).list_permissions.execute(
         limit=limit, offset=offset
     )
-    return [PermissionRead.model_validate(p) for p in permissions]
+    match result:
+        case Ok(value=permissions):
+            return [PermissionRead.model_validate(p) for p in permissions]
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.post(
@@ -182,17 +196,18 @@ def create_permission(
     request: Request,
 ) -> PermissionRead:
     """Create a new permission with a validated ``resource:action`` name."""
-    try:
-        permission = get_auth_container(request).rbac_service.create_permission(
-            actor=principal,
-            name=body.name,
-            description=body.description,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        return PermissionRead.model_validate(permission)
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).create_permission.execute(
+        actor=principal,
+        name=body.name,
+        description=body.description,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok(value=permission):
+            return PermissionRead.model_validate(permission)
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.post(
@@ -208,17 +223,18 @@ def add_role_permission(
     request: Request,
 ) -> MessageResponse:
     """Grant a permission to a role and invalidate tokens of all role holders."""
-    try:
-        get_auth_container(request).rbac_service.assign_role_permission(
-            actor=principal,
-            role_id=role_id,
-            permission_id=body.permission_id,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        return MessageResponse(message="Permission assigned")
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).assign_role_permission.execute(
+        actor=principal,
+        role_id=role_id,
+        permission_id=body.permission_id,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok():
+            return MessageResponse(message="Permission assigned")
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.delete(
@@ -233,17 +249,18 @@ def remove_role_permission(
     request: Request,
 ) -> Response:
     """Revoke a permission from a role and invalidate tokens of all role holders."""
-    try:
-        get_auth_container(request).rbac_service.remove_role_permission(
-            actor=principal,
-            role_id=role_id,
-            permission_id=permission_id,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).remove_role_permission.execute(
+        actor=principal,
+        role_id=role_id,
+        permission_id=permission_id,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok():
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.post(
@@ -259,17 +276,18 @@ def add_user_role(
     request: Request,
 ) -> MessageResponse:
     """Assign a role to a user. The user's authz_version is bumped automatically."""
-    try:
-        get_auth_container(request).rbac_service.assign_user_role(
-            actor=principal,
-            user_id=user_id,
-            role_id=body.role_id,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        return MessageResponse(message="Role assigned")
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).assign_user_role.execute(
+        actor=principal,
+        user_id=user_id,
+        role_id=body.role_id,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok():
+            return MessageResponse(message="Role assigned")
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @admin_router.delete(
@@ -284,14 +302,15 @@ def remove_user_role(
     request: Request,
 ) -> Response:
     """Revoke a role from a user."""
-    try:
-        get_auth_container(request).rbac_service.remove_user_role(
-            actor=principal,
-            user_id=user_id,
-            role_id=role_id,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).remove_user_role.execute(
+        actor=principal,
+        user_id=user_id,
+        role_id=role_id,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok():
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)

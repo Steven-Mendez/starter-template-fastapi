@@ -4,7 +4,7 @@ Each handler is a thin shell that:
 
 * validates the request via Pydantic schemas,
 * enforces rate limits and CSRF-style origin checks where relevant,
-* delegates the actual flow to :class:`AuthService`,
+* delegates the actual flow to the relevant use-case instance,
 * and translates domain errors into HTTP responses through
   :func:`raise_http_from_auth_error`.
 
@@ -33,9 +33,11 @@ from src.features.auth.adapters.inbound.http.schemas import (
     TokenResponse,
     UserPublic,
 )
-from src.features.auth.application.errors import AuthError, RateLimitExceededError
-from src.features.auth.application.types import IssuedTokens, Principal
+from src.features.auth.application.errors import RateLimitExceededError
+from src.features.auth.application.types import IssuedTokens
 from src.features.auth.composition.app_state import get_auth_container
+from src.platform.shared.principal import Principal
+from src.platform.shared.result import Err, Ok
 
 REFRESH_COOKIE_NAME = "refresh_token"
 
@@ -163,16 +165,17 @@ def register(body: RegisterRequest, request: Request) -> UserPublic:
     # Registration hashes passwords, so limit by IP instead of email to avoid
     # trivial bypass with random addresses.
     _check_rate_limit(request, "registration")
-    try:
-        user = get_auth_container(request).auth_service.register(
-            email=body.email,
-            password=body.password,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        return UserPublic.model_validate(user)
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).register_user.execute(
+        email=body.email,
+        password=body.password,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok(value=user):
+            return UserPublic.model_validate(user)
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @auth_router.post("/login", response_model=TokenResponse)
@@ -183,22 +186,23 @@ def login(body: LoginRequest, request: Request, response: Response) -> TokenResp
     response body. Rate-limited per email per IP to slow down brute-force attacks.
     """
     _check_rate_limit(request, body.email)
-    try:
-        tokens, principal = get_auth_container(request).auth_service.login(
-            email=body.email,
-            password=body.password,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        _set_refresh_cookie(response, request, tokens)
-        return TokenResponse(
-            access_token=tokens.access_token,
-            token_type=tokens.token_type,
-            expires_in=tokens.expires_in,
-            user=_principal_response(principal),
-        )
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).login_user.execute(
+        email=body.email,
+        password=body.password,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok(value=(tokens, principal)):
+            _set_refresh_cookie(response, request, tokens)
+            return TokenResponse(
+                access_token=tokens.access_token,
+                token_type=tokens.token_type,
+                expires_in=tokens.expires_in,
+                user=_principal_response(principal),
+            )
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @auth_router.post("/refresh", response_model=TokenResponse)
@@ -213,21 +217,22 @@ def refresh(
     httpOnly cookie and must not be sent in the request body.
     """
     _enforce_cookie_origin(request)
-    try:
-        tokens, principal = get_auth_container(request).auth_service.refresh(
-            refresh_token=refresh_token,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        _set_refresh_cookie(response, request, tokens)
-        return TokenResponse(
-            access_token=tokens.access_token,
-            token_type=tokens.token_type,
-            expires_in=tokens.expires_in,
-            user=_principal_response(principal),
-        )
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).rotate_refresh_token.execute(
+        refresh_token=refresh_token,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok(value=(tokens, principal)):
+            _set_refresh_cookie(response, request, tokens)
+            return TokenResponse(
+                access_token=tokens.access_token,
+                token_type=tokens.token_type,
+                expires_in=tokens.expires_in,
+                user=_principal_response(principal),
+            )
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @auth_router.post("/logout", response_model=MessageResponse)
@@ -238,7 +243,7 @@ def logout(
 ) -> MessageResponse:
     """Revoke the current session and clear the refresh-token cookie."""
     _enforce_cookie_origin(request)
-    get_auth_container(request).auth_service.logout(refresh_token)
+    get_auth_container(request).logout_user.execute(refresh_token)
     _clear_refresh_cookie(response, request)
     return MessageResponse(message="Logged out")
 
@@ -250,16 +255,17 @@ def logout_all(
     response: Response,
 ) -> MessageResponse:
     """Revoke all active sessions for the authenticated user across all devices."""
-    try:
-        get_auth_container(request).auth_service.logout_all(
-            user_id=principal.user_id,
-            ip_address=_client_ip(request),
-            user_agent=_user_agent(request),
-        )
-        _clear_refresh_cookie(response, request)
-        return MessageResponse(message="All sessions revoked")
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).logout_all_sessions.execute(
+        user_id=principal.user_id,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    match result:
+        case Ok():
+            _clear_refresh_cookie(response, request)
+            return MessageResponse(message="All sessions revoked")
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @auth_router.get("/me", response_model=PrincipalPublic)
@@ -279,20 +285,21 @@ def forgot_password(
     Rate-limited per email per IP to slow down abuse.
     """
     _check_rate_limit(request, body.email)
-    try:
-        result = get_auth_container(request).auth_service.request_password_reset(
-            email=body.email,
-            ip_address=_client_ip(request),
-        )
-        # The vague message is intentional: always responding with 200 and the
-        # same text prevents user enumeration via the password-reset endpoint.
-        return InternalTokenResponse(
-            message="If the account exists, a reset token has been created",
-            dev_token=result.token,
-            expires_at=result.expires_at,
-        )
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).request_password_reset.execute(
+        email=body.email,
+        ip_address=_client_ip(request),
+    )
+    match result:
+        case Ok(value=token_result):
+            # The vague message is intentional: always responding with 200 and the
+            # same text prevents user enumeration via the password-reset endpoint.
+            return InternalTokenResponse(
+                message="If the account exists, a reset token has been created",
+                dev_token=token_result.token,
+                expires_at=token_result.expires_at,
+            )
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @auth_router.post("/password/reset", response_model=MessageResponse)
@@ -305,14 +312,15 @@ def reset_password(body: PasswordResetRequest, request: Request) -> MessageRespo
     """
     token_key = hashlib.sha256(body.token.encode("utf-8")).hexdigest()[:32]
     _check_rate_limit(request, token_key)
-    try:
-        get_auth_container(request).auth_service.reset_password(
-            token=body.token,
-            new_password=body.new_password,
-        )
-        return MessageResponse(message="Password reset complete")
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).confirm_password_reset.execute(
+        token=body.token,
+        new_password=body.new_password,
+    )
+    match result:
+        case Ok():
+            return MessageResponse(message="Password reset complete")
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @auth_router.post("/email/verify/request", response_model=InternalTokenResponse)
@@ -321,25 +329,29 @@ def request_email_verify(
 ) -> InternalTokenResponse:
     """Issue an email-verification token for the authenticated user."""
     _check_rate_limit(request, str(principal.user_id))
-    try:
-        result = get_auth_container(request).auth_service.request_email_verification(
-            user_id=principal.user_id,
-            ip_address=_client_ip(request),
-        )
-        return InternalTokenResponse(
-            message="Email verification token created",
-            dev_token=result.token,
-            expires_at=result.expires_at,
-        )
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).request_email_verification.execute(
+        user_id=principal.user_id,
+        ip_address=_client_ip(request),
+    )
+    match result:
+        case Ok(value=token_result):
+            return InternalTokenResponse(
+                message="Email verification token created",
+                dev_token=token_result.token,
+                expires_at=token_result.expires_at,
+            )
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)
 
 
 @auth_router.post("/email/verify", response_model=MessageResponse)
 def verify_email(body: EmailVerifyRequest, request: Request) -> MessageResponse:
     """Consume a single-use verification token and mark the account as verified."""
-    try:
-        get_auth_container(request).auth_service.verify_email(token=body.token)
-        return MessageResponse(message="Email verified")
-    except AuthError as exc:
-        raise_http_from_auth_error(exc)
+    result = get_auth_container(request).confirm_email_verification.execute(
+        token=body.token
+    )
+    match result:
+        case Ok():
+            return MessageResponse(message="Email verified")
+        case Err(error=exc):
+            raise_http_from_auth_error(exc)

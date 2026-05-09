@@ -23,10 +23,9 @@ from src.features.kanban.application.commands import (
     CreateColumnCommand,
     DeleteColumnCommand,
 )
-from src.platform.api.dependencies.security import RequireWriteApiKey
 from src.platform.shared.result import Err, Ok
 
-columns_write_router = APIRouter(tags=["columns"], dependencies=[RequireWriteApiKey])
+columns_write_router = APIRouter(tags=["columns"])
 
 
 @columns_write_router.post(

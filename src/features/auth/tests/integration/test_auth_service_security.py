@@ -1,4 +1,4 @@
-"""Security-focused tests for auth service behavior."""
+"""Security-focused tests for auth use-case behavior."""
 
 from __future__ import annotations
 
@@ -15,10 +15,11 @@ from src.features.auth.application.errors import (
     EmailNotVerifiedError,
     PermissionDeniedError,
 )
-from src.features.auth.application.rbac_service import RBACService
-from src.features.auth.application.types import Principal
+from src.features.auth.application.use_cases.rbac.remove_user_role import RemoveUserRole
 from src.features.auth.composition.container import build_auth_container
 from src.platform.config.settings import AppSettings
+from src.platform.shared.principal import Principal
+from src.platform.shared.result import Ok
 
 pytestmark = pytest.mark.integration
 
@@ -56,7 +57,7 @@ def _actor() -> Principal:
     )
 
 
-def test_service_normalizes_email_for_register_and_login(
+def test_use_case_normalizes_email_for_register_and_login(
     test_settings: AppSettings,
     sqlite_auth_repository: SQLModelAuthRepository,
 ) -> None:
@@ -64,21 +65,26 @@ def test_service_normalizes_email_for_register_and_login(
         settings=test_settings, repository=sqlite_auth_repository
     )
 
-    user = container.auth_service.register(
+    reg_result = container.register_user.execute(
         email="User@Example.COM",
         password="UserPassword123!",
     )
-    _, principal = container.auth_service.login(
+    assert isinstance(reg_result, Ok)
+    user = reg_result.value
+
+    login_result = container.login_user.execute(
         email="user@example.com",
         password="UserPassword123!",
     )
+    assert isinstance(login_result, Ok)
+    _, principal = login_result.value
 
     assert user.email == "user@example.com"
     assert principal.email == "user@example.com"
     container.shutdown()
 
 
-def test_service_blocks_unverified_login_when_required(
+def test_use_case_blocks_unverified_login_when_required(
     test_settings: AppSettings,
     sqlite_auth_repository: SQLModelAuthRepository,
 ) -> None:
@@ -88,16 +94,19 @@ def test_service_blocks_unverified_login_when_required(
     container = build_auth_container(
         settings=settings, repository=sqlite_auth_repository
     )
-    container.auth_service.register(
+    container.register_user.execute(
         email="unverified@example.com",
         password="UserPassword123!",
     )
 
-    with pytest.raises(EmailNotVerifiedError):
-        container.auth_service.login(
-            email="UNVERIFIED@example.com",
-            password="UserPassword123!",
-        )
+    login_result = container.login_user.execute(
+        email="UNVERIFIED@example.com",
+        password="UserPassword123!",
+    )
+    from src.platform.shared.result import Err
+
+    assert isinstance(login_result, Err)
+    assert isinstance(login_result.error, EmailNotVerifiedError)
 
     container.shutdown()
 
@@ -113,9 +122,9 @@ def test_role_revocation_invalidates_principal_cache(
     assert role is not None
     sqlite_auth_repository.assign_user_role(user.id, role.id)
     cache = _RecordingCache()
-    service = RBACService(repository=sqlite_auth_repository, cache=cache)
+    use_case = RemoveUserRole(_repository=sqlite_auth_repository, _cache=cache)
 
-    service.remove_user_role(
+    use_case.execute(
         actor=_actor(),
         user_id=user.id,
         role_id=role.id,
@@ -126,7 +135,10 @@ def test_role_revocation_invalidates_principal_cache(
 
 def test_permission_denial_is_logged(caplog: pytest.LogCaptureFixture) -> None:
     principal = _actor()
-    caplog.set_level(logging.WARNING, logger="src.features.auth.application.services")
+    caplog.set_level(  # noqa: E501
+        logging.WARNING,
+        logger="src.features.auth.application.authorization",
+    )
 
     with pytest.raises(PermissionDeniedError):
         ensure_permissions(principal, {"reports:read"}, any_=False)

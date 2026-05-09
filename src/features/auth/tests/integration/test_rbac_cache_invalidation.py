@@ -17,6 +17,7 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import 
 from src.features.auth.application.errors import StaleTokenError
 from src.features.auth.composition.container import AuthContainer, build_auth_container
 from src.platform.config.settings import AppSettings
+from src.platform.shared.result import Ok
 
 pytestmark = pytest.mark.integration
 
@@ -40,52 +41,63 @@ def container(
 
 
 def test_remove_user_role_evicts_principal_cache(container: AuthContainer) -> None:
-    auth = container.auth_service
-    rbac = container.rbac_service
-
-    # Seed roles and create a user.
-    rbac.seed_initial_data()
-    user = auth.register(email="cache-test@example.com", password="UserPassword123!")
+    container.seed_initial_data.execute()
+    reg = container.register_user.execute(
+        email="cache-test@example.com", password="UserPassword123!"
+    )
+    assert isinstance(reg, Ok)
+    user = reg.value
 
     role = container.repository.get_role_by_name("user")
     assert role is not None
 
-    # Issue tokens and populate the principal cache.
-    tokens, _ = auth.login(email="cache-test@example.com", password="UserPassword123!")
+    login = container.login_user.execute(
+        email="cache-test@example.com", password="UserPassword123!"
+    )
+    assert isinstance(login, Ok)
+    tokens, principal = login.value
     access_token = tokens.access_token
-    principal = auth.principal_from_access_token(access_token)
-    assert "user" in principal.roles
 
-    # Simulate an admin revoking the role. The cache must be evicted immediately.
-    actor = principal
-    rbac.remove_user_role(actor=actor, user_id=user.id, role_id=role.id)
+    resolve = container.resolve_principal.execute(access_token)
+    assert isinstance(resolve, Ok)
+    assert "user" in resolve.value.roles
 
-    # The same token now carries a stale authz_version — must be rejected.
-    with pytest.raises(StaleTokenError):
-        auth.principal_from_access_token(access_token)
+    container.remove_user_role.execute(
+        actor=principal, user_id=user.id, role_id=role.id
+    )
+
+    from src.platform.shared.result import Err
+
+    result = container.resolve_principal.execute(access_token)
+    assert isinstance(result, Err)
+    assert isinstance(result.error, StaleTokenError)
 
 
 def test_assign_user_role_evicts_principal_cache(container: AuthContainer) -> None:
-    auth = container.auth_service
-    rbac = container.rbac_service
-
-    rbac.seed_initial_data()
-    auth.register(email="cache-assign@example.com", password="UserPassword123!")
+    container.seed_initial_data.execute()
+    reg = container.register_user.execute(
+        email="cache-assign@example.com", password="UserPassword123!"
+    )
+    assert isinstance(reg, Ok)
 
     role = container.repository.get_role_by_name("manager")
     assert role is not None
 
-    tokens, principal = auth.login(
+    login = container.login_user.execute(
         email="cache-assign@example.com", password="UserPassword123!"
     )
+    assert isinstance(login, Ok)
+    tokens, principal = login.value
     access_token = tokens.access_token
 
-    # Populate the cache.
-    auth.principal_from_access_token(access_token)
+    container.resolve_principal.execute(access_token)
 
-    # Grant a new role — cache must be evicted.
-    rbac.assign_user_role(actor=principal, user_id=principal.user_id, role_id=role.id)
+    container.assign_user_role.execute(
+        actor=principal, user_id=principal.user_id, role_id=role.id
+    )
 
-    # The token carries the old authz_version — StaleTokenError expected.
-    with pytest.raises(StaleTokenError):
-        auth.principal_from_access_token(access_token)
+    from src.platform.shared.result import Err
+
+    result = container.resolve_principal.execute(access_token)
+    assert isinstance(result, Err)
+    assert isinstance(result.error, StaleTokenError)

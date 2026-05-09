@@ -34,7 +34,6 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
 )
-from src.features.auth.application.types import Principal
 from src.features.auth.domain.models import (
     AuditEvent,
     InternalToken,
@@ -43,6 +42,7 @@ from src.features.auth.domain.models import (
     Role,
     User,
 )
+from src.platform.shared.principal import Principal
 
 # ── Mapper functions ─────────────────────────────────────────────────────────
 # Each mapper converts a SQLModel table row into the corresponding domain type.

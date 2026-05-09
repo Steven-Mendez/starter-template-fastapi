@@ -44,11 +44,14 @@ def test_concurrent_bootstrap_creates_exactly_one_super_admin(
         repo = SQLModelAuthRepository(_auth_postgres_url, create_schema=True)
         container = build_auth_container(settings=settings, repository=repo)
         try:
-            user = container.rbac_service.bootstrap_super_admin(
-                auth_service=container.auth_service,
+            result = container.bootstrap_super_admin.execute(
                 email="concurrent-admin@example.com",
                 password="StrongPassword123!",
             )
+            from src.platform.shared.result import Ok
+
+            assert isinstance(result, Ok)
+            user = result.value
             with lock:
                 results.append(user)
         except Exception as exc:

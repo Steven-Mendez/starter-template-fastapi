@@ -85,7 +85,7 @@ Unlike kanban (which uses strict hexagonal ports), auth uses a flatter service m
 - `domain/` — pure Python: `Board` aggregate root owns ordered `Column` entities, each owning ordered `Card` entities; card movement/position logic lives here
 - `application/` — commands/queries, `UnitOfWorkPort` and `KanbanQueryRepositoryPort` protocols, use cases return `Result`
 - `adapters/outbound/persistence/sqlmodel/` — SQLModel tables (`boards`, `columns_`, `cards`); full aggregate snapshot writes; deferrable position-uniqueness constraints; optimistic concurrency via `boards.version`
-- `adapters/inbound/http/` — routers split into read (public) and write (optional `X-API-Key`)
+- `adapters/inbound/http/` — routers split into read and write; mounted in `main.py` behind `require_permissions("kanban:read")` / `require_permissions("kanban:write")` from the platform authorization helpers
 - `composition/` — `KanbanContainer` + wiring helpers
 
 ### Request flow
@@ -150,3 +150,4 @@ Set `APP_ENVIRONMENT=production` to activate these checks.
 | `APP_AUTH_REDIS_URL` | unset | Enables distributed Redis rate limiter; falls back to in-process if unset |
 | `APP_AUTH_RATE_LIMIT_ENABLED` | `true` | Enables/disables auth rate limiting |
 | `APP_AUTH_RBAC_ENABLED` | `true` | Enables RBAC permission checks |
+| `APP_AUTH_PRINCIPAL_CACHE_TTL_SECONDS` | `5` | Bounds the worst-case revocation lag for cached principals. Lower values reduce lag but increase DB/cache load on each request; raise it for high-throughput deployments where a longer lag is acceptable. |

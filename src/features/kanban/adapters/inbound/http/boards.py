@@ -37,11 +37,10 @@ from src.features.kanban.application.commands import (
     RestoreBoardCommand,
 )
 from src.features.kanban.application.queries import GetBoardQuery, ListBoardsQuery
-from src.platform.api.dependencies.security import RequireWriteApiKey
 from src.platform.shared.result import Err, Ok
 
 boards_read_router = APIRouter(tags=["boards"])
-boards_write_router = APIRouter(tags=["boards"], dependencies=[RequireWriteApiKey])
+boards_write_router = APIRouter(tags=["boards"])
 
 
 @boards_write_router.post("/boards", status_code=status.HTTP_201_CREATED)

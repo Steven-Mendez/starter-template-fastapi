@@ -12,6 +12,7 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import 
 from src.features.auth.application.errors import TokenAlreadyUsedError
 from src.features.auth.composition.container import build_auth_container
 from src.platform.config.settings import AppSettings
+from src.platform.shared.result import Ok
 
 pytestmark = pytest.mark.integration
 
@@ -32,12 +33,20 @@ def test_concurrent_password_reset_serializes_on_token_row(
         settings=settings,
         repository=postgres_auth_repository,
     )
-    auth = container.auth_service
-    auth.register(email="reset-race@example.com", password="UserPassword123!")
-    reset = auth.request_password_reset(email="reset-race@example.com")
+    reg = container.register_user.execute(
+        email="reset-race@example.com", password="UserPassword123!"
+    )
+    assert isinstance(reg, Ok)
+
+    reset_result = container.request_password_reset.execute(
+        email="reset-race@example.com"
+    )
+    assert isinstance(reset_result, Ok)
+    reset = reset_result.value
     assert reset.token is not None
 
-    original_hash = auth._passwords.hash_password  # noqa: SLF001
+    password_service = container.confirm_password_reset._password_service  # noqa: SLF001
+    original_hash = password_service.hash_password
     first_hash_started = threading.Event()
     release_first_hash = threading.Event()
     hash_calls: list[str] = []
@@ -52,18 +61,22 @@ def test_concurrent_password_reset_serializes_on_token_row(
             assert release_first_hash.wait(timeout=5)
         return original_hash(password)
 
-    monkeypatch.setattr(auth._passwords, "hash_password", gated_hash)  # noqa: SLF001
+    monkeypatch.setattr(password_service, "hash_password", gated_hash)
 
     successes: list[None] = []
     errors: list[Exception] = []
 
     def run_reset() -> None:
         try:
-            auth.reset_password(
+            result = container.confirm_password_reset.execute(
                 token=reset.token or "",
                 new_password="NewUserPassword123!",
             )
-            successes.append(None)
+            match result:
+                case Ok():
+                    successes.append(None)
+                case _ as err:
+                    errors.append(err.error)
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 

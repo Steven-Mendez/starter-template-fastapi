@@ -13,9 +13,8 @@ from dataclasses import dataclass
 from typing import AsyncIterator
 
 import redis as redis_lib
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 
-from src.features.auth.adapters.inbound.http.dependencies import get_current_principal
 from src.features.auth.composition.container import AuthContainer, build_auth_container
 from src.features.auth.composition.wiring import (
     attach_auth_container,
@@ -27,6 +26,7 @@ from src.features.kanban.composition import (
     mount_kanban_routes,
 )
 from src.platform.api.app_factory import build_fastapi_app
+from src.platform.api.authorization import require_permissions
 from src.platform.api.dependencies.container import set_app_container
 from src.platform.config.settings import AppSettings, get_settings
 from src.platform.observability import configure_logging
@@ -55,7 +55,7 @@ def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
     """Seed RBAC data and optionally create a first super-admin on startup."""
     if not settings.auth_seed_on_startup:
         return
-    auth.rbac_service.seed_initial_data()
+    auth.seed_initial_data.execute()
 
     email = settings.auth_bootstrap_super_admin_email
     password = settings.auth_bootstrap_super_admin_password
@@ -65,11 +65,7 @@ def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
             "APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD must be set together."
         )
     if email and password:
-        auth.rbac_service.bootstrap_super_admin(
-            auth_service=auth.auth_service,
-            email=email,
-            password=password,
-        )
+        auth.bootstrap_super_admin.execute(email=email, password=password)
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -93,11 +89,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     # before lifespan startup completes. Containers are attached in lifespan
     # because they require DB connections that should not outlive the process.
     mount_auth_routes(app)
-    require_auth = [Depends(get_current_principal)]
+    read_guard = [require_permissions("kanban:read")]
+    write_guard = [require_permissions("kanban:write")]
     mount_kanban_routes(
         app,
-        read_dependencies=require_auth,
-        write_dependencies=require_auth,
+        read_dependencies=read_guard,
+        write_dependencies=write_guard,
     )
     instrument_fastapi_app(app, app_settings)
 
@@ -113,6 +110,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             pool_pre_ping=app_settings.db_pool_pre_ping,
         )
         set_app_container(lifespan_app, _PlatformAppContainer(settings=app_settings))
+        # Register the principal resolver so platform-level authorization
+        # dependencies (require_permissions, etc.) can resolve tokens without
+        # importing from the auth feature.
+        lifespan_app.state.principal_resolver = auth.resolve_principal.execute
         attach_auth_container(lifespan_app, auth)
         attach_kanban_container(lifespan_app, kanban)
 

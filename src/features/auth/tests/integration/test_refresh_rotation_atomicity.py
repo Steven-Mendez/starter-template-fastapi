@@ -12,9 +12,11 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import 
 )
 from src.features.auth.application.crypto import hash_token
 from src.features.auth.application.errors import InvalidTokenError
-from src.features.auth.application.types import IssuedTokens, Principal
+from src.features.auth.application.types import IssuedTokens
 from src.features.auth.composition.container import build_auth_container
 from src.platform.config.settings import AppSettings
+from src.platform.shared.principal import Principal
+from src.platform.shared.result import Ok
 
 pytestmark = pytest.mark.integration
 
@@ -34,11 +36,17 @@ def test_concurrent_refresh_serializes_on_presented_token_row(
         settings=settings,
         repository=postgres_auth_repository,
     )
-    auth = container.auth_service
-    auth.register(email="user@example.com", password="UserPassword123!")
-    issued, _ = auth.login(email="user@example.com", password="UserPassword123!")
+    container.register_user.execute(
+        email="user@example.com", password="UserPassword123!"
+    )
+    login_result = container.login_user.execute(
+        email="user@example.com", password="UserPassword123!"
+    )
+    assert isinstance(login_result, Ok)
+    issued, _ = login_result.value
 
-    original_issue = auth._tokens.issue  # noqa: SLF001
+    token_service = container.rotate_refresh_token._token_service  # noqa: SLF001
+    original_issue = token_service.issue
     first_issue_started = threading.Event()
     release_first_issue = threading.Event()
     second_reached_issue = threading.Event()
@@ -58,14 +66,21 @@ def test_concurrent_refresh_serializes_on_presented_token_row(
             second_reached_issue.set()
         return original_issue(subject=subject, roles=roles, authz_version=authz_version)
 
-    monkeypatch.setattr(auth._tokens, "issue", gated_issue)  # noqa: SLF001
+    monkeypatch.setattr(token_service, "issue", gated_issue)
 
     successes: list[tuple[IssuedTokens, Principal]] = []
     errors: list[Exception] = []
 
     def run_refresh() -> None:
         try:
-            successes.append(auth.refresh(refresh_token=issued.refresh_token))
+            result = container.rotate_refresh_token.execute(
+                refresh_token=issued.refresh_token
+            )
+            match result:
+                case Ok(value=pair):
+                    successes.append(pair)
+                case _ as err:
+                    errors.append(err.error)
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 

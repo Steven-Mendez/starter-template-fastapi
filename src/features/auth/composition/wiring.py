@@ -7,11 +7,21 @@ and lets tests register routes against a stub container if needed.
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, params
 
+from src.features.auth.adapters.inbound.http.dependencies import get_current_principal
 from src.features.auth.adapters.inbound.http.router import build_auth_router
 from src.features.auth.composition.app_state import set_auth_container
 from src.features.auth.composition.container import AuthContainer
+
+
+def make_auth_guard() -> list[params.Depends]:
+    """Return a FastAPI dependency list that enforces JWT authentication.
+
+    The dependency reads the auth container from ``request.state`` at runtime,
+    so no container reference is needed at mount time.
+    """
+    return [Depends(get_current_principal)]
 
 
 def mount_auth_routes(app: FastAPI) -> None:

@@ -19,7 +19,7 @@ from uuid import UUID
 
 from cachetools import TTLCache
 
-from src.features.auth.application.types import Principal
+from src.platform.shared.principal import Principal
 
 
 class PrincipalCachePort(Protocol):
@@ -46,7 +46,7 @@ class InProcessPrincipalCache:
     _user_index: dict[str, set[str]]
 
     @classmethod
-    def create(cls, maxsize: int = 1000, ttl: int = 30) -> InProcessPrincipalCache:
+    def create(cls, maxsize: int = 1000, ttl: int = 5) -> InProcessPrincipalCache:
         return cls(
             _cache=TTLCache(maxsize=maxsize, ttl=ttl),
             _lock=threading.Lock(),

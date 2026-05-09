@@ -38,11 +38,6 @@ class AppSettings(BaseSettings):
     log_level: str = "INFO"
     postgresql_dsn: str = "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
     health_persistence_backend: str = "postgresql"
-    write_api_key: str | None = None
-    # Additional accepted API keys, used for rotation: deploy with the new
-    # key in ``write_api_keys`` while clients still send the old
-    # ``write_api_key``, then drop the old one once traffic has cut over.
-    write_api_keys: list[str] = []
     # Database connection-pool tuning. ``pool_recycle`` defends against
     # idle-cutting load balancers (RDS, PgBouncer) that close stale conns;
     # ``pool_pre_ping`` validates a checked-out connection before use.
@@ -91,7 +86,7 @@ class AppSettings(BaseSettings):
     # TTL in seconds for the in-process principal cache. Set to 0 to disable
     # caching entirely. When Redis is configured, a Redis-backed cache is used
     # instead and this value controls its TTL.
-    auth_principal_cache_ttl_seconds: int = 30
+    auth_principal_cache_ttl_seconds: int = 5
     # ---------------------------------------------------------------------------
     # Observability
     # ---------------------------------------------------------------------------

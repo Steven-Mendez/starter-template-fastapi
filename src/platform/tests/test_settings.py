@@ -26,14 +26,12 @@ def test_defaults_in_development(monkeypatch: pytest.MonkeyPatch) -> None:
         "APP_ENABLE_DOCS",
         "APP_CORS_ORIGINS",
         "APP_TRUSTED_HOSTS",
-        "APP_WRITE_API_KEY",
     ]:
         monkeypatch.delenv(key, raising=False)
     s = AppSettings(_env_file=None)  # type: ignore[call-arg]
     assert s.environment == "development"
     assert s.enable_docs is True
     assert s.cors_origins == ["*"]
-    assert s.write_api_key is None
 
 
 def test_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:

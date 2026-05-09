@@ -20,6 +20,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     "auth:sessions:revoke": "Revoke user sessions",
     "audit:read": "Read auth and RBAC audit events",
     "admin:access": "Access administrative API surface",
+    "kanban:read": "Read kanban boards, columns, and cards",
+    "kanban:write": "Create, update, and delete kanban boards, columns, and cards",
 }
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
@@ -37,11 +39,11 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "permissions:manage",
         "auth:sessions:revoke",
         "admin:access",
+        "kanban:read",
+        "kanban:write",
     },
-    "manager": {"users:read", "roles:read", "permissions:read"},
-    # The default user role intentionally starts with no permissions so that
-    # access is explicitly granted rather than accidentally inherited.
-    "user": set(),
+    "manager": {"users:read", "roles:read", "permissions:read", "kanban:read"},
+    "user": {"kanban:read", "kanban:write"},
 }
 
 ROLE_DESCRIPTIONS: dict[str, str] = {

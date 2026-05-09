@@ -14,11 +14,11 @@ import os
 from src.features.auth.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
-from src.features.auth.composition.container import build_auth_container
+from src.features.auth.composition.container import AuthContainer, build_auth_container
 from src.platform.config.settings import AppSettings
 
 
-def _build_container() -> tuple[SQLModelAuthRepository, object]:
+def _build_container() -> tuple[SQLModelAuthRepository, AuthContainer]:
     """Construct a repository and auth container from the current environment settings.
 
     Returns:
@@ -38,7 +38,7 @@ def seed() -> None:
     """
     repository, container = _build_container()
     try:
-        container.rbac_service.seed_initial_data()  # type: ignore[attr-defined]
+        container.seed_initial_data.execute()
     finally:
         repository.close()
 
@@ -64,8 +64,7 @@ def create_super_admin(email: str, password_env: str) -> None:
         raise SystemExit(f"Environment variable {password_env} is required")
     repository, container = _build_container()
     try:
-        container.rbac_service.bootstrap_super_admin(  # type: ignore[attr-defined]
-            auth_service=container.auth_service,  # type: ignore[attr-defined]
+        container.bootstrap_super_admin.execute(
             email=email,
             password=password,
         )

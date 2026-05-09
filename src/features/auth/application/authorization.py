@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 
 from src.features.auth.application.errors import PermissionDeniedError
-from src.features.auth.application.types import Principal
+from src.platform.shared.principal import Principal
 
 _logger = logging.getLogger(__name__)
 

@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Annotated
+from uuid import uuid4
 
 import pytest
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.features.kanban.composition import (
@@ -21,8 +21,11 @@ from src.features.kanban.tests.fakes import (
     build_fake_kanban_wiring,
 )
 from src.platform.api.app_factory import build_fastapi_app
+from src.platform.api.authorization import require_permissions
 from src.platform.api.dependencies.container import set_app_container
 from src.platform.config.settings import AppSettings
+from src.platform.shared.principal import Principal
+from src.platform.shared.result import Err, Ok
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,33 +38,58 @@ class _AuthContainer:
     principal_cache: object
 
 
-def _require_test_auth(
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
-    if authorization != "Bearer test-token":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+_AUTHED_PRINCIPAL = Principal(
+    user_id=uuid4(),
+    email="test@example.com",
+    is_active=True,
+    is_verified=True,
+    authz_version=1,
+    roles=frozenset({"user"}),
+    permissions=frozenset({"kanban:read", "kanban:write"}),
+)
+
+_READ_ONLY_PRINCIPAL = Principal(
+    user_id=uuid4(),
+    email="readonly@example.com",
+    is_active=True,
+    is_verified=True,
+    authz_version=1,
+    roles=frozenset({"manager"}),
+    permissions=frozenset({"kanban:read"}),
+)
+
+
+class _InvalidTokenError(Exception):
+    pass
+
+
+def _fake_resolver(token: str) -> object:
+    if token == "test-token":
+        return Ok(_AUTHED_PRINCIPAL)
+    if token == "read-only-token":
+        return Ok(_READ_ONLY_PRINCIPAL)
+    return Err(_InvalidTokenError("invalid token"))
 
 
 def _build_app(settings: AppSettings, wiring: FakeKanbanWiring) -> FastAPI:
     app = build_fastapi_app(settings)
-    auth_dependencies = [Depends(_require_test_auth)]
+    read_guard = [require_permissions("kanban:read")]
+    write_guard = [require_permissions("kanban:write")]
     mount_kanban_routes(
         app,
-        read_dependencies=auth_dependencies,
-        write_dependencies=auth_dependencies,
+        read_dependencies=read_guard,
+        write_dependencies=write_guard,
     )
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI):  # type: ignore[no-untyped-def]
         set_app_container(lifespan_app, _Container(settings=settings))
+        lifespan_app.state.principal_resolver = _fake_resolver
         lifespan_app.state.auth_container = _AuthContainer(principal_cache=object())
         attach_kanban_container(lifespan_app, wiring.container)
         yield
         lifespan_app.state.container = None
+        lifespan_app.state.principal_resolver = None
         lifespan_app.state.auth_container = None
 
     app.router.lifespan_context = lifespan
@@ -98,17 +126,13 @@ def unauthenticated_client(
 
 
 @pytest.fixture
-def secured_settings(test_settings: AppSettings) -> AppSettings:
-    return test_settings.model_copy(update={"write_api_key": "secret"})
-
-
-@pytest.fixture
-def secured_client(
-    secured_settings: AppSettings, wiring: FakeKanbanWiring
+def read_only_client(
+    test_settings: AppSettings, wiring: FakeKanbanWiring
 ) -> Iterator[TestClient]:
-    app = _build_app(secured_settings, wiring)
+    """Client authenticated with kanban:read but not kanban:write."""
+    app = _build_app(test_settings, wiring)
     with TestClient(app) as c:
-        c.headers.update({"Authorization": "Bearer test-token"})
+        c.headers.update({"Authorization": "Bearer read-only-token"})
         yield c
 
 

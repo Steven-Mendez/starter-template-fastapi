@@ -11,35 +11,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-
-@dataclass(frozen=True, slots=True)
-class Principal:
-    """Authenticated identity resolved for the duration of a single request.
-
-    ``frozen=True`` makes the principal immutable so request handlers cannot
-    accidentally mutate the resolved identity between dependency calls.
-
-    Attributes:
-        user_id: Stable UUID of the underlying user account.
-        email: Normalised email of the account.
-        is_active: Whether the account is enabled. Inactive principals are
-            rejected before any business logic runs.
-        is_verified: Whether the account's email has been verified.
-        authz_version: Monotonic counter compared against the JWT claim on
-            every request. Bumping it server-side invalidates any token
-            previously issued for this user without waiting for expiry.
-        roles: Role names currently assigned to the user.
-        permissions: Flattened set of permissions resolved from the user's
-            active roles, used for fine-grained access checks.
-    """
-
-    user_id: UUID
-    email: str
-    is_active: bool
-    is_verified: bool
-    authz_version: int
-    roles: frozenset[str]
-    permissions: frozenset[str]
+# Principal now lives in the platform layer so any feature can consume it
+# without importing from the auth feature.  The re-export here keeps existing
+# intra-auth import paths working; callers outside auth should import directly
+# from ``platform.shared.principal``.
+from src.platform.shared.principal import Principal as Principal  # noqa: F401
 
 
 @dataclass(frozen=True, slots=True)

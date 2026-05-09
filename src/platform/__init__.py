@@ -9,11 +9,6 @@ from src.platform.api.dependencies.container import (
     get_app_settings,
     set_app_container,
 )
-from src.platform.api.dependencies.security import (
-    RequireWriteApiKey,
-    WriteApiKeyDep,
-    require_write_api_key,
-)
 from src.platform.api.error_handlers_app_exception import ApplicationHTTPException
 from src.platform.config.settings import AppSettings, get_settings
 from src.platform.persistence.lifecycle import ClosableResource
@@ -37,16 +32,13 @@ __all__ = [
     "IdGeneratorPort",
     "Ok",
     "ReadinessProbe",
-    "RequireWriteApiKey",
     "Result",
     "SystemClock",
     "UUIDIdGenerator",
-    "WriteApiKeyDep",
     "build_engine",
     "build_fastapi_app",
     "get_app_container",
     "get_app_settings",
     "get_settings",
-    "require_write_api_key",
     "set_app_container",
 ]
