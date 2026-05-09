@@ -2,7 +2,7 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check ci precommit-install precommit-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports
+.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check app-import-smoke ci precommit-install precommit-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -31,6 +31,11 @@ typecheck: ## Run static type checks (mypy)
 quality: lint lint-arch typecheck ## Run lint + import contracts + typing
 
 check: quality ## Alias for the local quality gate
+
+app-import-smoke: ## Verify the ASGI entrypoint imports in a fresh process
+	APP_AUTH_JWT_SECRET_KEY=ci-test-secret-key-min-32-chars \
+	APP_ENVIRONMENT=development \
+	uv run python -c "import src.main"
 
 test: ## Run unit + e2e tests (no docker)
 	uv run pytest -m "not integration"

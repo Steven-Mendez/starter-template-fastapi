@@ -16,10 +16,9 @@ import redis as redis_lib
 from fastapi import Depends, FastAPI
 
 from src.features.auth.adapters.inbound.http.dependencies import get_current_principal
-from src.features.auth.composition import (
-    AuthContainer,
+from src.features.auth.composition.container import AuthContainer, build_auth_container
+from src.features.auth.composition.wiring import (
     attach_auth_container,
-    build_auth_container,
     mount_auth_routes,
 )
 from src.features.kanban.composition import (

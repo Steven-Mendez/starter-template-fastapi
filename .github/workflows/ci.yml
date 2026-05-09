@@ -171,3 +171,23 @@ jobs:
           done
           curl -sf http://localhost:8000/health/live
           docker stop ci-smoke
+
+  # Single aggregator job used as the required status check in branch protection.
+  # Requiring one check instead of enumerating every matrix permutation keeps
+  # the protection rule stable when jobs or Python versions change.
+  ci-gate:
+    name: CI Gate
+    needs: [quality, audit, sast, integration, migrations, docker]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: All required jobs passed
+        run: |
+          results="${{ join(needs.*.result, ' ') }}"
+          for result in $results; do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "A required job failed or was cancelled: $results"
+              exit 1
+            fi
+          done
+          echo "All required jobs passed."

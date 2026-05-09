@@ -1,0 +1,63 @@
+name: Setup Repository
+
+# Run this workflow once after forking or creating the repo from this template.
+# It configures branch protection on `main` so the CI Gate must pass before
+# any push or merge, and prevents force-pushes and deletions.
+#
+# Requirements:
+#   - The GITHUB_TOKEN needs `administration: write` permission.
+#     For organisation repos this is granted automatically via the permissions
+#     block below. For personal repos you may need to store a classic PAT with
+#     `repo` scope as a secret named REPO_ADMIN_TOKEN and replace
+#     `secrets.GITHUB_TOKEN` with `secrets.REPO_ADMIN_TOKEN` in the step below.
+#
+# Usage:
+#   GitHub UI → Actions → "Setup Repository" → Run workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  branch-protection:
+    name: Apply branch protection rules
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      administration: write
+
+    steps:
+      - name: Protect main branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method PUT \
+            -H "Accept: application/vnd.github+json" \
+            repos/${{ github.repository }}/branches/main/protection \
+            --input - <<'EOF'
+          {
+            "required_status_checks": {
+              "strict": true,
+              "contexts": ["CI Gate"]
+            },
+            "enforce_admins": false,
+            "required_pull_request_reviews": null,
+            "restrictions": null,
+            "allow_force_pushes": false,
+            "allow_deletions": false,
+            "required_linear_history": true
+          }
+          EOF
+
+      - name: Summary
+        run: |
+          echo "### Branch protection applied to \`main\` :lock:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Rule | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Required status check | \`CI Gate\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Require branch up to date | yes |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linear history | yes |" >> $GITHUB_STEP_SUMMARY
+          echo "| Allow force pushes | no |" >> $GITHUB_STEP_SUMMARY
+          echo "| Allow deletions | no |" >> $GITHUB_STEP_SUMMARY
+          echo "| Enforce on admins | no |" >> $GITHUB_STEP_SUMMARY

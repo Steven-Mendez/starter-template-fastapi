@@ -32,6 +32,12 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-commit, pre-push]
+      - id: app-import-smoke
+        name: app import smoke
+        entry: make app-import-smoke
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
       - id: pytest
         name: pytest (unit + e2e, no docker)
         entry: make test

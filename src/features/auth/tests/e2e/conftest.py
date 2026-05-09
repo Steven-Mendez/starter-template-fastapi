@@ -32,8 +32,11 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
 from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
-from src.features.auth.composition import attach_auth_container, build_auth_container
-from src.features.auth.composition.wiring import mount_auth_routes
+from src.features.auth.composition.container import build_auth_container
+from src.features.auth.composition.wiring import (
+    attach_auth_container,
+    mount_auth_routes,
+)
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import set_app_container
 from src.platform.config.settings import AppSettings
