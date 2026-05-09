@@ -18,7 +18,7 @@ from src.features.auth.application.rate_limit import (
 from src.features.auth.composition.container import build_auth_container
 from src.platform.config.settings import AppSettings
 
-pytestmark = pytest.mark.integration
+pytestmark = pytest.mark.unit
 
 
 def test_build_auth_container_uses_fixed_limiter_without_redis_url(
