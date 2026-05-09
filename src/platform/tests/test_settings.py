@@ -13,6 +13,8 @@ _VALID_PROD_ENV = {
     "APP_ENVIRONMENT": "production",
     "APP_ENABLE_DOCS": "false",
     "APP_AUTH_JWT_SECRET_KEY": "a-secret-at-least-32-chars-long!!",
+    "APP_AUTH_JWT_ISSUER": "https://issuer.example.com",
+    "APP_AUTH_JWT_AUDIENCE": "starter-template-fastapi",
     "APP_CORS_ORIGINS": '["https://example.com"]',
     "APP_AUTH_COOKIE_SECURE": "true",
 }
@@ -72,6 +74,22 @@ def test_production_requires_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None
         AppSettings(_env_file=None)  # type: ignore[call-arg]
 
 
+def test_production_requires_jwt_issuer(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("APP_AUTH_JWT_ISSUER", raising=False)
+    with pytest.raises(ValidationError, match="APP_AUTH_JWT_ISSUER"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_requires_jwt_audience(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("APP_AUTH_JWT_AUDIENCE", raising=False)
+    with pytest.raises(ValidationError, match="APP_AUTH_JWT_AUDIENCE"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
 def test_production_rejects_wildcard_cors(monkeypatch: pytest.MonkeyPatch) -> None:
     for k, v in _VALID_PROD_ENV.items():
         monkeypatch.setenv(k, v)
@@ -93,4 +111,20 @@ def test_production_rejects_enabled_docs(monkeypatch: pytest.MonkeyPatch) -> Non
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("APP_ENABLE_DOCS", "true")
     with pytest.raises(ValidationError, match="APP_ENABLE_DOCS"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_invalid_jwt_algorithm_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_AUTH_JWT_ALGORITHM", "none")
+    with pytest.raises(ValidationError, match="APP_AUTH_JWT_ALGORITHM"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_rejects_raw_wildcard_cors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_CORS_ORIGINS", '["*"]')
+    with pytest.raises(ValidationError, match="APP_CORS_ORIGINS"):
         AppSettings(_env_file=None)  # type: ignore[call-arg]

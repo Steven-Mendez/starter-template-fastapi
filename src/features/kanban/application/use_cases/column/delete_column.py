@@ -8,6 +8,7 @@ from src.features.kanban.application.commands.column.delete import (
     DeleteColumnCommand,
 )
 from src.features.kanban.application.errors import ApplicationError, from_domain_error
+from src.features.kanban.application.persistence_errors import PersistenceConflictError
 from src.features.kanban.application.ports.outbound.unit_of_work import UnitOfWorkPort
 from src.platform.shared.result import Err, Ok, Result
 
@@ -33,7 +34,11 @@ class DeleteColumnUseCase:
             delete_result = board.delete_column(command.column_id)
             if isinstance(delete_result, Err):
                 return Err(from_domain_error(delete_result.error))
+            board.updated_by = command.actor_id
 
-            self.uow.commands.save(board)
-            self.uow.commit()
+            try:
+                self.uow.commands.save(board)
+                self.uow.commit()
+            except PersistenceConflictError:
+                return Err(ApplicationError.STALE_WRITE)
             return Ok(None)

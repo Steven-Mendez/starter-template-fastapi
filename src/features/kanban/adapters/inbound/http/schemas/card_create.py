@@ -15,6 +15,6 @@ class CardCreate(BaseModel):
     """Request body for ``POST /api/columns/{id}/cards``."""
 
     title: str = Field(min_length=1, max_length=500)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=5000)
     priority: CardPrioritySchema = CardPrioritySchema.MEDIUM
     due_at: datetime | None = None

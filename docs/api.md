@@ -10,8 +10,8 @@ Local development default:
 http://localhost:8000
 ```
 
-Kanban resources are mounted under `/api`. The readiness endpoint is mounted at
-`/health`.
+Kanban resources are mounted under `/api`. Health endpoints are mounted at
+`/health/live`, `/health/ready`, and `/health`.
 
 ## OpenAPI
 
@@ -20,7 +20,8 @@ When `APP_ENABLE_DOCS=true`, Swagger UI and ReDoc are available at:
 - `/docs`
 - `/redoc`
 
-The current code does not disable `/openapi.json` when `APP_ENABLE_DOCS=false`.
+`/openapi.json` is disabled together with the interactive docs when
+`APP_ENABLE_DOCS=false`.
 
 ## Authentication
 
@@ -89,7 +90,7 @@ Example application error:
 
 | Status | Meaning |
 | --- | --- |
-| `200` | Successful read, patch, or health response. |
+| `200` | Successful read, patch, liveness, or ready health response. |
 | `201` | Board, column, or card created. |
 | `204` | Board or column deleted. |
 | `401` | Write API key is configured and the request did not provide the correct `X-API-Key`. |
@@ -97,7 +98,7 @@ Example application error:
 | `409` | Card move violated a domain rule. |
 | `422` | Request validation failed, or a patch request contained no effective changes. |
 | `500` | Unmapped domain error or unhandled server error. |
-| `503` | Application or feature container was not available. |
+| `503` | Application container was unavailable or readiness was degraded. |
 
 Path IDs are parsed as UUIDs by FastAPI. Invalid UUID path values return `422`.
 
@@ -191,6 +192,18 @@ An empty card patch returns application error `patch_no_changes` with `422`.
 | `status` | `ok` or `degraded` |
 | `persistence.backend` | string |
 | `persistence.ready` | boolean |
+| `auth.jwt_secret_configured` | boolean |
+| `auth.principal_cache_ready` | boolean |
+| `auth.rate_limiter_backend` | `in_memory` or `redis` |
+| `auth.rate_limiter_ready` | boolean |
+| `redis.configured` | boolean or omitted when Redis is not configured |
+| `redis.ready` | boolean or omitted when Redis is not configured |
+
+### HealthLive
+
+| Field | Type |
+| --- | --- |
+| `status` | `ok` |
 
 ## Endpoints
 
@@ -207,11 +220,23 @@ Response `200`:
 }
 ```
 
-### GET /health
+### GET /health/live
+
+Returns process liveness. It does not check external dependencies.
+
+Response `200`:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+### GET /health/ready
 
 Returns readiness information.
 
-Response `200` when persistence is ready:
+Response `200` when dependencies are ready:
 
 ```json
 {
@@ -219,11 +244,17 @@ Response `200` when persistence is ready:
   "persistence": {
     "backend": "postgresql",
     "ready": true
+  },
+  "auth": {
+    "jwt_secret_configured": true,
+    "principal_cache_ready": true,
+    "rate_limiter_backend": "in_memory",
+    "rate_limiter_ready": true
   }
 }
 ```
 
-Response `200` when persistence is not ready:
+Response `503` when any readiness check is degraded:
 
 ```json
 {
@@ -231,9 +262,19 @@ Response `200` when persistence is not ready:
   "persistence": {
     "backend": "postgresql",
     "ready": false
+  },
+  "auth": {
+    "jwt_secret_configured": true,
+    "principal_cache_ready": true,
+    "rate_limiter_backend": "in_memory",
+    "rate_limiter_ready": true
   }
 }
 ```
+
+### GET /health
+
+Backward-compatible alias for `GET /health/ready`.
 
 ### POST /api/boards
 

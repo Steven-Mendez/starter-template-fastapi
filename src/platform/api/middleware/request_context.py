@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
@@ -11,6 +10,8 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+
+from src.platform.observability.logging import REQUEST_ID_CONTEXT
 
 _REQUEST_ID_RE = re.compile(r"^[a-zA-Z0-9\-_]{1,64}$")
 
@@ -43,18 +44,21 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         else:
             request_id = str(uuid.uuid4())
         request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-        self._logger.info(
-            json.dumps(
-                {
+        token = REQUEST_ID_CONTEXT.set(request_id)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            self._logger.info(
+                "HTTP request completed",
+                extra={
                     "request_id": request_id,
                     "method": request.method,
                     "path": request.url.path,
                     "status_code": response.status_code,
                     "duration_ms": elapsed_ms,
-                }
+                },
             )
-        )
-        return response
+            return response
+        finally:
+            REQUEST_ID_CONTEXT.reset(token)

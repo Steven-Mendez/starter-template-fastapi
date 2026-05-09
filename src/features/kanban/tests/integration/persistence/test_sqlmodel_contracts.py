@@ -43,12 +43,12 @@ def test_sqlmodel_repository_contract(contract, postgres_engine: Engine) -> None
 
         original_remove = repo.remove
 
-        def commit_remove(board_id: str):  # type: ignore[no-untyped-def]
-            result = original_remove(board_id)
+        def commit_remove(board_id, *, actor_id=None):  # type: ignore[no-untyped-def]
+            result = original_remove(board_id, actor_id=actor_id)
             session.commit()
             return result
 
-        repo.remove = commit_remove  # type: ignore[method-assign]
+        repo.remove = commit_remove  # type: ignore[method-assign,assignment]
         return repo
 
     try:

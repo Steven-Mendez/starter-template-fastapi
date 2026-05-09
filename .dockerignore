@@ -1,4 +1,6 @@
-__pycache__/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
@@ -9,3 +11,9 @@ __pycache__/
 !.env.example
 htmlcov/
 coverage.xml
+.coverage
+.coverage.*
+reports/
+docs/
+*.md
+!README.md

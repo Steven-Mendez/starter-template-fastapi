@@ -10,6 +10,7 @@ from src.features.kanban.application.commands.column.create import (
 from src.features.kanban.application.contracts import AppColumn
 from src.features.kanban.application.contracts.mappers import to_app_column
 from src.features.kanban.application.errors import ApplicationError, from_domain_error
+from src.features.kanban.application.persistence_errors import PersistenceConflictError
 from src.features.kanban.application.ports.outbound.unit_of_work import UnitOfWorkPort
 from src.features.kanban.domain.models import Column
 from src.platform.shared.id_generator_port import IdGeneratorPort
@@ -38,9 +39,15 @@ class CreateColumnUseCase:
                 board_id=command.board_id,
                 title=command.title,
                 position=board.next_column_position(),
+                created_by=command.actor_id,
+                updated_by=command.actor_id,
             )
             board.add_column(column)
+            board.updated_by = command.actor_id
 
-            self.uow.commands.save(board)
-            self.uow.commit()
+            try:
+                self.uow.commands.save(board)
+                self.uow.commit()
+            except PersistenceConflictError:
+                return Err(ApplicationError.STALE_WRITE)
             return Ok(to_app_column(column))

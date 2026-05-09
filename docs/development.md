@@ -103,8 +103,7 @@ KANBAN_SKIP_TESTCONTAINERS=1 make test-integration
 
 - Check `X-Request-ID` in responses and logs to correlate a request with an
   access log entry.
-- Use `/health` to confirm whether the persistence readiness probe can reach the
-  database.
+- Use `/health/ready` to confirm whether readiness dependencies can be reached.
 - If a write route returns `401`, check `APP_WRITE_API_KEY` and the `X-API-Key`
   request header.
 - If a path request returns `422`, confirm the path ID is a valid UUID string.

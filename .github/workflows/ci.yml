@@ -9,6 +9,9 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,11 +19,11 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Setup Python
-        run: uv python install
+      - name: Setup Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Sync dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --python ${{ matrix.python-version }}
 
       - name: Quality + tests
         run: make ci
@@ -43,9 +46,71 @@ jobs:
       - name: Audit dependencies for known vulnerabilities
         run: uv run pip-audit
 
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Python
+        run: uv python install
+
+      - name: Static analysis (Bandit)
+        # ``--severity-level medium`` skips low-confidence stylistic
+        # findings. Tests are excluded because they intentionally use
+        # constructs (assert, hardcoded creds) Bandit flags by default.
+        run: |
+          uv run --with bandit bandit -r src \
+            --exclude src/features/auth/tests,src/features/kanban/tests,src/platform/tests \
+            --severity-level medium
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   integration:
     needs: quality
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Sync dependencies
+        run: uv sync --frozen --python ${{ matrix.python-version }}
+
+      - name: Run integration tests (Docker via testcontainers)
+        run: make test-integration
+
+  migrations:
+    needs: quality
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kanban_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,5 +124,50 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
-      - name: Run integration tests (Docker via testcontainers)
-        run: make test-integration
+      - name: Apply migrations
+        env:
+          APP_POSTGRESQL_DSN: postgresql+psycopg://postgres:postgres@localhost:5432/kanban_ci
+        run: uv run alembic upgrade head
+
+      - name: Verify no pending autogenerate drift
+        env:
+          APP_POSTGRESQL_DSN: postgresql+psycopg://postgres:postgres@localhost:5432/kanban_ci
+        run: uv run alembic check
+
+      - name: Verify downgrade runs cleanly
+        env:
+          APP_POSTGRESQL_DSN: postgresql+psycopg://postgres:postgres@localhost:5432/kanban_ci
+        run: uv run alembic downgrade base
+
+      - name: Re-apply after downgrade (idempotency)
+        env:
+          APP_POSTGRESQL_DSN: postgresql+psycopg://postgres:postgres@localhost:5432/kanban_ci
+        run: uv run alembic upgrade head
+
+  docker:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build runtime image
+        run: docker build --target runtime -t starter-template-fastapi:ci .
+
+      - name: Smoke-test runtime image
+        run: |
+          docker run -d --name ci-smoke \
+            -e APP_AUTH_JWT_SECRET_KEY=ci-test-secret-key-min-32-chars \
+            -e APP_ENVIRONMENT=development \
+            -p 8000:8000 \
+            starter-template-fastapi:ci
+          # Wait for the process to start before probing.
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8000/health/live; then
+              echo "Liveness probe passed"
+              break
+            fi
+            sleep 2
+          done
+          curl -sf http://localhost:8000/health/live
+          docker stop ci-smoke

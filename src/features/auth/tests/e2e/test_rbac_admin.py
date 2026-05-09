@@ -126,6 +126,35 @@ def test_admin_can_list_users(client: TestClient) -> None:
     assert "reader@example.com" in emails
 
 
+def test_super_admin_can_query_audit_log(client: TestClient) -> None:
+    admin_token = _login_admin(client)
+    _register_user(client, "audit-target@example.com")
+
+    response = client.get(
+        "/admin/audit-log",
+        headers=_auth(admin_token),
+        params={"event_type": "auth.user_registered", "limit": 10},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] >= 1
+    assert body["limit"] == 10
+    assert all(item["event_type"] == "auth.user_registered" for item in body["items"])
+
+
+def test_regular_user_cannot_query_audit_log(client: TestClient) -> None:
+    _register_user(client, "audit-denied@example.com")
+    user_token = client.post(
+        "/auth/login",
+        json={"email": "audit-denied@example.com", "password": "UserPassword123!"},
+    ).json()["access_token"]
+
+    response = client.get("/admin/audit-log", headers=_auth(user_token))
+
+    assert response.status_code == 403
+
+
 def test_inactive_role_does_not_grant_permissions(client: TestClient) -> None:
     admin_token = _login_admin(client)
     role = client.post(
@@ -222,3 +251,7 @@ def test_role_changes_make_existing_access_token_stale(
 
     stale = client.get("/admin/roles", headers=_auth(user_token))
     assert stale.status_code == 401
+    body = stale.json()
+    assert body["title"] == "Unauthorized"
+    assert body["code"] == "stale_token"
+    assert "stale" in body["detail"].lower()

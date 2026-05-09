@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from uuid import UUID
 
 from src.features.kanban.domain.errors import KanbanError
 from src.features.kanban.domain.models import Board
@@ -25,6 +26,14 @@ class KanbanCommandRepositoryPort(Protocol):
         """Load a writable :class:`Board` aggregate, or return ``BOARD_NOT_FOUND``."""
         ...
 
-    def remove(self, board_id: str) -> Result[None, KanbanError]:
-        """Delete a board, cascading to its columns and cards."""
+    def remove(
+        self, board_id: str, *, actor_id: UUID | None = None
+    ) -> Result[None, KanbanError]:
+        """Soft-delete a board, cascading to its active columns and cards."""
+        ...
+
+    def restore(
+        self, board_id: str, *, actor_id: UUID | None = None
+    ) -> Result[None, KanbanError]:
+        """Restore a previously soft-deleted board and its cascaded children."""
         ...

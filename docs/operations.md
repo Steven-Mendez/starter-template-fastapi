@@ -66,7 +66,11 @@ The runtime image default command starts Uvicorn and does not run migrations.
 - Set `APP_CORS_ORIGINS` to explicit browser origins if browsers call the API.
 - Set `APP_ENABLE_DOCS=false` so Swagger UI, ReDoc, and `/openapi.json` are not exposed.
 - Set `APP_WRITE_API_KEY` if write routes should require a shared key.
-- Configure the load balancer or orchestrator to check `/health`.
+- Configure liveness checks against `/health/live` and traffic readiness checks
+  against `/health/ready`.
+- Provision Redis and set `APP_AUTH_REDIS_URL` if the deployment runs more than one replica (see [Rate Limiting](#rate-limiting)).
+- Configure observability sinks as needed: `/metrics` for Prometheus and
+  `APP_OTEL_EXPORTER_ENDPOINT` for OpenTelemetry traces.
 
 ## Migrations
 
@@ -152,48 +156,117 @@ integration:
 OAuth browser/provider flows are not implemented yet; current authentication
 is first-party email/password login that returns JWT bearer tokens.
 
+## Rate Limiting
+
+Auth endpoints (login, register, password reset, email verification) are rate-limited
+to slow credential-stuffing and abuse. The limiter backend depends on configuration:
+
+| `APP_AUTH_REDIS_URL` | `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT` | Result |
+|---|---|---|
+| set | any | Redis sliding-window limiter (recommended for all deployments) |
+| unset | `false` | In-memory fixed-window limiter (single-replica only) |
+| unset | `true` | **Startup failure** — Redis URL is required |
+
+**Multi-replica deployments must use Redis.** Without Redis, each replica applies
+the rate limit independently, so the effective limit is `configured_limit × replicas`.
+
+For single-replica deployments, set `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=false`
+to acknowledge the in-memory limiter is intentional.
+
+In production with `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=true` (the default)
+and no `APP_AUTH_REDIS_URL`, the process will refuse to start.
+
 ## Health Checks
 
-Use:
+The service exposes two distinct probe endpoints:
+
+| Endpoint | Purpose | Returns |
+|---|---|---|
+| `GET /health/live` | **Liveness** — process is running | 200 always |
+| `GET /health/ready` | **Readiness** — all backends reachable | 200 ok / 503 degraded |
+| `GET /health` | Alias for `/health/ready` (backward-compatible) | same as above |
+
+### Liveness probe (`/health/live`)
+
+Use this for container restart decisions. No external dependencies are checked.
 
 ```bash
-curl -s http://localhost:8000/health
+curl -s http://localhost:8000/health/live
+# {"status":"ok"}
 ```
 
-Healthy response:
+### Readiness probe (`/health/ready`)
+
+Use this to gate traffic. Returns HTTP 503 when any backend is unreachable.
+
+```bash
+curl -s http://localhost:8000/health/ready
+```
+
+Healthy response (HTTP 200):
 
 ```json
 {
   "status": "ok",
-  "persistence": {
-    "backend": "postgresql",
-    "ready": true
+  "persistence": {"backend": "postgresql", "ready": true},
+  "auth": {
+    "jwt_secret_configured": true,
+    "principal_cache_ready": true,
+    "rate_limiter_backend": "redis",
+    "rate_limiter_ready": true
   }
 }
 ```
 
-Degraded response:
+Degraded response (HTTP 503):
 
 ```json
 {
   "status": "degraded",
-  "persistence": {
-    "backend": "postgresql",
-    "ready": false
-  }
+  "persistence": {"backend": "postgresql", "ready": false}
 }
 ```
 
-The endpoint returns HTTP `200` in both cases. Alerting should inspect
-`persistence.ready` or `status`, not only the HTTP status code.
+### Kubernetes / ECS configuration
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: 8000
+  initialDelaySeconds: 20
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  failureThreshold: 3
+```
 
 ## Logs
 
-Each request produces a JSON access log from logger `api.request`:
+See [Observability Guide](observability.md) for full metrics, tracing, and log
+configuration.
+
+Each request produces an access log from logger `api.request`. Outside
+development, logs are emitted as JSON with stable top-level fields:
 
 ```json
 {
+  "timestamp": "2026-05-09T12:00:00.000000+00:00",
+  "level": "INFO",
+  "logger": "api.request",
+  "message": "HTTP request completed",
   "request_id": "abc-123",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "service": {
+    "name": "starter-template-fastapi",
+    "version": "0.1.0",
+    "environment": "production"
+  },
   "method": "GET",
   "path": "/api/boards",
   "status_code": 200,
@@ -204,21 +277,21 @@ Each request produces a JSON access log from logger `api.request`:
 Unhandled exceptions are logged through logger `api.error` with request ID,
 method, path, status code, and error type.
 
-The `APP_LOG_LEVEL` setting exists but is not applied to logging configuration by
-the current code. Configure logging in the process manager, container runtime, or
-Python logging setup used to launch the service.
+`APP_LOG_LEVEL` controls the root Python log level. `X-Request-ID` is accepted
+from clients when valid and otherwise generated per request.
 
 ## Monitoring
 
 Recommended signals:
 
-- `/health` payload field `persistence.ready`.
+- `/health/ready` HTTP status and payload fields for backend readiness.
+- `/health/live` HTTP status for process liveness.
+- Prometheus HTTP RED metrics from `/metrics`.
+- OpenTelemetry traces when `APP_OTEL_EXPORTER_ENDPOINT` is set.
 - HTTP 5xx count from API responses or ingress logs.
 - `api.error` log events.
 - Request latency from `duration_ms` in `api.request` logs.
 - PostgreSQL connection health and storage metrics.
-
-No metrics endpoint is implemented in the current source code.
 
 ## Backups
 
@@ -240,7 +313,5 @@ No application-level backup job is implemented in this repository.
 ## Operational Limitations
 
 - The runtime Docker image starts only the API server. Migrations are separate.
-- There is no built-in metrics endpoint.
 - There is no built-in background worker.
 - There is no built-in backup or restore automation.
-- Readiness degradation is reported in the response body, not the HTTP status.

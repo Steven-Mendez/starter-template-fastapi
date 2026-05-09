@@ -15,10 +15,31 @@ from src.features.auth.application.errors import (
     ConfigurationError,
     ConflictError,
     DuplicateEmailError,
+    EmailNotVerifiedError,
+    InactiveUserError,
     InvalidCredentialsError,
     InvalidTokenError,
     NotFoundError,
+    PermissionDeniedError,
     RateLimitExceededError,
+    StaleTokenError,
+    TokenAlreadyUsedError,
+)
+from src.platform.api.error_handlers_app_exception import ApplicationHTTPException
+
+EXPLICIT_AUTH_ERROR_TYPES: tuple[type[AuthError], ...] = (
+    ConfigurationError,
+    ConflictError,
+    DuplicateEmailError,
+    EmailNotVerifiedError,
+    InactiveUserError,
+    InvalidCredentialsError,
+    InvalidTokenError,
+    StaleTokenError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitExceededError,
+    TokenAlreadyUsedError,
 )
 
 
@@ -49,16 +70,46 @@ def raise_http_from_auth_error(exc: AuthError) -> NoReturn:
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+    if isinstance(exc, StaleTokenError):
+        # Distinguish stale tokens from structurally invalid ones so clients
+        # know to re-authenticate (permission set changed) rather than assume
+        # the token is corrupt or expired.
+        raise ApplicationHTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token is stale — re-authentication required",
+            code="stale_token",
+            type_uri="about:blank",
+        ) from exc
     if isinstance(exc, InvalidTokenError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+    if isinstance(exc, InactiveUserError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account inactive",
+        ) from exc
+    if isinstance(exc, EmailNotVerifiedError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified",
+        ) from exc
+    if isinstance(exc, PermissionDeniedError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied",
+        ) from exc
     if isinstance(exc, NotFoundError):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc) or "Not found",
+        ) from exc
+    if isinstance(exc, TokenAlreadyUsedError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token already used",
         ) from exc
     if isinstance(exc, ConflictError):
         raise HTTPException(

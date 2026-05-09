@@ -27,4 +27,10 @@ def build_engine(settings: AppSettings) -> Engine:
     if not settings.postgresql_dsn.startswith("postgresql"):
         msg = "platform.persistence.sqlmodel supports PostgreSQL DSNs only"
         raise ValueError(msg)
-    return create_engine(settings.postgresql_dsn, pool_pre_ping=True)
+    return create_engine(
+        settings.postgresql_dsn,
+        pool_pre_ping=settings.db_pool_pre_ping,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_recycle=settings.db_pool_recycle_seconds,
+    )

@@ -41,8 +41,16 @@ class InactiveUserError(AuthError):
     """Raised when an authenticated request targets a user that has been deactivated."""
 
 
+class EmailNotVerifiedError(AuthError):
+    """Raised when email verification is required before authentication."""
+
+
 class PermissionDeniedError(AuthError):
     """Raised when a principal lacks the roles or permissions for an action."""
+
+
+class TokenAlreadyUsedError(AuthError):
+    """Raised when a single-use internal token was already consumed."""
 
 
 class NotFoundError(AuthError):

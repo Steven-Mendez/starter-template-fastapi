@@ -26,12 +26,14 @@ from src.features.auth.application.crypto import (
 from src.features.auth.application.errors import (
     ConflictError,
     DuplicateEmailError,
+    EmailNotVerifiedError,
     InactiveUserError,
     InvalidCredentialsError,
     InvalidTokenError,
     NotFoundError,
     PermissionDeniedError,
     StaleTokenError,
+    TokenAlreadyUsedError,
 )
 from src.features.auth.application.jwt_tokens import AccessTokenService
 from src.features.auth.application.normalization import (
@@ -55,6 +57,7 @@ from src.features.auth.application.types import (
     Principal,
 )
 from src.features.auth.domain.models import (
+    AuditEvent,
     InternalToken,
     Permission,
     RefreshToken,
@@ -69,19 +72,6 @@ PASSWORD_RESET_PURPOSE = "password_reset"
 EMAIL_VERIFY_PURPOSE = "email_verify"
 
 _logger = logging.getLogger(__name__)
-
-
-def _aware(value: datetime) -> datetime:
-    """Return a timezone-aware datetime, assuming UTC for naive inputs.
-
-    SQLite-backed test fixtures sometimes round-trip ``datetime`` values
-    without a tzinfo, which would crash subsequent comparisons against
-    aware values. Coercing here keeps the service tolerant of either
-    backend without spreading ``replace(tzinfo=...)`` calls everywhere.
-    """
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value
 
 
 class AuthService:
@@ -106,7 +96,7 @@ class AuthService:
         self._passwords = password_service
         self._tokens = token_service
         self._cache: PrincipalCachePort = cache or InProcessPrincipalCache.create(
-            ttl=30
+            ttl=settings.auth_principal_cache_ttl_seconds
         )
         # Pre-compute a dummy hash at startup so that login attempts for
         # non-existent emails spend the same time verifying a hash as for
@@ -193,7 +183,8 @@ class AuthService:
             InvalidCredentialsError: If the email is not found, the password
                 does not match, or the account is inactive.
         """
-        user = self._repo.get_user_by_email(normalize_email(email))
+        normalized_email = normalize_email(email)
+        user = self._repo.get_user_by_email(normalized_email)
         if user is None:
             # Run a real hash verification against the dummy hash so the
             # response time is indistinguishable from a failed password match,
@@ -206,9 +197,7 @@ class AuthService:
                 metadata={"reason": "invalid_credentials"},
             )
             raise InvalidCredentialsError("Invalid credentials")
-        if not user.is_active or not self._passwords.verify_password(
-            user.password_hash, password
-        ):
+        if not self._passwords.verify_password(user.password_hash, password):
             self._repo.record_audit_event(
                 event_type="auth.login_failed",
                 user_id=user.id,
@@ -217,6 +206,24 @@ class AuthService:
                 metadata={"reason": "invalid_credentials"},
             )
             raise InvalidCredentialsError("Invalid credentials")
+        if not user.is_active:
+            self._repo.record_audit_event(
+                event_type="auth.login_failed",
+                user_id=user.id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                metadata={"reason": "inactive_user"},
+            )
+            raise InactiveUserError("Inactive user")
+        if self._settings.auth_require_email_verification and not user.is_verified:
+            self._repo.record_audit_event(
+                event_type="auth.login_failed",
+                user_id=user.id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                metadata={"reason": "email_not_verified"},
+            )
+            raise EmailNotVerifiedError("Email not verified")
         self._repo.update_user_login(user.id, datetime.now(timezone.utc))
         tokens, principal = self._issue_tokens(
             user.id, ip_address=ip_address, user_agent=user_agent
@@ -331,7 +338,7 @@ class AuthService:
                     metadata={"family_id": str(record.family_id)},
                 )
                 invalid_token_error = InvalidTokenError("Invalid refresh token")
-            elif _aware(record.expires_at) <= now:
+            elif record.expires_at <= now:
                 tx.revoke_refresh_token(record.id)
                 invalid_token_error = InvalidTokenError("Invalid refresh token")
             else:
@@ -460,11 +467,9 @@ class AuthService:
             user_id=user.id,
             ip_address=ip_address,
         )
-        if not self._settings.auth_return_internal_tokens:
-            _logger.warning(
-                "Password-reset token was generated but no delivery provider is "
-                "configured; dev_token will be omitted from the response."
-            )
+        # Whether the dev_token is returned is a deployment-wide config; logging
+        # it here would spam logs once per request. The startup-time check in
+        # ``build_auth_container`` reports the missing delivery provider once.
         return InternalTokenResult(
             token=token if self._settings.auth_return_internal_tokens else None,
             expires_at=expires_at,
@@ -484,22 +489,31 @@ class AuthService:
         Raises:
             InvalidTokenError: If the token is unknown, already used, or expired.
         """
-        record = self._get_internal_token_or_raise(
-            token=token, purpose=PASSWORD_RESET_PURPOSE
-        )
-        if record.user_id is None:
-            raise InvalidTokenError("Invalid token")
-        self._repo.update_user_password(
-            record.user_id, self._passwords.hash_password(new_password)
-        )
-        self._repo.mark_internal_token_used(record.id)
-        # Revoke all sessions after a password reset so that an attacker who
-        # triggered the reset cannot keep using a previously stolen session.
-        self._repo.revoke_user_refresh_tokens(record.user_id)
-        self._repo.record_audit_event(
-            event_type="auth.password_reset_completed",
-            user_id=record.user_id,
-        )
+        user_id: UUID | None = None
+        with self._repo.internal_token_transaction() as tx:
+            record = tx.get_internal_token_for_update(
+                token_hash=hash_token(token), purpose=PASSWORD_RESET_PURPOSE
+            )
+            if record is None or record.expires_at <= datetime.now(timezone.utc):
+                raise InvalidTokenError("Invalid token")
+            if record.used_at is not None:
+                raise TokenAlreadyUsedError("Token already used")
+            if record.user_id is None:
+                raise InvalidTokenError("Invalid token")
+            user_id = record.user_id
+            tx.update_user_password(
+                user_id, self._passwords.hash_password(new_password)
+            )
+            tx.mark_internal_token_used(record.id)
+            # Revoke all sessions after a password reset so that an attacker who
+            # triggered the reset cannot keep using a previously stolen session.
+            tx.revoke_user_refresh_tokens(user_id)
+            tx.record_audit_event(
+                event_type="auth.password_reset_completed",
+                user_id=user_id,
+            )
+        if user_id is not None:
+            self.invalidate_principal_cache_for_user(user_id)
 
     def request_email_verification(
         self,
@@ -536,11 +550,8 @@ class AuthService:
             user_id=user.id,
             ip_address=ip_address,
         )
-        if not self._settings.auth_return_internal_tokens:
-            _logger.warning(
-                "Email-verification token was generated but no delivery provider "
-                "is configured; dev_token will be omitted from the response."
-            )
+        # See request_password_reset above: spamming a warning here once per
+        # request offered no signal beyond what the startup-time check provides.
         return InternalTokenResult(
             token=token if self._settings.auth_return_internal_tokens else None,
             expires_at=expires_at,
@@ -670,7 +681,7 @@ class AuthService:
         if (
             record is None
             or record.used_at is not None
-            or _aware(record.expires_at) <= datetime.now(timezone.utc)
+            or record.expires_at <= datetime.now(timezone.utc)
         ):
             raise InvalidTokenError("Invalid token")
         return record
@@ -684,16 +695,22 @@ class RBACService:
     All operations are recorded in the audit log.
     """
 
-    def __init__(self, *, repository: AuthRepositoryPort) -> None:
+    def __init__(
+        self,
+        *,
+        repository: AuthRepositoryPort,
+        cache: PrincipalCachePort | None = None,
+    ) -> None:
         self._repo = repository
+        self._cache = cache
 
-    def list_roles(self) -> list[Role]:
-        """Return all roles ordered alphabetically."""
-        return self._repo.list_roles()
+    def list_roles(self, *, limit: int = 100, offset: int = 0) -> list[Role]:
+        """Return roles ordered alphabetically with DB-level pagination."""
+        return self._repo.list_roles(limit=limit, offset=offset)
 
-    def list_users(self) -> list[User]:
-        """Return all users ordered alphabetically by email."""
-        return self._repo.list_users()
+    def list_users(self, *, limit: int = 100, offset: int = 0) -> list[User]:
+        """Return users ordered by email with DB-level pagination."""
+        return self._repo.list_users(limit=limit, offset=offset)
 
     def create_role(
         self,
@@ -786,6 +803,7 @@ class RBACService:
             # request fails the version check and they must re-authenticate,
             # making role activation/deactivation take effect immediately.
             self._repo.increment_authz_for_role_users(role_id)
+            self._invalidate_role_users(role_id)
         self._audit(
             "rbac.role_updated",
             actor,
@@ -795,9 +813,11 @@ class RBACService:
         )
         return updated
 
-    def list_permissions(self) -> list[Permission]:
-        """Return all permissions ordered alphabetically."""
-        return self._repo.list_permissions()
+    def list_permissions(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> list[Permission]:
+        """Return permissions ordered alphabetically with DB-level pagination."""
+        return self._repo.list_permissions(limit=limit, offset=offset)
 
     def create_permission(
         self,
@@ -862,6 +882,7 @@ class RBACService:
         # Invalidate existing tokens for all role members so the new permission
         # is not silently absent from in-flight access tokens.
         self._repo.increment_authz_for_role_users(role_id)
+        self._invalidate_role_users(role_id)
         self._audit(
             "rbac.role_permission_added",
             actor,
@@ -893,6 +914,7 @@ class RBACService:
         # Invalidate tokens immediately so users cannot keep exercising a
         # permission that was just revoked for the duration of the token TTL.
         self._repo.increment_authz_for_role_users(role_id)
+        self._invalidate_role_users(role_id)
         self._audit(
             "rbac.role_permission_removed",
             actor,
@@ -920,6 +942,7 @@ class RBACService:
         """
         if not self._repo.assign_user_role(user_id, role_id):
             raise NotFoundError("User or role not found")
+        self._invalidate_user(user_id)
         self._audit(
             "rbac.user_role_added",
             actor,
@@ -944,6 +967,7 @@ class RBACService:
         """
         if not self._repo.remove_user_role(user_id, role_id):
             raise NotFoundError("User role assignment not found")
+        self._invalidate_user(user_id)
         self._audit(
             "rbac.user_role_removed",
             actor,
@@ -1011,11 +1035,20 @@ class RBACService:
         normalized_email = normalize_email(email)
         user = self._repo.get_user_by_email(normalized_email)
         if user is None:
-            user = auth_service.register(email=normalized_email, password=password)
+            try:
+                user = auth_service.register(email=normalized_email, password=password)
+            except DuplicateEmailError:
+                # Two replicas racing at startup can both reach this branch.
+                # The unique email constraint ensures only one INSERT succeeds;
+                # the loser retries the lookup to find the row the winner wrote.
+                user = self._repo.get_user_by_email(normalized_email)
+                if user is None:
+                    raise
         role = self._repo.get_role_by_name("super_admin")
         if role is None:
             raise NotFoundError("super_admin role not found")
         self._repo.assign_user_role(user.id, role.id)
+        self._invalidate_user(user.id)
         self._repo.record_audit_event(
             event_type="rbac.super_admin_bootstrapped",
             user_id=user.id,
@@ -1026,6 +1059,33 @@ class RBACService:
             raise NotFoundError("User not found")
         return refreshed
 
+    def list_audit_events(
+        self,
+        *,
+        user_id: UUID | None = None,
+        event_type: str | None = None,
+        since: datetime | None = None,
+        limit: int = 100,
+    ) -> list[AuditEvent]:
+        """Return filtered audit events for administrative inspection."""
+        bounded_limit = max(1, min(limit, 500))
+        return self._repo.list_audit_events(
+            user_id=user_id,
+            event_type=event_type,
+            since=since,
+            limit=bounded_limit,
+        )
+
+    def _invalidate_user(self, user_id: UUID) -> None:
+        if self._cache is not None:
+            self._cache.invalidate_user(user_id)
+
+    def _invalidate_role_users(self, role_id: UUID) -> None:
+        if self._cache is None:
+            return
+        for user_id in self._repo.list_user_ids_for_role(role_id):
+            self._cache.invalidate_user(user_id)
+
     def _audit(
         self,
         event_type: str,
@@ -1034,13 +1094,25 @@ class RBACService:
         user_agent: str | None,
         metadata: dict[str, Any],
     ) -> None:
-        """Write an RBAC audit event, recording the acting principal if present."""
+        """Write an RBAC audit event, recording the acting principal if present.
+
+        Embeds an ``actor`` snapshot (id, roles, permissions at the time of
+        the action) so future audits can detect privilege escalation by
+        comparing the actor's authority against the action they performed.
+        """
+        enriched = dict(metadata)
+        if actor is not None:
+            enriched["actor"] = {
+                "user_id": str(actor.user_id),
+                "roles": sorted(actor.roles),
+                "permissions": sorted(actor.permissions),
+            }
         self._repo.record_audit_event(
             event_type=event_type,
             user_id=actor.user_id if actor is not None else None,
             ip_address=ip_address,
             user_agent=user_agent,
-            metadata=metadata,
+            metadata=enriched,
         )
 
 
@@ -1061,6 +1133,12 @@ def ensure_permissions(principal: Principal, required: set[str], *, any_: bool) 
             return
     elif required.issubset(principal.permissions):
         return
+    _logger.warning(
+        "event=rbac.permission_denied user_id=%s required_permission=%s timestamp=%s",
+        principal.user_id,
+        sorted(required),
+        datetime.now(timezone.utc).isoformat(),
+    )
     raise PermissionDeniedError("Not enough permissions")
 
 
@@ -1076,4 +1154,10 @@ def ensure_roles(principal: Principal, required: set[str]) -> None:
     """
     if required.intersection(principal.roles):
         return
+    _logger.warning(
+        "event=rbac.role_denied user_id=%s required_role=%s timestamp=%s",
+        principal.user_id,
+        sorted(required),
+        datetime.now(timezone.utc).isoformat(),
+    )
     raise PermissionDeniedError("Not enough roles")

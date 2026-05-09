@@ -8,6 +8,8 @@ from typing import Literal
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+JWT_ALGORITHM_WHITELIST = {"HS256", "RS256"}
+
 
 class AppSettings(BaseSettings):
     """Strongly-typed view over runtime configuration.
@@ -37,10 +39,27 @@ class AppSettings(BaseSettings):
     postgresql_dsn: str = "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
     health_persistence_backend: str = "postgresql"
     write_api_key: str | None = None
+    # Additional accepted API keys, used for rotation: deploy with the new
+    # key in ``write_api_keys`` while clients still send the old
+    # ``write_api_key``, then drop the old one once traffic has cut over.
+    write_api_keys: list[str] = []
+    # Database connection-pool tuning. ``pool_recycle`` defends against
+    # idle-cutting load balancers (RDS, PgBouncer) that close stale conns;
+    # ``pool_pre_ping`` validates a checked-out connection before use.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_recycle_seconds: int = 1800
+    db_pool_pre_ping: bool = True
+    # Maximum request body size accepted by ContentSizeLimitMiddleware.
+    # Defaults to 4 MiB; raise it for endpoints that accept attachments.
+    max_request_bytes: int = 4 * 1024 * 1024
     auth_jwt_secret_key: str | None = None
     auth_jwt_algorithm: str = "HS256"
     auth_jwt_issuer: str | None = None
     auth_jwt_audience: str | None = None
+    # Clock-skew tolerance for JWT validation across multi-replica deployments.
+    # A small leeway (≤60 s) prevents spurious 401s when server clocks drift.
+    auth_jwt_leeway_seconds: int = 10
     auth_access_token_expire_minutes: int = 15
     auth_refresh_token_expire_days: int = 30
     auth_cookie_secure: bool = False
@@ -48,12 +67,16 @@ class AppSettings(BaseSettings):
     auth_password_reset_token_expire_minutes: int = 30
     auth_email_verify_token_expire_minutes: int = 1440
     auth_rate_limit_enabled: bool = True
+    auth_require_distributed_rate_limit: bool = False
     auth_rbac_enabled: bool = True
+    auth_require_email_verification: bool = False
     auth_seed_on_startup: bool = False
     auth_bootstrap_super_admin_email: str | None = None
     auth_bootstrap_super_admin_password: str | None = None
     auth_default_user_role: str = "user"
     auth_super_admin_role: str = "super_admin"
+    # TODO: OAuth login is not implemented yet. These settings only reserve
+    # names for future work; startup logs a warning if any are configured.
     auth_oauth_enabled: bool = False
     auth_oauth_google_client_id: str | None = None
     auth_oauth_google_client_secret: str | None = None
@@ -69,6 +92,29 @@ class AppSettings(BaseSettings):
     # caching entirely. When Redis is configured, a Redis-backed cache is used
     # instead and this value controls its TTL.
     auth_principal_cache_ttl_seconds: int = 30
+    # ---------------------------------------------------------------------------
+    # Observability
+    # ---------------------------------------------------------------------------
+    # When set, OpenTelemetry spans are exported to this OTLP/HTTP endpoint.
+    # Example: "http://localhost:4318/v1/traces" (Jaeger / OTel Collector).
+    # Leave unset to run with a no-op tracer (zero overhead).
+    otel_exporter_endpoint: str | None = None
+    otel_service_name: str = "starter-template-fastapi"
+    otel_service_version: str = "0.1.0"
+    # Set to false to disable the /metrics Prometheus endpoint.
+    metrics_enabled: bool = True
+
+    @model_validator(mode="after")
+    def _validate_auth_settings(self) -> "AppSettings":
+        """Validate auth settings that must fail in every environment."""
+        if self.auth_jwt_algorithm not in JWT_ALGORITHM_WHITELIST:
+            raise ValueError(
+                "APP_AUTH_JWT_ALGORITHM must be one of "
+                f"{sorted(JWT_ALGORITHM_WHITELIST)}"
+            )
+        if not (0 <= self.auth_jwt_leeway_seconds <= 60):
+            raise ValueError("APP_AUTH_JWT_LEEWAY_SECONDS must be between 0 and 60")
+        return self
 
     @model_validator(mode="after")
     def _validate_production_settings(self) -> "AppSettings":
@@ -78,6 +124,10 @@ class AppSettings(BaseSettings):
         errors: list[str] = []
         if not self.auth_jwt_secret_key:
             errors.append("APP_AUTH_JWT_SECRET_KEY must be set in production")
+        if not self.auth_jwt_issuer:
+            errors.append("APP_AUTH_JWT_ISSUER must be set in production")
+        if not self.auth_jwt_audience:
+            errors.append("APP_AUTH_JWT_AUDIENCE must be set in production")
         if self.cors_origins == ["*"] or "*" in self.cors_origins:
             errors.append(
                 "APP_CORS_ORIGINS must not be ['*'] in production; "
@@ -89,6 +139,13 @@ class AppSettings(BaseSettings):
             errors.append("APP_ENABLE_DOCS must be False in production")
         if not self.auth_rbac_enabled:
             errors.append("APP_AUTH_RBAC_ENABLED must be True in production")
+        if not self.auth_redis_url and self.auth_require_distributed_rate_limit:
+            errors.append(
+                "APP_AUTH_REDIS_URL must be set in production when "
+                "APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT is true; "
+                "set APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=false only if "
+                "the deployment is guaranteed to run as a single replica"
+            )
         if errors:
             raise ValueError(
                 "Production configuration errors:\n"

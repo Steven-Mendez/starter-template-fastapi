@@ -13,9 +13,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from types import TracebackType
-from typing import Self
+from typing import Any, Self, cast
+from uuid import UUID, uuid4
 
+from sqlalchemy import delete, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -34,6 +37,7 @@ from src.features.kanban.adapters.outbound.persistence.sqlmodel.models import (
     CardTable,
     ColumnTable,
 )
+from src.features.kanban.application.persistence_errors import PersistenceConflictError
 from src.features.kanban.application.ports.outbound.kanban_command_repository import (
     KanbanCommandRepositoryPort,
 )
@@ -47,9 +51,13 @@ from src.features.kanban.domain.errors import KanbanError
 from src.features.kanban.domain.models import Board, BoardSummary, Card, Column
 from src.platform.shared.result import Err, Ok, Result
 
-
-class PersistenceConflictError(RuntimeError):
-    """Raised when a stale aggregate write is detected."""
+# Re-export so existing imports of PersistenceConflictError from this module
+# keep working.
+__all__ = [
+    "PersistenceConflictError",
+    "SQLModelKanbanRepository",
+    "SessionSQLModelKanbanRepository",
+]
 
 
 class _BaseSQLModelKanbanRepository(
@@ -81,78 +89,179 @@ class _BaseSQLModelKanbanRepository(
         raise NotImplementedError
 
     def is_ready(self) -> bool:
-        """Probe the database with ``SELECT 1`` to power the readiness endpoint."""
+        """Probe DB connectivity and confirm Alembic has initialized the schema."""
         if self._closed:
             return False
         try:
             with self._session_scope() as session:
                 session.exec(select(1)).one()
+                session.execute(text("SELECT 1 FROM alembic_version LIMIT 1")).one()
             return True
         except SQLAlchemyError:
             return False
 
     def list_all(self) -> list[BoardSummary]:
-        """List boards as :class:`BoardSummary`, ordered by creation time."""
+        """List active boards as :class:`BoardSummary`, ordered by creation time."""
         self._ensure_open()
         with self._session_scope() as session:
-            boards = session.exec(select(BoardTable).order_by("created_at")).all()
+            boards = session.exec(
+                select(BoardTable)
+                .where(BoardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+                .order_by("created_at")
+            ).all()
         return [board_table_to_read_model(board) for board in boards]
 
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
         """Hydrate a complete :class:`Board` aggregate (columns + cards) by id."""
         self._ensure_open()
         with self._session_scope() as session:
-            board = session.get(BoardTable, board_id)
+            board = session.exec(
+                select(BoardTable)
+                .where(BoardTable.id == board_id)
+                .where(BoardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+            ).one_or_none()
             if board is None:
                 return Err(KanbanError.BOARD_NOT_FOUND)
 
             columns = session.exec(
                 select(ColumnTable)
                 .where(ColumnTable.board_id == board_id)
+                .where(ColumnTable.deleted_at.is_(None))  # type: ignore[union-attr]
                 .order_by("position")
             ).all()
-            out_columns: list[Column] = []
-            for column in columns:
+            column_ids = [column.id for column in columns]
+
+            # Fetch every card on the board in one IN() query and bucket
+            # them by column_id, instead of issuing one query per column.
+            cards_by_column: dict[str, list[CardTable]] = {
+                column_id: [] for column_id in column_ids
+            }
+            if column_ids:
                 cards = session.exec(
                     select(CardTable)
-                    .where(CardTable.column_id == column.id)
+                    .where(CardTable.column_id.in_(column_ids))  # type: ignore[attr-defined]
+                    .where(CardTable.deleted_at.is_(None))  # type: ignore[union-attr]
                     .order_by("position")
                 ).all()
-                out_columns.append(
-                    column_table_to_domain(
-                        row=column,
-                        cards=[card_table_to_domain(card) for card in cards],
-                    )
+                for card in cards:
+                    cards_by_column.setdefault(card.column_id, []).append(card)
+
+            out_columns: list[Column] = [
+                column_table_to_domain(
+                    row=column,
+                    cards=[
+                        card_table_to_domain(card)
+                        for card in cards_by_column.get(column.id, [])
+                    ],
                 )
+                for column in columns
+            ]
             return Ok(board_table_to_domain(row=board, columns=out_columns))
 
     def find_card_by_id(self, card_id: str) -> Result[Card, KanbanError]:
-        """Load a single card by id without traversing its parent board."""
+        """Load a single active card by id without traversing its parent board."""
         self._ensure_open()
         with self._session_scope() as session:
-            card = session.get(CardTable, card_id)
+            card = session.exec(
+                select(CardTable)
+                .where(CardTable.id == card_id)
+                .where(CardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+            ).one_or_none()
             if card is None:
                 return Err(KanbanError.CARD_NOT_FOUND)
             return Ok(card_table_to_domain(card))
 
-    def remove(self, board_id: str) -> Result[None, KanbanError]:
-        """Delete the board row, cascading to its columns and cards via foreign keys."""
+    def remove(
+        self, board_id: str, *, actor_id: UUID | None = None
+    ) -> Result[None, KanbanError]:
+        """Soft-delete the board, cascading to its active columns and cards.
+
+        All affected rows share a fresh ``deletion_id`` so :meth:`restore`
+        can revert the exact set of rows that were removed in this call.
+        """
         self._ensure_open()
         with self._write_session_scope() as session:
-            board = session.get(BoardTable, board_id)
+            board = session.exec(
+                select(BoardTable)
+                .where(BoardTable.id == board_id)
+                .where(BoardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+            ).one_or_none()
             if board is None:
                 return Err(KanbanError.BOARD_NOT_FOUND)
-            session.delete(board)
+            now = datetime.now(timezone.utc)
+            deletion_id = uuid4()
+            session.execute(
+                update(CardTable)
+                .where(
+                    CardTable.column_id.in_(  # type: ignore[attr-defined]
+                        select(ColumnTable.id).where(ColumnTable.board_id == board_id)
+                    )
+                )
+                .where(CardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+                .values(deleted_at=now, deletion_id=deletion_id, updated_by=actor_id)
+            )
+            session.execute(
+                update(ColumnTable)
+                .where(cast(Any, ColumnTable.board_id == board_id))
+                .where(cast(Any, ColumnTable.deleted_at).is_(None))
+                .values(deleted_at=now, deletion_id=deletion_id, updated_by=actor_id)
+            )
+            session.execute(
+                update(BoardTable)
+                .where(cast(Any, BoardTable.id == board_id))
+                .where(cast(Any, BoardTable.deleted_at).is_(None))
+                .values(deleted_at=now, deletion_id=deletion_id, updated_by=actor_id)
+            )
+            return Ok(None)
+
+    def restore(
+        self, board_id: str, *, actor_id: UUID | None = None
+    ) -> Result[None, KanbanError]:
+        """Reverse a previous :meth:`remove`, restoring the matching cascade.
+
+        Looks up the board's ``deletion_id`` and clears soft-delete on every
+        row that was deleted in the same operation, so a deleted-restored-
+        redeleted board does not accidentally surface stale children from
+        an earlier deletion.
+        """
+        self._ensure_open()
+        with self._write_session_scope() as session:
+            board = session.exec(
+                select(BoardTable)
+                .where(BoardTable.id == board_id)
+                .where(BoardTable.deleted_at.is_not(None))  # type: ignore[union-attr]
+            ).one_or_none()
+            if board is None:
+                return Err(KanbanError.BOARD_NOT_FOUND)
+            deletion_id = board.deletion_id
+            if deletion_id is None:
+                # Defensive: ``deleted_at IS NOT NULL AND deletion_id IS NULL``
+                # should never happen because ``remove`` always stamps both.
+                return Err(KanbanError.BOARD_NOT_FOUND)
+            for table in (CardTable, ColumnTable, BoardTable):
+                session.execute(
+                    update(table)
+                    .where(cast(Any, table.deletion_id == deletion_id))
+                    .values(deleted_at=None, deletion_id=None, updated_by=actor_id)
+                )
             return Ok(None)
 
     def find_board_id_by_card(self, card_id: str) -> str | None:
-        """Return the parent board id for a card, walking through its column."""
+        """Return the parent board id for an active card."""
         self._ensure_open()
         with self._session_scope() as session:
-            card = session.get(CardTable, card_id)
+            card = session.exec(
+                select(CardTable)
+                .where(CardTable.id == card_id)
+                .where(CardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+            ).one_or_none()
             if card is None:
                 return None
-            column = session.get(ColumnTable, card.column_id)
+            column = session.exec(
+                select(ColumnTable)
+                .where(ColumnTable.id == card.column_id)
+                .where(ColumnTable.deleted_at.is_(None))  # type: ignore[union-attr]
+            ).one_or_none()
             if column is None:
                 return None
             return column.board_id
@@ -171,7 +280,14 @@ class _BaseSQLModelKanbanRepository(
         """
         self._ensure_open()
         with self._write_session_scope() as session:
-            db_board = session.get(BoardTable, board.id)
+            # Take a row-level lock on the parent board so concurrent
+            # writers (move + delete on different children) serialize
+            # through this aggregate root. Combined with the optimistic
+            # ``version`` check, this prevents lost updates that would
+            # otherwise slip through under READ COMMITTED isolation.
+            db_board = session.exec(
+                select(BoardTable).where(BoardTable.id == board.id).with_for_update()
+            ).one_or_none()
             mapped_board = board_domain_to_table(board)
             if db_board is None:
                 db_board = mapped_board
@@ -182,55 +298,80 @@ class _BaseSQLModelKanbanRepository(
                     raise PersistenceConflictError(msg)
                 db_board.title = mapped_board.title
                 db_board.created_at = mapped_board.created_at
+                db_board.updated_by = mapped_board.updated_by
                 db_board.version += 1
             session.add(db_board)
             board.version = db_board.version
 
-            existing_columns = session.exec(
-                select(ColumnTable).where(ColumnTable.board_id == board.id)
-            ).all()
-            # The domain aggregate is authoritative. Rows missing from the
-            # current snapshot are intentionally removed from persistence.
-            existing_column_ids = {column.id for column in existing_columns}
+            # Bulk-fetch existing children once and index by id so the diff
+            # below runs in O(n) without per-row session.get() round-trips.
+            # Only active rows participate in the snapshot diff — soft-deleted
+            # children belong to a tombstoned cascade and must not influence
+            # the current write.
+            existing_columns = {
+                column.id: column
+                for column in session.exec(
+                    select(ColumnTable)
+                    .where(ColumnTable.board_id == board.id)
+                    .where(ColumnTable.deleted_at.is_(None))  # type: ignore[union-attr]
+                ).all()
+            }
+            existing_cards = {
+                card.id: card
+                for card in session.exec(
+                    select(CardTable)
+                    .join(ColumnTable)
+                    .where(ColumnTable.board_id == board.id)
+                    .where(CardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+                ).all()
+            }
+
             current_column_ids = {column.id for column in board.columns}
-            for column_id in existing_column_ids - current_column_ids:
-                column_to_delete = session.get(ColumnTable, column_id)
-                if column_to_delete is not None:
-                    session.delete(column_to_delete)
+            current_card_ids = {
+                card.id for column in board.columns for card in column.cards
+            }
+
+            # Delete rows missing from the current snapshot in one statement
+            # per table — far cheaper than per-row session.delete() loops.
+            removed_card_ids = set(existing_cards) - current_card_ids
+            if removed_card_ids:
+                session.execute(
+                    delete(CardTable).where(
+                        CardTable.id.in_(removed_card_ids)  # type: ignore[attr-defined]
+                    )
+                )
+            removed_column_ids = set(existing_columns) - current_column_ids
+            if removed_column_ids:
+                session.execute(
+                    delete(ColumnTable).where(
+                        ColumnTable.id.in_(removed_column_ids)  # type: ignore[attr-defined]
+                    )
+                )
 
             for column in board.columns:
-                db_column = session.get(ColumnTable, column.id)
                 mapped_column = column_domain_to_table(column, board_id=board.id)
+                db_column = existing_columns.get(column.id)
                 if db_column is None:
-                    db_column = mapped_column
+                    session.add(mapped_column)
                 else:
                     db_column.board_id = mapped_column.board_id
                     db_column.title = mapped_column.title
                     db_column.position = mapped_column.position
-                session.add(db_column)
+                    db_column.updated_by = mapped_column.updated_by
+                    session.add(db_column)
 
-            existing_board_cards = session.exec(
-                select(CardTable)
-                .join(ColumnTable)
-                .where(ColumnTable.board_id == board.id)
-            ).all()
-            existing_board_card_ids = {card.id for card in existing_board_cards}
-            current_board_card_ids = {
-                card.id for column in board.columns for card in column.cards
-            }
-
-            # Card deletion follows the same aggregate-snapshot rule as columns.
-            for card_id in existing_board_card_ids - current_board_card_ids:
-                card_to_delete = session.get(CardTable, card_id)
-                if card_to_delete is not None:
-                    session.delete(card_to_delete)
+            # Flush column inserts before cards reference their ids: the
+            # foreign key (cards.column_id → columns_.id) is enforced by
+            # the database, and the tables don't declare an ORM
+            # relationship that would let SQLAlchemy infer ordering.
+            session.flush()
 
             for column in board.columns:
                 for card in column.cards:
-                    db_card = session.get(CardTable, card.id)
                     mapped_card = card_domain_to_table(card, column_id=column.id)
+                    db_card = existing_cards.get(card.id)
                     if db_card is None:
-                        db_card = mapped_card
+                        session.add(mapped_card)
                     else:
                         db_card.column_id = mapped_card.column_id
                         db_card.title = mapped_card.title
@@ -238,13 +379,18 @@ class _BaseSQLModelKanbanRepository(
                         db_card.position = mapped_card.position
                         db_card.priority = mapped_card.priority
                         db_card.due_at = mapped_card.due_at
-                    session.add(db_card)
+                        db_card.updated_by = mapped_card.updated_by
+                        session.add(db_card)
 
     def find_board_id_by_column(self, column_id: str) -> str | None:
-        """Return the parent board id for a column directly from the row."""
+        """Return the parent board id for an active column."""
         self._ensure_open()
         with self._session_scope() as session:
-            column = session.get(ColumnTable, column_id)
+            column = session.exec(
+                select(ColumnTable)
+                .where(ColumnTable.id == column_id)
+                .where(ColumnTable.deleted_at.is_(None))  # type: ignore[union-attr]
+            ).one_or_none()
             if column is None:
                 return None
             return column.board_id
@@ -253,7 +399,16 @@ class _BaseSQLModelKanbanRepository(
 class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
     """Production-flavour repository that owns its own engine and connection pool."""
 
-    def __init__(self, database_url: str, *, create_schema: bool = True) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        *,
+        create_schema: bool = True,
+        pool_size: int = 5,
+        max_overflow: int = 10,
+        pool_recycle: int = 1800,
+        pool_pre_ping: bool = True,
+    ) -> None:
         """Build a repository connected to a PostgreSQL DSN.
 
         Args:
@@ -261,6 +416,10 @@ class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
             create_schema: Create tables before use; convenient for local
                 development but disabled in production where Alembic owns
                 the schema.
+            pool_size, max_overflow, pool_recycle, pool_pre_ping: Standard
+                SQLAlchemy connection-pool tuning. Defaults are suitable for
+                small services; production deployments should size these
+                against expected concurrency and any pooler in front of the DB.
 
         Raises:
             ValueError: If ``database_url`` is not a PostgreSQL DSN.
@@ -269,7 +428,13 @@ class SQLModelKanbanRepository(_BaseSQLModelKanbanRepository):
         if not database_url.startswith("postgresql"):
             msg = "SQLModelKanbanRepository supports PostgreSQL DSNs only"
             raise ValueError(msg)
-        self._engine = create_engine(database_url, pool_pre_ping=True)
+        self._engine = create_engine(
+            database_url,
+            pool_pre_ping=pool_pre_ping,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_recycle=pool_recycle,
+        )
 
         if create_schema:
             SQLModel.metadata.create_all(self._engine)

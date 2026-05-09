@@ -20,6 +20,8 @@ The current implementation contains one active feature, `kanban`. The
 - [User Guide](docs/user-guide.md) shows how to use the Kanban API workflows.
 - [Operations Guide](docs/operations.md) covers deployment, migrations, logs,
   health checks, backups, and rollback notes.
+- [Observability Guide](docs/observability.md) covers Prometheus metrics,
+  OpenTelemetry tracing, and structured logs.
 - [Feature Template Guide](docs/feature-template.md) explains how to copy and
   adapt `src/features/_template`.
 
@@ -39,9 +41,10 @@ patch card metadata, delete columns, and delete boards.
 
 ## Core Features
 
-- FastAPI application factory with request ID middleware and JSON access logs.
+- FastAPI application factory with request ID middleware and structured logs.
 - Kanban board, column, and card HTTP API under `/api`.
-- Readiness endpoint at `/health`.
+- Liveness/readiness endpoints at `/health/live`, `/health/ready`, and `/health`.
+- Prometheus metrics at `/metrics` and opt-in OpenTelemetry tracing.
 - Optional single API key requirement for write endpoints.
 - RFC 9457-style `application/problem+json` error responses.
 - SQLModel persistence backed by PostgreSQL.
@@ -61,6 +64,7 @@ patch card metadata, delete columns, and delete boards.
 | Testing | pytest, pytest-cov, pytest-html, testcontainers |
 | Quality gates | Ruff, mypy, Import Linter, pre-commit |
 | Containers | Docker, Docker Compose |
+| Observability | Prometheus metrics, OpenTelemetry tracing, JSON logs |
 
 ## Project Structure
 
@@ -111,7 +115,9 @@ make dev
 Then open:
 
 - `http://localhost:8000/` for the root service response.
-- `http://localhost:8000/health` for readiness.
+- `http://localhost:8000/health/live` for liveness.
+- `http://localhost:8000/health/ready` for readiness.
+- `http://localhost:8000/metrics` for Prometheus metrics.
 - `http://localhost:8000/docs` for Swagger UI when `APP_ENABLE_DOCS=true`.
 
 Create a board:
@@ -147,9 +153,13 @@ Settings use the `APP_` prefix and are loaded from `.env` by
 | `APP_ENABLE_DOCS` | `true` | Enables `/docs`, `/redoc`, and `/openapi.json`. Set `false` to disable all three. |
 | `APP_CORS_ORIGINS` | `["*"]` | JSON list of allowed CORS origins. `["*"]` is treated as any origin. |
 | `APP_TRUSTED_HOSTS` | `["*"]` | Hosts allowed by `TrustedHostMiddleware` outside development. |
-| `APP_LOG_LEVEL` | `INFO` | Parsed setting. The current code does not apply it to logging configuration. |
+| `APP_LOG_LEVEL` | `INFO` | Root Python log level. |
 | `APP_POSTGRESQL_DSN` | `postgresql+psycopg://postgres:postgres@localhost:5432/kanban` | PostgreSQL DSN used by the app and Alembic. |
 | `APP_HEALTH_PERSISTENCE_BACKEND` | `postgresql` | Label returned in `/health` under `persistence.backend`. |
+| `APP_METRICS_ENABLED` | `true` | Exposes Prometheus metrics at `/metrics`. |
+| `APP_OTEL_EXPORTER_ENDPOINT` | unset | Enables OpenTelemetry tracing over OTLP/HTTP. |
+| `APP_OTEL_SERVICE_NAME` | `starter-template-fastapi` | Service name attached to traces and JSON logs. |
+| `APP_OTEL_SERVICE_VERSION` | `0.1.0` | Service version attached to traces and JSON logs. |
 | `APP_WRITE_API_KEY` | unset | Optional API key for write endpoints. When set, clients must send `X-API-Key`. |
 | `POSTGRES_USER` | `postgres` | Docker Compose database user. |
 | `POSTGRES_PASSWORD` | `postgres` | Docker Compose database password. |
@@ -241,7 +251,8 @@ The runtime image default command starts Uvicorn and does not run migrations.
 - Set `APP_CORS_ORIGINS` to explicit browser origins instead of `["*"]` for
   production browser clients.
 - Set `APP_WRITE_API_KEY` if write endpoints should require `X-API-Key`.
-- Use `/health` for readiness checks.
+- Use `/health/live` for liveness checks and `/health/ready` for readiness
+  checks.
 
 ## Common Commands
 
@@ -272,7 +283,7 @@ The runtime image default command starts Uvicorn and does not run migrations.
 | `uv run alembic upgrade head` uses the wrong database | Check `APP_POSTGRESQL_DSN`; Alembic reads it before the default in `AppSettings`. |
 | Write requests return `401` | Send `X-API-Key: <APP_WRITE_API_KEY>` or unset `APP_WRITE_API_KEY` for local development. |
 | Requests return `422` for path IDs | Path IDs are parsed as UUIDs by FastAPI. Use valid UUID strings. |
-| `/health` returns `degraded` | The persistence readiness probe failed. Check database connectivity and credentials. |
+| `/health/ready` returns `503` | A readiness dependency failed. Check database, Redis, and auth configuration. |
 | Integration tests are skipped | Docker is unavailable or `KANBAN_SKIP_TESTCONTAINERS=1` is set. |
 | Architecture lint fails | Check imports against the layer contracts in `pyproject.toml`. |
 

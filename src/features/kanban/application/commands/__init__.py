@@ -3,6 +3,7 @@
 from src.features.kanban.application.commands.board.create import CreateBoardCommand
 from src.features.kanban.application.commands.board.delete import DeleteBoardCommand
 from src.features.kanban.application.commands.board.patch import PatchBoardCommand
+from src.features.kanban.application.commands.board.restore import RestoreBoardCommand
 from src.features.kanban.application.commands.card.create import CreateCardCommand
 from src.features.kanban.application.commands.card.patch import PatchCardCommand
 from src.features.kanban.application.commands.column.create import CreateColumnCommand
@@ -18,4 +19,5 @@ __all__ = [
     "DeleteColumnCommand",
     "PatchBoardCommand",
     "PatchCardCommand",
+    "RestoreBoardCommand",
 ]

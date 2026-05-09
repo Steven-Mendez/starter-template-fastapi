@@ -13,6 +13,9 @@ from src.features.kanban.application.use_cases.board.list_boards import (
 from src.features.kanban.application.use_cases.board.patch_board import (
     PatchBoardUseCase,
 )
+from src.features.kanban.application.use_cases.board.restore_board import (
+    RestoreBoardUseCase,
+)
 
 __all__ = [
     "CreateBoardUseCase",
@@ -20,4 +23,5 @@ __all__ = [
     "GetBoardUseCase",
     "ListBoardsUseCase",
     "PatchBoardUseCase",
+    "RestoreBoardUseCase",
 ]

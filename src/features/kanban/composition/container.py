@@ -32,6 +32,7 @@ from src.features.kanban.application.ports.inbound import (
     ListBoardsUseCasePort,
     PatchBoardUseCasePort,
     PatchCardUseCasePort,
+    RestoreBoardUseCasePort,
 )
 from src.features.kanban.application.ports.outbound import (
     KanbanCommandRepositoryPort,
@@ -45,6 +46,7 @@ from src.features.kanban.application.use_cases.board import (
     GetBoardUseCase,
     ListBoardsUseCase,
     PatchBoardUseCase,
+    RestoreBoardUseCase,
 )
 from src.features.kanban.application.use_cases.card import (
     CreateCardUseCase,
@@ -119,6 +121,10 @@ class KanbanContainer:
         """Build a :class:`DeleteBoardUseCase` with a fresh unit-of-work."""
         return DeleteBoardUseCase(uow=self.uow_factory())
 
+    def restore_board_use_case(self) -> RestoreBoardUseCasePort:
+        """Build a :class:`RestoreBoardUseCase` with a fresh unit-of-work."""
+        return RestoreBoardUseCase(uow=self.uow_factory())
+
     def get_board_use_case(self) -> GetBoardUseCasePort:
         """Build :class:`GetBoardUseCase` with the shared query repository."""
         return GetBoardUseCase(query_repository=self.query_repository)
@@ -156,6 +162,10 @@ def build_kanban_container(
     *,
     postgresql_dsn: str | None = None,
     repository: _ManagedKanbanRepository | None = None,
+    pool_size: int = 5,
+    max_overflow: int = 10,
+    pool_recycle: int = 1800,
+    pool_pre_ping: bool = True,
 ) -> KanbanContainer:
     """Wire the Kanban container.
 
@@ -167,7 +177,12 @@ def build_kanban_container(
         if postgresql_dsn is None:
             raise ValueError("Provide either postgresql_dsn or repository")
         repo: _ManagedKanbanRepository = SQLModelKanbanRepository(
-            postgresql_dsn, create_schema=False
+            postgresql_dsn,
+            create_schema=False,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_recycle=pool_recycle,
+            pool_pre_ping=pool_pre_ping,
         )
     else:
         repo = repository

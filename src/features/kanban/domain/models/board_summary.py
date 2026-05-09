@@ -13,3 +13,7 @@ class BoardSummary:
     id: str
     title: str
     created_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.created_at.tzinfo is None:
+            raise ValueError("BoardSummary.created_at must be timezone-aware")

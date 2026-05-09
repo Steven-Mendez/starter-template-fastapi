@@ -35,14 +35,16 @@ Expected response:
 }
 ```
 
-Check persistence readiness:
+Check process liveness and dependency readiness:
 
 ```bash
-curl -s http://localhost:8000/health
+curl -s http://localhost:8000/health/live
+curl -s http://localhost:8000/health/ready
 ```
 
-`status` is `ok` when persistence is ready and `degraded` when the readiness
-probe fails.
+`/health/live` returns `ok` when the process is accepting requests.
+`/health/ready` returns `ok` when dependencies are ready and `503` when any
+readiness check is degraded.
 
 ## Create A Board
 
@@ -173,4 +175,3 @@ columns and cards.
 - Board listing is not paginated.
 - There is no endpoint to delete a single card.
 - There is no endpoint to rename a column.
-- `/health` returns HTTP `200` for both `ok` and `degraded` payloads.

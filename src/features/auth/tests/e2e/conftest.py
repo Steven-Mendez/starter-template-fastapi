@@ -176,6 +176,20 @@ def auth_context_internal_tokens_hidden(
 
 
 @pytest.fixture
+def auth_context_email_verification_required(
+    test_settings: AppSettings,
+    auth_repository: SQLModelAuthRepository,
+) -> Iterator[AuthTestContext]:
+    """Same as ``auth_context`` but login requires verified email addresses."""
+    settings = _settings(test_settings).model_copy(
+        update={"auth_require_email_verification": True}
+    )
+    app = _build_app(settings, auth_repository)
+    with TestClient(app) as client:
+        yield AuthTestContext(client=client, repository=auth_repository)
+
+
+@pytest.fixture
 def client(auth_context: AuthTestContext) -> TestClient:
     """Shortcut fixture for tests that only need the HTTP client."""
     return auth_context.client

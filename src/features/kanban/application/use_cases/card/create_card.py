@@ -11,6 +11,7 @@ from src.features.kanban.application.contracts.mappers import (
     to_domain_priority,
 )
 from src.features.kanban.application.errors import ApplicationError, from_domain_error
+from src.features.kanban.application.persistence_errors import PersistenceConflictError
 from src.features.kanban.application.ports.outbound.unit_of_work import UnitOfWorkPort
 from src.features.kanban.domain.models import Card
 from src.platform.shared.id_generator_port import IdGeneratorPort
@@ -54,9 +55,16 @@ class CreateCardUseCase:
                 position=0,
                 priority=to_domain_priority(command.priority),
                 due_at=command.due_at,
+                created_by=command.actor_id,
+                updated_by=command.actor_id,
             )
             col.insert_card(card)
+            col.updated_by = command.actor_id
+            board.updated_by = command.actor_id
 
-            self.uow.commands.save(board)
-            self.uow.commit()
+            try:
+                self.uow.commands.save(board)
+                self.uow.commit()
+            except PersistenceConflictError:
+                return Err(ApplicationError.STALE_WRITE)
             return Ok(to_app_card(card))

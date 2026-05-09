@@ -19,11 +19,35 @@ from src.features.auth.application.normalization import (
     normalize_role_name,
 )
 
+# NIST SP 800-63B §5.1.1.2 finds long passphrases with low character-class
+# diversity at least as strong as short complex ones, and cautions that
+# forcing all four classes pushes users toward predictable transformations
+# ("Password1!"). We accept either path: ≥ 3 of 4 classes, or length ≥ 20.
+_MIN_PASSWORD_LENGTH_FOR_RELAXED_RULE = 20
+
+
+def _validate_password_complexity(value: str) -> str:
+    """Accept passwords with ≥ 3 of 4 character classes, or length ≥ 20."""
+    if len(value) >= _MIN_PASSWORD_LENGTH_FOR_RELAXED_RULE:
+        return value
+    classes = (
+        any(ch.isupper() for ch in value),
+        any(ch.islower() for ch in value),
+        any(ch.isdigit() for ch in value),
+        any(not ch.isalnum() and not ch.isspace() for ch in value),
+    )
+    if sum(classes) < 3:
+        raise ValueError(
+            "Password must contain at least 3 of: uppercase, lowercase, "
+            "digit, symbol — or be at least 20 characters long"
+        )
+    return value
+
 
 class RegisterRequest(BaseModel):
     """Body of ``POST /auth/register``. Enforces a 12+ character password."""
 
-    email: str = Field(min_length=3, max_length=320)
+    email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=12, max_length=256)
 
     @field_validator("email")
@@ -36,11 +60,16 @@ class RegisterRequest(BaseModel):
             raise ValueError("Invalid email")
         return normalized
 
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password_complexity(value)
+
 
 class LoginRequest(BaseModel):
     """Body of ``POST /auth/login``. Allows any non-empty password length."""
 
-    email: str = Field(min_length=3, max_length=320)
+    email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
 
     @field_validator("email")
@@ -107,7 +136,7 @@ class InternalTokenResponse(BaseModel):
 class PasswordForgotRequest(BaseModel):
     """Body of ``POST /auth/password/forgot``."""
 
-    email: str = Field(min_length=3, max_length=320)
+    email: str = Field(min_length=3, max_length=254)
 
     @field_validator("email")
     @classmethod
@@ -123,6 +152,11 @@ class PasswordResetRequest(BaseModel):
 
     token: str = Field(min_length=32, max_length=512)
     new_password: str = Field(min_length=12, max_length=256)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return _validate_password_complexity(value)
 
 
 class EmailVerifyRequest(BaseModel):
@@ -219,3 +253,13 @@ class AuditEventRead(BaseModel):
     event_type: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditLogRead(BaseModel):
+    """Paginated audit-log response."""
+
+    items: list[AuditEventRead]
+    count: int
+    limit: int

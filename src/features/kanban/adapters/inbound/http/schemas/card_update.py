@@ -16,7 +16,7 @@ class CardUpdate(BaseModel):
     """Request body for ``PATCH /api/cards/{id}``. ``None`` means leave unchanged."""
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=5000)
     column_id: UUID | None = None
     position: int | None = Field(default=None, ge=0)
     priority: CardPrioritySchema | None = None

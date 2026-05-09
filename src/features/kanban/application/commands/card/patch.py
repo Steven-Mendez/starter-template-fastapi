@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from src.features.kanban.application.contracts import AppCardPriority
 
@@ -25,6 +26,7 @@ class PatchCardCommand:
     priority: AppCardPriority | None = None
     due_at: datetime | None = None
     clear_due_at: bool = False
+    actor_id: UUID | None = None
 
     def has_changes(self) -> bool:
         """Return ``True`` if at least one field would change persisted state."""

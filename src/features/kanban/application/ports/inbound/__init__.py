@@ -29,6 +29,9 @@ from src.features.kanban.application.ports.inbound.patch_board import (
 from src.features.kanban.application.ports.inbound.patch_card import (
     PatchCardUseCasePort,
 )
+from src.features.kanban.application.ports.inbound.restore_board import (
+    RestoreBoardUseCasePort,
+)
 
 __all__ = [
     "CheckReadinessUseCasePort",
@@ -42,4 +45,5 @@ __all__ = [
     "ListBoardsUseCasePort",
     "PatchBoardUseCasePort",
     "PatchCardUseCasePort",
+    "RestoreBoardUseCasePort",
 ]

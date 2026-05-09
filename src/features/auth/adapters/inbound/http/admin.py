@@ -9,9 +9,11 @@ on their next request.
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Query, Request, Response, status
 
 from src.features.auth.adapters.inbound.http.auth import _client_ip, _user_agent
 from src.features.auth.adapters.inbound.http.dependencies import (
@@ -21,6 +23,8 @@ from src.features.auth.adapters.inbound.http.dependencies import (
 )
 from src.features.auth.adapters.inbound.http.errors import raise_http_from_auth_error
 from src.features.auth.adapters.inbound.http.schemas import (
+    AuditEventRead,
+    AuditLogRead,
     MessageResponse,
     PermissionAssignmentRequest,
     PermissionCreate,
@@ -42,12 +46,39 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
     response_model=list[UserPublic],
     dependencies=[require_any_permission("users:read", "users:roles:manage")],
 )
-def list_users(request: Request) -> list[UserPublic]:
-    """Return every user account ordered by email."""
-    return [
-        UserPublic.model_validate(user)
-        for user in get_auth_container(request).rbac_service.list_users()
-    ]
+def list_users(
+    request: Request,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[UserPublic]:
+    """Return user accounts ordered by email, paginated at the database level."""
+    users = get_auth_container(request).rbac_service.list_users(
+        limit=limit, offset=offset
+    )
+    return [UserPublic.model_validate(u) for u in users]
+
+
+@admin_router.get(
+    "/audit-log",
+    response_model=AuditLogRead,
+    dependencies=[require_permissions("audit:read")],
+)
+def list_audit_log(
+    request: Request,
+    user_id: Annotated[UUID | None, Query()] = None,
+    event_type: Annotated[str | None, Query(min_length=1, max_length=150)] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> AuditLogRead:
+    """Return filtered auth/RBAC audit events for super-admin inspection."""
+    events = get_auth_container(request).rbac_service.list_audit_events(
+        user_id=user_id,
+        event_type=event_type,
+        since=since,
+        limit=limit,
+    )
+    items = [AuditEventRead.model_validate(event) for event in events]
+    return AuditLogRead(items=items, count=len(items), limit=limit)
 
 
 @admin_router.get(
@@ -55,12 +86,16 @@ def list_users(request: Request) -> list[UserPublic]:
     response_model=list[RoleRead],
     dependencies=[require_any_permission("roles:read", "roles:manage")],
 )
-def list_roles(request: Request) -> list[RoleRead]:
-    """Return every role defined in the system, ordered by name."""
-    return [
-        RoleRead.model_validate(role)
-        for role in get_auth_container(request).rbac_service.list_roles()
-    ]
+def list_roles(
+    request: Request,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[RoleRead]:
+    """Return roles ordered by name, paginated at the database level."""
+    roles = get_auth_container(request).rbac_service.list_roles(
+        limit=limit, offset=offset
+    )
+    return [RoleRead.model_validate(r) for r in roles]
 
 
 @admin_router.post(
@@ -123,12 +158,16 @@ def patch_role(
     response_model=list[PermissionRead],
     dependencies=[require_any_permission("permissions:read", "permissions:manage")],
 )
-def list_permissions(request: Request) -> list[PermissionRead]:
-    """Return every permission defined in the system, ordered by name."""
-    return [
-        PermissionRead.model_validate(permission)
-        for permission in get_auth_container(request).rbac_service.list_permissions()
-    ]
+def list_permissions(
+    request: Request,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[PermissionRead]:
+    """Return permissions ordered by name, paginated at the database level."""
+    permissions = get_auth_container(request).rbac_service.list_permissions(
+        limit=limit, offset=offset
+    )
+    return [PermissionRead.model_validate(p) for p in permissions]
 
 
 @admin_router.post(

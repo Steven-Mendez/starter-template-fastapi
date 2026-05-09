@@ -138,13 +138,11 @@ def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
             extra: dict[str, Any] = {"errors": exc.errors()}
         else:
             logger.warning(
-                json.dumps(
-                    {
-                        "request_id": getattr(request.state, "request_id", None),
-                        "path": request.url.path,
-                        "validation_errors": exc.errors(),
-                    }
-                )
+                "Request validation failed",
+                extra={
+                    "path": request.url.path,
+                    "validation_errors": exc.errors(),
+                },
             )
             extra = {}
         return problem_json_response(
@@ -160,16 +158,14 @@ def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
         request: Request, exc: Exception
     ) -> JSONResponse:
         logger.error(
-            json.dumps(
-                {
-                    "request_id": getattr(request.state, "request_id", None),
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    "error_type": type(exc).__name__,
-                }
-            ),
+            "Unhandled exception",
             exc_info=exc,
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "error_type": type(exc).__name__,
+            },
         )
         return problem_json_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

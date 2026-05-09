@@ -38,9 +38,17 @@ _APPLICATION_ERROR_HTTP_MAP: dict[ApplicationError, _Contract] = {
         status_code=status.HTTP_409_CONFLICT,
         type_uri="https://starter-template-fastapi.dev/problems/invalid-card-move",
     ),
+    ApplicationError.INVALID_POSITION: _Contract(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        type_uri="https://starter-template-fastapi.dev/problems/invalid-position",
+    ),
     ApplicationError.PATCH_NO_CHANGES: _Contract(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         type_uri="https://starter-template-fastapi.dev/problems/patch-no-changes",
+    ),
+    ApplicationError.STALE_WRITE: _Contract(
+        status_code=status.HTTP_409_CONFLICT,
+        type_uri="https://starter-template-fastapi.dev/problems/stale-write",
     ),
     ApplicationError.UNMAPPED_DOMAIN_ERROR: _Contract(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

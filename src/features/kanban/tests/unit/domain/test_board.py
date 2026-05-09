@@ -129,3 +129,26 @@ class TestBoardMoveCard:
         result = board.move_card("absent", "ca", "cb", requested_position=None)
         assert isinstance(result, Err)
         assert result.error == KanbanError.CARD_NOT_FOUND
+
+    def test_move_card_within_same_column_card_not_present(self) -> None:
+        # Previously this branch silently returned Ok(None) without ever
+        # touching the card, masking client bugs. It must now report the
+        # missing card explicitly.
+        board = self._populated()
+        result = board.move_card("absent", "ca", "ca", requested_position=0)
+        assert isinstance(result, Err)
+        assert result.error == KanbanError.CARD_NOT_FOUND
+
+    def test_move_card_position_beyond_target_returns_invalid_position(self) -> None:
+        board = self._populated()
+        result = board.move_card("k1", "ca", "cb", requested_position=99)
+        assert isinstance(result, Err)
+        assert result.error == KanbanError.INVALID_POSITION
+
+    def test_move_card_within_column_position_beyond_bounds(self) -> None:
+        # Source==target frees one slot, so for a single-card column the
+        # only valid in-place position is 0.
+        board = self._populated()
+        result = board.move_card("k1", "ca", "ca", requested_position=5)
+        assert isinstance(result, Err)
+        assert result.error == KanbanError.INVALID_POSITION

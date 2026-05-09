@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import fakeredis
@@ -11,6 +12,7 @@ import redis as redis_lib
 from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
+from src.features.auth.application.cache import InProcessPrincipalCache
 from src.features.auth.application.rate_limit import (
     FixedWindowRateLimiter,
     RedisRateLimiter,
@@ -21,17 +23,86 @@ from src.platform.config.settings import AppSettings
 pytestmark = pytest.mark.unit
 
 
-def test_build_auth_container_uses_fixed_limiter_without_redis_url(
+def test_build_auth_container_requires_jwt_secret(
     test_settings: AppSettings,
     sqlite_auth_repository: SQLModelAuthRepository,
 ) -> None:
+    settings = test_settings.model_copy(update={"auth_jwt_secret_key": None})
+
+    with pytest.raises(RuntimeError, match="APP_AUTH_JWT_SECRET_KEY"):
+        build_auth_container(settings=settings, repository=sqlite_auth_repository)
+
+
+def test_build_auth_container_rejects_invalid_jwt_algorithm(
+    test_settings: AppSettings,
+    sqlite_auth_repository: SQLModelAuthRepository,
+) -> None:
+    settings = test_settings.model_copy(update={"auth_jwt_algorithm": "none"})
+
+    with pytest.raises(ValueError, match="APP_AUTH_JWT_ALGORITHM"):
+        build_auth_container(settings=settings, repository=sqlite_auth_repository)
+
+
+def test_build_auth_container_warns_for_unimplemented_oauth_settings(
+    test_settings: AppSettings,
+    sqlite_auth_repository: SQLModelAuthRepository,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="src.features.auth.composition.container")
+    settings = test_settings.model_copy(update={"auth_oauth_enabled": True})
+
+    container = build_auth_container(
+        settings=settings, repository=sqlite_auth_repository
+    )
+
+    assert "event=auth.oauth.unimplemented" in caplog.text
+    container.shutdown()
+
+
+def test_build_auth_container_uses_fixed_limiter_without_redis_url(
+    test_settings: AppSettings,
+    sqlite_auth_repository: SQLModelAuthRepository,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """No ``auth_redis_url`` keeps the historical in-process limiter."""
+    caplog.set_level(logging.ERROR, logger="src.features.auth.composition.container")
     settings = test_settings.model_copy(update={"auth_redis_url": None})
     container = build_auth_container(
         settings=settings, repository=sqlite_auth_repository
     )
     assert isinstance(container.rate_limiter, FixedWindowRateLimiter)
+    assert "event=auth.rate_limit.degraded" in caplog.text
     container.shutdown()
+
+
+def test_build_auth_container_uses_configured_principal_cache_ttl(
+    test_settings: AppSettings,
+    sqlite_auth_repository: SQLModelAuthRepository,
+) -> None:
+    settings = test_settings.model_copy(
+        update={"auth_redis_url": None, "auth_principal_cache_ttl_seconds": 5}
+    )
+    container = build_auth_container(
+        settings=settings, repository=sqlite_auth_repository
+    )
+
+    assert isinstance(container.principal_cache, InProcessPrincipalCache)
+    assert container.principal_cache._cache.ttl == 5  # noqa: SLF001
+    container.shutdown()
+
+
+def test_build_auth_container_can_require_distributed_rate_limit(
+    test_settings: AppSettings,
+    sqlite_auth_repository: SQLModelAuthRepository,
+) -> None:
+    settings = test_settings.model_copy(
+        update={
+            "auth_redis_url": None,
+            "auth_require_distributed_rate_limit": True,
+        }
+    )
+    with pytest.raises(RuntimeError, match="APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT"):
+        build_auth_container(settings=settings, repository=sqlite_auth_repository)
 
 
 def test_build_auth_container_uses_redis_limiter_when_url_configured(

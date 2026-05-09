@@ -8,14 +8,14 @@ pools and Redis connections only exist while the app is serving.
 
 from __future__ import annotations
 
-import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import AsyncIterator
 
 import redis as redis_lib
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
+from src.features.auth.adapters.inbound.http.dependencies import get_current_principal
 from src.features.auth.composition import (
     AuthContainer,
     attach_auth_container,
@@ -30,6 +30,8 @@ from src.features.kanban.composition import (
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import set_app_container
 from src.platform.config.settings import AppSettings, get_settings
+from src.platform.observability import configure_logging
+from src.platform.observability.tracing import configure_tracing, instrument_fastapi_app
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,10 +41,15 @@ class _PlatformAppContainer:
     settings: AppSettings
 
 
-def _configure_logging(log_level: str) -> None:
-    """Apply the configured log level to the application logger hierarchy."""
-    level = getattr(logging, log_level.upper(), logging.INFO)
-    logging.getLogger("src").setLevel(level)
+def _configure_logging(settings: AppSettings) -> None:
+    """Configure root logging with JSON output outside of development."""
+    configure_logging(
+        level=settings.log_level,
+        json_format=settings.environment != "development",
+        service_name=settings.otel_service_name,
+        service_version=settings.otel_service_version,
+        environment=settings.environment,
+    )
 
 
 def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
@@ -79,20 +86,33 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         containers in the correct order.
     """
     app_settings = settings or get_settings()
-    _configure_logging(app_settings.log_level)
+    _configure_logging(app_settings)
+    configure_tracing(app_settings)
     app = build_fastapi_app(app_settings)
 
     # Routes are mounted eagerly so OpenAPI reflects them and routing works
     # before lifespan startup completes. Containers are attached in lifespan
     # because they require DB connections that should not outlive the process.
     mount_auth_routes(app)
-    mount_kanban_routes(app)
+    require_auth = [Depends(get_current_principal)]
+    mount_kanban_routes(
+        app,
+        read_dependencies=require_auth,
+        write_dependencies=require_auth,
+    )
+    instrument_fastapi_app(app, app_settings)
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         auth = build_auth_container(settings=app_settings)
         _run_auth_bootstrap(auth, app_settings)
-        kanban = build_kanban_container(postgresql_dsn=app_settings.postgresql_dsn)
+        kanban = build_kanban_container(
+            postgresql_dsn=app_settings.postgresql_dsn,
+            pool_size=app_settings.db_pool_size,
+            max_overflow=app_settings.db_max_overflow,
+            pool_recycle=app_settings.db_pool_recycle_seconds,
+            pool_pre_ping=app_settings.db_pool_pre_ping,
+        )
         set_app_container(lifespan_app, _PlatformAppContainer(settings=app_settings))
         attach_auth_container(lifespan_app, auth)
         attach_kanban_container(lifespan_app, kanban)
@@ -101,7 +121,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         # Stored on app.state so it can be injected without coupling features.
         redis_client: redis_lib.Redis | None = None  # type: ignore[type-arg]
         if app_settings.auth_redis_url:
-            redis_client = redis_lib.Redis.from_url(app_settings.auth_redis_url)
+            # Bound socket waits so a slow or unreachable Redis cannot stall
+            # health probes or rate-limit checks indefinitely. Liveness will
+            # fail fast and report ``redis.ready=false`` instead.
+            redis_client = redis_lib.Redis.from_url(
+                app_settings.auth_redis_url,
+                socket_timeout=2.0,
+                socket_connect_timeout=2.0,
+            )
         lifespan_app.state.redis_client = redis_client
 
         try:

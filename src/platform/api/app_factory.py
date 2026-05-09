@@ -19,6 +19,7 @@ from src.platform.api.middleware.request_context import RequestContextMiddleware
 from src.platform.api.middleware.security_headers import SecurityHeadersMiddleware
 from src.platform.api.root import root_router
 from src.platform.config.settings import AppSettings
+from src.platform.observability.metrics import configure_metrics
 
 
 def build_fastapi_app(settings: AppSettings) -> FastAPI:
@@ -39,6 +40,34 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
         docs_url=docs_url,
         redoc_url=redoc_url,
     )
+
+    # Starlette executes middleware in reverse-add order: the LAST added
+    # is the OUTERMOST. We add innermost-first so the runtime chain is:
+    #
+    #   request → CORS → TrustedHost → ContentSizeLimit
+    #          → SecurityHeaders → RequestContext → router
+    #
+    # Order rationale:
+    # * CORS is outermost so OPTIONS preflight short-circuits before any
+    #   inner check (a preflight from a disallowed host shouldn't trip
+    #   TrustedHost or content-size guards).
+    # * TrustedHost runs next so unknown hosts are dropped before we
+    #   spend cycles measuring body size or stamping headers.
+    # * ContentSizeLimit and SecurityHeaders wrap the application proper.
+    # * RequestContext is innermost so its access log records the final
+    #   response status set by the inner handler.
+    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        hsts=(settings.environment == "production"),
+    )
+    app.add_middleware(ContentSizeLimitMiddleware, max_bytes=settings.max_request_bytes)
+
+    if settings.environment != "development":
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=settings.trusted_hosts,
+        )
 
     if settings.cors_origins == ["*"]:
         # Wildcard origins cannot be combined with allow_credentials=True per the
@@ -61,18 +90,7 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
             allow_headers=["*"],
         )
 
-    if settings.environment != "development":
-        app.add_middleware(
-            TrustedHostMiddleware,
-            allowed_hosts=settings.trusted_hosts,
-        )
-
-    app.add_middleware(
-        SecurityHeadersMiddleware,
-        hsts=(settings.environment == "production"),
-    )
-    app.add_middleware(ContentSizeLimitMiddleware, max_bytes=4 * 1024 * 1024)
-    app.add_middleware(RequestContextMiddleware)
     register_problem_details(app, settings)
     app.include_router(root_router)
+    configure_metrics(app, enabled=settings.metrics_enabled)
     return app

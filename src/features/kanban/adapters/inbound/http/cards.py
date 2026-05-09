@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from src.features.kanban.adapters.inbound.http.dependencies import (
+    ActorIdDep,
     CreateCardUseCaseDep,
     GetCardUseCaseDep,
     PatchCardUseCaseDep,
@@ -44,18 +45,19 @@ def create_card(
     column_id: UUID,
     body: CardCreate,
     use_case: CreateCardUseCaseDep,
+    actor_id: ActorIdDep,
 ) -> CardRead:
     """Create a card inside the given column and return the persisted view."""
     title, description, priority, due_at = to_create_card_input(body)
-    match use_case.execute(
-        CreateCardCommand(
-            column_id=str(column_id),
-            title=title,
-            description=description,
-            priority=priority,
-            due_at=due_at,
-        )
-    ):
+    command = CreateCardCommand(
+        column_id=str(column_id),
+        title=title,
+        description=description,
+        priority=priority,
+        due_at=due_at,
+        actor_id=actor_id,
+    )
+    match use_case.execute(command):
         case Ok(value):
             return to_card_response(value)
         case Err(err):
@@ -77,21 +79,22 @@ def patch_card(
     card_id: UUID,
     body: CardUpdate,
     use_case: PatchCardUseCaseDep,
+    actor_id: ActorIdDep,
 ) -> CardRead:
     """Apply a sparse update and/or move to an existing card."""
     input_data = to_patch_card_input(body)
-    match use_case.execute(
-        PatchCardCommand(
-            card_id=str(card_id),
-            title=input_data["title"],
-            description=input_data["description"],
-            column_id=input_data["column_id"],
-            position=input_data["position"],
-            priority=input_data["priority"],
-            due_at=input_data["due_at"],
-            clear_due_at=input_data["clear_due_at"],
-        )
-    ):
+    command = PatchCardCommand(
+        card_id=str(card_id),
+        title=input_data["title"],
+        description=input_data["description"],
+        column_id=input_data["column_id"],
+        position=input_data["position"],
+        priority=input_data["priority"],
+        due_at=input_data["due_at"],
+        clear_due_at=input_data["clear_due_at"],
+        actor_id=actor_id,
+    )
+    match use_case.execute(command):
         case Ok(value):
             return to_card_response(value)
         case Err(err):

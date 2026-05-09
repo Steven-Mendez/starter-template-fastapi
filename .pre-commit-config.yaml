@@ -44,3 +44,10 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
+      - id: pytest-integration
+        name: pytest (integration — only on persistence or migration changes)
+        entry: make test-integration
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        files: ^(alembic/|src/features/.*/adapters/outbound/persistence/)

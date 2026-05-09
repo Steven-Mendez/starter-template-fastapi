@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from uuid import UUID
 
 from src.features.kanban.domain.models.card import Card
 
@@ -21,6 +22,8 @@ class Column:
     title: str
     position: int
     cards: list[Card] = field(default_factory=list)
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
 
     def extract_card(self, card_id: str) -> Card | None:
         """Remove and return ``card_id`` from this column, re-compacting positions."""

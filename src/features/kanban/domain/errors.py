@@ -17,6 +17,7 @@ class KanbanError(StrEnum):
     COLUMN_NOT_FOUND = ("column_not_found", "Column not found")
     CARD_NOT_FOUND = ("card_not_found", "Card not found")
     INVALID_CARD_MOVE = ("invalid_card_move", "Invalid card move")
+    INVALID_POSITION = ("invalid_position", "Position is out of range")
 
     _detail: str
 

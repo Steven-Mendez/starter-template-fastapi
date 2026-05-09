@@ -29,9 +29,25 @@ def test_security_headers_present(test_settings: AppSettings) -> None:
     assert resp.headers["x-frame-options"] == "DENY"
     assert resp.headers["referrer-policy"] == "strict-origin-when-cross-origin"
     assert resp.headers["x-xss-protection"] == "0"
+    assert resp.headers["content-security-policy"] == "default-src 'none'"
+    assert resp.headers["cross-origin-opener-policy"] == "same-origin"
+    assert resp.headers["cross-origin-resource-policy"] == "same-origin"
+    perm_policy = resp.headers["permissions-policy"]
+    # A handful of representative features should be locked down explicitly.
+    for disabled in ("camera=()", "microphone=()", "geolocation=()", "payment=()"):
+        assert disabled in perm_policy
 
 
 def test_hsts_absent_outside_production(test_settings: AppSettings) -> None:
     with TestClient(_app(test_settings)) as c:
         resp = c.get("/__ping")
     assert "strict-transport-security" not in resp.headers
+
+
+def test_hsts_includes_preload_in_production(test_settings: AppSettings) -> None:
+    settings = test_settings.model_copy(update={"environment": "production"})
+    with TestClient(_app(settings)) as c:
+        resp = c.get("/__ping")
+    assert resp.headers["strict-transport-security"] == (
+        "max-age=31536000; includeSubDomains; preload"
+    )

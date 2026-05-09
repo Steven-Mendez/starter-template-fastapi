@@ -19,7 +19,12 @@ class ApplicationError(StrEnum):
     COLUMN_NOT_FOUND = ("column_not_found", "Column not found")
     CARD_NOT_FOUND = ("card_not_found", "Card not found")
     INVALID_CARD_MOVE = ("invalid_card_move", "Invalid card move")
+    INVALID_POSITION = ("invalid_position", "Position is out of range")
     PATCH_NO_CHANGES = ("patch_no_changes", "At least one field must be provided")
+    STALE_WRITE = (
+        "stale_write",
+        "The board was modified concurrently; reload and retry",
+    )
     UNMAPPED_DOMAIN_ERROR = ("unmapped_domain_error", "Unexpected domain error")
 
     _detail: str
@@ -42,6 +47,7 @@ _ERROR_MAP = {
     KanbanError.COLUMN_NOT_FOUND: ApplicationError.COLUMN_NOT_FOUND,
     KanbanError.CARD_NOT_FOUND: ApplicationError.CARD_NOT_FOUND,
     KanbanError.INVALID_CARD_MOVE: ApplicationError.INVALID_CARD_MOVE,
+    KanbanError.INVALID_POSITION: ApplicationError.INVALID_POSITION,
 }
 
 

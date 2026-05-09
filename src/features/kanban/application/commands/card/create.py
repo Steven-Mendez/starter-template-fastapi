@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from src.features.kanban.application.contracts import AppCardPriority
 
@@ -17,3 +18,4 @@ class CreateCardCommand:
     description: str | None
     priority: AppCardPriority
     due_at: datetime | None
+    actor_id: UUID | None = None

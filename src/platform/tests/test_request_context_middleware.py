@@ -60,6 +60,7 @@ def test_access_log_emitted(
     caplog.set_level(logging.INFO, logger="api.request")
     with TestClient(_ping_app(test_settings)) as c:
         c.get("/__ping")
-    messages = [r.getMessage() for r in caplog.records if r.name == "api.request"]
-    assert any('"path": "/__ping"' in m for m in messages)
-    assert any('"status_code": 200' in m for m in messages)
+    records = [r for r in caplog.records if r.name == "api.request"]
+    assert any(getattr(r, "path", None) == "/__ping" for r in records)
+    assert any(getattr(r, "status_code", None) == 200 for r in records)
+    assert all(not r.getMessage().strip().startswith("{") for r in records)

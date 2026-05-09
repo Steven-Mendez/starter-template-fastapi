@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from uuid import UUID
+
 import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
 
@@ -32,3 +35,10 @@ class ColumnTable(SQLModel, table=True):
     board_id: str = Field(foreign_key="boards.id", index=True, ondelete="CASCADE")
     title: str
     position: int
+    created_by: UUID | None = Field(default=None, nullable=True)
+    updated_by: UUID | None = Field(default=None, nullable=True)
+    deleted_at: datetime | None = Field(
+        default=None,
+        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True),
+    )
+    deletion_id: UUID | None = Field(default=None, nullable=True)

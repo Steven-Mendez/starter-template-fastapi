@@ -18,6 +18,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     "permissions:read": "Read permissions",
     "permissions:manage": "Manage permissions and role grants",
     "auth:sessions:revoke": "Revoke user sessions",
+    "audit:read": "Read auth and RBAC audit events",
     "admin:access": "Access administrative API surface",
 }
 

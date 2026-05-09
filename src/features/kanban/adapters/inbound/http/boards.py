@@ -7,11 +7,13 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from src.features.kanban.adapters.inbound.http.dependencies import (
+    ActorIdDep,
     CreateBoardUseCaseDep,
     DeleteBoardUseCaseDep,
     GetBoardUseCaseDep,
     ListBoardsUseCaseDep,
     PatchBoardUseCaseDep,
+    RestoreBoardUseCaseDep,
 )
 from src.features.kanban.adapters.inbound.http.errors import (
     raise_http_from_application_error,
@@ -32,6 +34,7 @@ from src.features.kanban.application.commands import (
     CreateBoardCommand,
     DeleteBoardCommand,
     PatchBoardCommand,
+    RestoreBoardCommand,
 )
 from src.features.kanban.application.queries import GetBoardQuery, ListBoardsQuery
 from src.platform.api.dependencies.security import RequireWriteApiKey
@@ -45,9 +48,11 @@ boards_write_router = APIRouter(tags=["boards"], dependencies=[RequireWriteApiKe
 def create_board(
     body: BoardCreate,
     use_case: CreateBoardUseCaseDep,
+    actor_id: ActorIdDep,
 ) -> BoardSummary:
     """Create a new board and return its summary projection."""
-    match use_case.execute(CreateBoardCommand(title=to_create_board_input(body))):
+    command = CreateBoardCommand(title=to_create_board_input(body), actor_id=actor_id)
+    match use_case.execute(command):
         case Ok(value):
             return to_board_summary_response(value)
         case Err(err):
@@ -79,11 +84,15 @@ def patch_board(
     board_id: UUID,
     body: BoardUpdate,
     use_case: PatchBoardUseCaseDep,
+    actor_id: ActorIdDep,
 ) -> BoardSummary:
     """Apply a sparse update to a board and return the refreshed summary."""
-    match use_case.execute(
-        PatchBoardCommand(board_id=str(board_id), title=to_patch_board_input(body))
-    ):
+    command = PatchBoardCommand(
+        board_id=str(board_id),
+        title=to_patch_board_input(body),
+        actor_id=actor_id,
+    )
+    match use_case.execute(command):
         case Ok(value):
             return to_board_summary_response(value)
         case Err(err):
@@ -97,9 +106,32 @@ def patch_board(
 def delete_board(
     board_id: UUID,
     use_case: DeleteBoardUseCaseDep,
+    actor_id: ActorIdDep,
 ) -> None:
-    """Delete a board, cascading to its columns and cards."""
-    match use_case.execute(DeleteBoardCommand(board_id=str(board_id))):
+    """Soft-delete a board; reversible via ``POST /boards/{id}/restore``."""
+    command = DeleteBoardCommand(board_id=str(board_id), actor_id=actor_id)
+    match use_case.execute(command):
+        case Ok(_):
+            return
+        case Err(err):
+            raise_http_from_application_error(err)
+
+
+@boards_write_router.post(
+    "/boards/{board_id}/restore",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def restore_board(
+    board_id: UUID,
+    use_case: RestoreBoardUseCaseDep,
+    actor_id: ActorIdDep,
+) -> None:
+    """Restore a previously soft-deleted board and its cascaded columns/cards.
+
+    Returns 404 if the board does not exist or has not been deleted.
+    """
+    command = RestoreBoardCommand(board_id=str(board_id), actor_id=actor_id)
+    match use_case.execute(command):
         case Ok(_):
             return
         case Err(err):

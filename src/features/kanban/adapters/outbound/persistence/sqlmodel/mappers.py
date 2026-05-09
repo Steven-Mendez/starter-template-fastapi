@@ -18,13 +18,11 @@ from src.features.kanban.domain.models import (
 )
 
 
+# Single boundary for tzinfo coercion; domain validators reject naive
+# datetimes everywhere else. SQLite-backed test fixtures drop tzinfo on
+# round-trip even though the column is declared timezone-aware.
 def _ensure_utc(dt: datetime) -> datetime:
-    """Return ``dt`` with UTC tzinfo, attaching it if the value is naive.
-
-    SQLite-backed test fixtures occasionally drop tzinfo on round-trip,
-    which would otherwise crash subsequent comparisons against aware
-    datetimes coming from the application layer.
-    """
+    """Return ``dt`` with UTC tzinfo, attaching it if the value is naive."""
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
@@ -40,6 +38,8 @@ def card_table_to_domain(row: CardTable) -> Card:
         position=row.position,
         priority=CardPriority(row.priority),
         due_at=_ensure_utc(row.due_at) if row.due_at else None,
+        created_by=row.created_by,
+        updated_by=row.updated_by,
     )
 
 
@@ -51,6 +51,8 @@ def column_table_to_domain(row: ColumnTable, cards: list[Card]) -> Column:
         title=row.title,
         position=row.position,
         cards=cards,
+        created_by=row.created_by,
+        updated_by=row.updated_by,
     )
 
 
@@ -62,6 +64,8 @@ def board_table_to_domain(row: BoardTable, columns: list[Column]) -> Board:
         created_at=_ensure_utc(row.created_at),
         version=row.version,
         columns=columns,
+        created_by=row.created_by,
+        updated_by=row.updated_by,
     )
 
 
@@ -84,6 +88,8 @@ def card_domain_to_table(card: Card, column_id: str) -> CardTable:
         position=card.position,
         priority=card.priority.value,
         due_at=card.due_at,
+        created_by=card.created_by,
+        updated_by=card.updated_by,
     )
 
 
@@ -94,6 +100,8 @@ def column_domain_to_table(column: Column, board_id: str) -> ColumnTable:
         board_id=board_id,
         title=column.title,
         position=column.position,
+        created_by=column.created_by,
+        updated_by=column.updated_by,
     )
 
 
@@ -109,4 +117,6 @@ def board_domain_to_table(board: Board) -> BoardTable:
         title=board.title,
         version=board.version if board.version > 0 else 1,
         created_at=board.created_at,
+        created_by=board.created_by,
+        updated_by=board.updated_by,
     )

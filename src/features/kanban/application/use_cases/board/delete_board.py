@@ -24,7 +24,9 @@ class DeleteBoardUseCase:
     ) -> Result[None, ApplicationError]:
         """Remove the board in a UoW, mapping domain errors to application errors."""
         with self.uow:
-            result = self.uow.commands.remove(command.board_id)
+            result = self.uow.commands.remove(
+                command.board_id, actor_id=command.actor_id
+            )
             if isinstance(result, Err):
                 return Err(from_domain_error(result.error))
             self.uow.commit()

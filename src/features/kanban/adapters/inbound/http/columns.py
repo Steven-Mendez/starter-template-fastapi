@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from src.features.kanban.adapters.inbound.http.dependencies import (
+    ActorIdDep,
     CreateColumnUseCaseDep,
     DeleteColumnUseCaseDep,
 )
@@ -36,11 +37,15 @@ def create_column(
     board_id: UUID,
     body: ColumnCreate,
     use_case: CreateColumnUseCaseDep,
+    actor_id: ActorIdDep,
 ) -> ColumnRead:
     """Append a new column to the given board and return its public projection."""
-    match use_case.execute(
-        CreateColumnCommand(board_id=str(board_id), title=to_create_column_input(body))
-    ):
+    command = CreateColumnCommand(
+        board_id=str(board_id),
+        title=to_create_column_input(body),
+        actor_id=actor_id,
+    )
+    match use_case.execute(command):
         case Ok(value):
             return to_column_response(value)
         case Err(err):
@@ -53,9 +58,11 @@ def create_column(
 def delete_column(
     column_id: UUID,
     use_case: DeleteColumnUseCaseDep,
+    actor_id: ActorIdDep,
 ) -> None:
     """Delete a column and re-compact the remaining column positions on the board."""
-    match use_case.execute(DeleteColumnCommand(column_id=str(column_id))):
+    command = DeleteColumnCommand(column_id=str(column_id), actor_id=actor_id)
+    match use_case.execute(command):
         case Ok(_):
             return
         case Err(err):

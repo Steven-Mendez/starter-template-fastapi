@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from src.features.kanban.domain.models.card_priority import CardPriority
 
@@ -18,6 +19,8 @@ class Card:
         position: Index inside the owning column.
         priority: Closed-set priority level.
         due_at: Optional UTC due date.
+        created_by: Audit field — actor who created the card.
+        updated_by: Audit field — actor who last modified the card.
     """
 
     id: str
@@ -27,6 +30,12 @@ class Card:
     position: int
     priority: CardPriority
     due_at: datetime | None
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
+
+    def __post_init__(self) -> None:
+        if self.due_at is not None and self.due_at.tzinfo is None:
+            raise ValueError("Card.due_at must be timezone-aware")
 
     def apply_patch(
         self,
@@ -49,4 +58,6 @@ class Card:
         if priority is not None:
             self.priority = priority
         if clear_due_at or due_at is not None:
+            if due_at is not None and due_at.tzinfo is None:
+                raise ValueError("Card.due_at must be timezone-aware")
             self.due_at = due_at

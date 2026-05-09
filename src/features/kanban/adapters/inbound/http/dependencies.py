@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated, TypeAlias
+from uuid import UUID
 
 from fastapi import Depends, Request
 
@@ -18,6 +19,7 @@ from src.features.kanban.application.ports.inbound import (
     ListBoardsUseCasePort,
     PatchBoardUseCasePort,
     PatchCardUseCasePort,
+    RestoreBoardUseCasePort,
 )
 from src.features.kanban.composition.app_state import get_kanban_container
 
@@ -32,6 +34,10 @@ def _get_patch_board(request: Request) -> PatchBoardUseCasePort:
 
 def _get_delete_board(request: Request) -> DeleteBoardUseCasePort:
     return get_kanban_container(request).delete_board_use_case()
+
+
+def _get_restore_board(request: Request) -> RestoreBoardUseCasePort:
+    return get_kanban_container(request).restore_board_use_case()
 
 
 def _get_get_board(request: Request) -> GetBoardUseCasePort:
@@ -75,6 +81,9 @@ PatchBoardUseCaseDep: TypeAlias = Annotated[
 DeleteBoardUseCaseDep: TypeAlias = Annotated[
     DeleteBoardUseCasePort, Depends(_get_delete_board)
 ]
+RestoreBoardUseCaseDep: TypeAlias = Annotated[
+    RestoreBoardUseCasePort, Depends(_get_restore_board)
+]
 GetBoardUseCaseDep: TypeAlias = Annotated[GetBoardUseCasePort, Depends(_get_get_board)]
 ListBoardsUseCaseDep: TypeAlias = Annotated[
     ListBoardsUseCasePort, Depends(_get_list_boards)
@@ -95,3 +104,16 @@ GetCardUseCaseDep: TypeAlias = Annotated[GetCardUseCasePort, Depends(_get_get_ca
 CheckReadinessUseCaseDep: TypeAlias = Annotated[
     CheckReadinessUseCasePort, Depends(_get_check_readiness)
 ]
+
+
+def get_actor_id(request: Request) -> UUID | None:
+    """Return the authenticated user's id stamped on ``request.state``.
+
+    Auth's ``get_current_principal`` populates ``request.state.actor_id``;
+    reading it via ``getattr`` keeps anonymous deployments (no auth dep
+    wired) working — they get ``None``, which the audit columns accept.
+    """
+    return getattr(request.state, "actor_id", None)
+
+
+ActorIdDep: TypeAlias = Annotated[UUID | None, Depends(get_actor_id)]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 
 import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
@@ -40,3 +41,10 @@ class CardTable(SQLModel, table=True):
         default=None,
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True),
     )
+    created_by: UUID | None = Field(default=None, nullable=True)
+    updated_by: UUID | None = Field(default=None, nullable=True)
+    deleted_at: datetime | None = Field(
+        default=None,
+        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True),
+    )
+    deletion_id: UUID | None = Field(default=None, nullable=True)

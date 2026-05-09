@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from src.features.kanban.domain.errors import KanbanError
 from src.features.kanban.domain.models.column import Column
@@ -41,6 +42,12 @@ class Board:
     created_at: datetime
     version: int = 0
     columns: list[Column] = field(default_factory=list)
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
+
+    def __post_init__(self) -> None:
+        if self.created_at.tzinfo is None:
+            raise ValueError("Board.created_at must be timezone-aware")
 
     def rename(self, title: str) -> None:
         """Replace the board title in place."""
@@ -129,6 +136,22 @@ class Board:
         if not ValidCardMoveSpecification().is_satisfied_by(candidate):
             return Err(KanbanError.INVALID_CARD_MOVE)
 
+        # Source column must actually contain the card. Without this check,
+        # passing a wrong source_column_id silently no-ops (within-column
+        # branch) or returns CARD_NOT_FOUND only on the cross-column path.
+        if not any(card.id == card_id for card in source_col.cards):
+            return Err(KanbanError.CARD_NOT_FOUND)
+
+        # Validate the requested position against the legal insertion range.
+        # For within-column moves the card is removed before reinsertion, so
+        # the upper bound matches the cross-column case: ``len(target_col.cards)``.
+        if requested_position is not None:
+            upper_bound = len(target_col.cards)
+            if source_column_id == target_column_id:
+                upper_bound -= 1  # extracting the card frees one slot
+            if requested_position > max(upper_bound, 0):
+                return Err(KanbanError.INVALID_POSITION)
+
         if source_column_id == target_column_id:
             if requested_position is not None:
                 source_col.move_card_within(card_id, requested_position)
@@ -136,6 +159,7 @@ class Board:
 
         card = source_col.extract_card(card_id)
         if not card:
+            # Defensive guard; the precondition above should make this unreachable.
             return Err(KanbanError.CARD_NOT_FOUND)
 
         target_col.insert_card(card, requested_position)

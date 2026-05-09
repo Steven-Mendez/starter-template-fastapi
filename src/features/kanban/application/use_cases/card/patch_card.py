@@ -11,6 +11,7 @@ from src.features.kanban.application.contracts.mappers import (
     to_domain_priority,
 )
 from src.features.kanban.application.errors import ApplicationError, from_domain_error
+from src.features.kanban.application.persistence_errors import PersistenceConflictError
 from src.features.kanban.application.ports.outbound.unit_of_work import UnitOfWorkPort
 from src.platform.shared.result import Err, Ok, Result
 
@@ -76,6 +77,15 @@ class PatchCardUseCase:
             if not updated_card:
                 return Err(ApplicationError.CARD_NOT_FOUND)
 
-            self.uow.commands.save(board)
-            self.uow.commit()
+            updated_card.updated_by = command.actor_id
+            owning_col = board.find_column_containing_card(command.card_id)
+            if owning_col is not None:
+                owning_col.updated_by = command.actor_id
+            board.updated_by = command.actor_id
+
+            try:
+                self.uow.commands.save(board)
+                self.uow.commit()
+            except PersistenceConflictError:
+                return Err(ApplicationError.STALE_WRITE)
             return Ok(to_app_card(updated_card))

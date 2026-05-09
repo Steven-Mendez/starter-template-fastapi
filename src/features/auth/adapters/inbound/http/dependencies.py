@@ -13,9 +13,9 @@ from typing import Annotated, Any, TypeAlias
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from src.features.auth.adapters.inbound.http.errors import raise_http_from_auth_error
 from src.features.auth.application.errors import (
-    InactiveUserError,
-    InvalidTokenError,
+    AuthError,
     PermissionDeniedError,
 )
 from src.features.auth.application.services import ensure_permissions, ensure_roles
@@ -75,11 +75,14 @@ def get_current_principal(
     token = creds.credentials
     container = get_auth_container(request)
     try:
-        return container.auth_service.principal_from_access_token(token)
-    except InactiveUserError as exc:
-        raise _forbidden("Inactive user") from exc
-    except InvalidTokenError as exc:
-        raise _credentials_exception() from exc
+        principal = container.auth_service.principal_from_access_token(token)
+    except AuthError as exc:
+        raise_http_from_auth_error(exc)
+    # Publish the actor id onto request.state so other features (e.g. kanban)
+    # can stamp audit columns without importing from auth and crossing a
+    # feature-isolation boundary.
+    request.state.actor_id = principal.user_id
+    return principal
 
 
 def get_current_user(principal: "CurrentPrincipalDep") -> Principal:

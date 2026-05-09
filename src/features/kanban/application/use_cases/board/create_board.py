@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from src.features.kanban.application.commands.board.create import CreateBoardCommand
 from src.features.kanban.application.contracts import AppBoardSummary
 from src.features.kanban.application.errors import ApplicationError
+from src.features.kanban.application.persistence_errors import PersistenceConflictError
 from src.features.kanban.application.ports.outbound.unit_of_work import UnitOfWorkPort
 from src.features.kanban.domain.models import Board
 from src.platform.shared.clock_port import ClockPort
 from src.platform.shared.id_generator_port import IdGeneratorPort
-from src.platform.shared.result import Ok, Result
+from src.platform.shared.result import Err, Ok, Result
 
 
 @dataclass(slots=True)
@@ -31,10 +32,15 @@ class CreateBoardUseCase:
             id=self.id_gen.next_id(),
             title=command.title,
             created_at=self.clock.now(),
+            created_by=command.actor_id,
+            updated_by=command.actor_id,
         )
         with self.uow:
-            self.uow.commands.save(board)
-            self.uow.commit()
+            try:
+                self.uow.commands.save(board)
+                self.uow.commit()
+            except PersistenceConflictError:
+                return Err(ApplicationError.STALE_WRITE)
             return Ok(
                 AppBoardSummary(
                     id=board.id,

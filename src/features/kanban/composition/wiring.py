@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Any
+
 from fastapi import FastAPI
 
 from src.features.kanban.adapters.inbound.http.router import (
@@ -12,7 +15,12 @@ from src.features.kanban.composition.app_state import set_kanban_container
 from src.features.kanban.composition.container import KanbanContainer
 
 
-def mount_kanban_routes(app: FastAPI) -> None:
+def mount_kanban_routes(
+    app: FastAPI,
+    *,
+    read_dependencies: Sequence[Any],
+    write_dependencies: Sequence[Any],
+) -> None:
     """Mount the Kanban HTTP routers.
 
     The Kanban resource API is exposed under ``/api`` and the readiness probe
@@ -20,7 +28,12 @@ def mount_kanban_routes(app: FastAPI) -> None:
     Call at app build time (before lifespan) so routes are visible immediately
     for OpenAPI generation and request routing.
     """
-    app.include_router(build_kanban_api_router())
+    app.include_router(
+        build_kanban_api_router(
+            read_dependencies=read_dependencies,
+            write_dependencies=write_dependencies,
+        )
+    )
     app.include_router(build_kanban_health_router())
 
 
@@ -29,11 +42,21 @@ def attach_kanban_container(app: FastAPI, container: KanbanContainer) -> None:
     set_kanban_container(app, container)
 
 
-def register_kanban(app: FastAPI, container: KanbanContainer) -> None:
+def register_kanban(
+    app: FastAPI,
+    container: KanbanContainer,
+    *,
+    read_dependencies: Sequence[Any],
+    write_dependencies: Sequence[Any],
+) -> None:
     """Convenience: mount routes and bind container in one call.
 
     Prefer calling :func:`mount_kanban_routes` at app build time and
     :func:`attach_kanban_container` from lifespan startup.
     """
-    mount_kanban_routes(app)
+    mount_kanban_routes(
+        app,
+        read_dependencies=read_dependencies,
+        write_dependencies=write_dependencies,
+    )
     attach_kanban_container(app, container)

@@ -14,6 +14,7 @@ are never exposed to JavaScript or sent on regular API calls.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
@@ -90,10 +91,18 @@ def _set_refresh_cookie(
 
 
 def _clear_refresh_cookie(response: Response, request: Request) -> None:
-    """Instruct the browser to delete the refresh-token cookie."""
+    """Instruct the browser to delete the refresh-token cookie.
+
+    Attributes must match the original Set-Cookie exactly (path, secure,
+    samesite) or some browsers will treat the delete as targeting a different
+    cookie and leave the original in place.
+    """
+    settings = get_auth_container(request).settings
     response.delete_cookie(
         key=REFRESH_COOKIE_NAME,
         path="/auth",
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite,
     )
 
 
@@ -290,11 +299,12 @@ def forgot_password(
 def reset_password(body: PasswordResetRequest, request: Request) -> MessageResponse:
     """Apply a new password using a single-use reset token.
 
-    Rate-limited on the first 16 characters of the token to prevent
-    rapid-fire brute-force without exposing the full token in the rate-limit key.
-    All existing sessions are revoked after a successful reset.
+    Rate-limited on a SHA-256 prefix of the token so the rate-limit key
+    has full token entropy without storing the token itself in memory or
+    Redis. All existing sessions are revoked after a successful reset.
     """
-    _check_rate_limit(request, body.token[:16])
+    token_key = hashlib.sha256(body.token.encode("utf-8")).hexdigest()[:32]
+    _check_rate_limit(request, token_key)
     try:
         get_auth_container(request).auth_service.reset_password(
             token=body.token,
@@ -310,6 +320,7 @@ def request_email_verify(
     principal: CurrentPrincipalDep, request: Request
 ) -> InternalTokenResponse:
     """Issue an email-verification token for the authenticated user."""
+    _check_rate_limit(request, str(principal.user_id))
     try:
         result = get_auth_container(request).auth_service.request_email_verification(
             user_id=principal.user_id,

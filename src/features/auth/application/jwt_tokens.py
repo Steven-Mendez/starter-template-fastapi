@@ -16,7 +16,7 @@ import jwt
 
 from src.features.auth.application.errors import ConfigurationError, InvalidTokenError
 from src.features.auth.application.types import AccessTokenPayload
-from src.platform.config.settings import AppSettings
+from src.platform.config.settings import JWT_ALGORITHM_WHITELIST, AppSettings
 
 
 class AccessTokenService:
@@ -28,6 +28,13 @@ class AccessTokenService:
 
     def __init__(self, settings: AppSettings) -> None:
         self._settings = settings
+        # Settings validates algorithm at load time; this guard catches objects
+        # constructed via model_copy() or other bypasses that skip validators.
+        if settings.auth_jwt_algorithm not in JWT_ALGORITHM_WHITELIST:
+            raise ValueError(
+                "APP_AUTH_JWT_ALGORITHM must be one of "
+                f"{sorted(JWT_ALGORITHM_WHITELIST)}"
+            )
         if not settings.auth_jwt_audience:
             logging.getLogger(__name__).warning(
                 "auth_jwt_audience is not configured; JWT audience validation is "
@@ -126,6 +133,7 @@ class AccessTokenService:
                 token,
                 self._secret(),
                 algorithms=[self._settings.auth_jwt_algorithm],
+                leeway=self._settings.auth_jwt_leeway_seconds,
                 **kwargs,
             )
             subject = UUID(str(payload["sub"]))

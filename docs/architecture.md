@@ -62,7 +62,8 @@ make lint-arch
 1. A request enters the FastAPI app created by `build_fastapi_app()`.
 2. `RequestContextMiddleware` stores a request ID on `request.state` and writes
    the same ID to the response header.
-3. The platform app dispatches to a Kanban HTTP route under `/api` or `/health`.
+3. The platform app dispatches to a route under `/api`, `/auth`, `/admin`, or a
+   health endpoint.
 4. Inbound dependencies resolve the Kanban container from `app.state`.
 5. The route maps Pydantic request schemas into application commands or queries.
 6. The route calls a use case through an inbound `Protocol` type alias.
@@ -161,5 +162,3 @@ There are no verified external SaaS integrations in the current source code.
 - There is no endpoint to delete a single card.
 - There is no endpoint to rename a column.
 - The documented persistence backend is PostgreSQL only.
-- `APP_LOG_LEVEL` is parsed but not currently applied to Python logging setup.
-- `/health` returns HTTP `200` even when the persistence status is `degraded`.
