@@ -162,6 +162,20 @@ def auth_context_rate_limited(
 
 
 @pytest.fixture
+def auth_context_internal_tokens_hidden(
+    test_settings: AppSettings,
+    auth_repository: SQLModelAuthRepository,
+) -> Iterator[AuthTestContext]:
+    """Same as ``auth_context`` but internal one-time tokens are not returned."""
+    settings = _settings(test_settings).model_copy(
+        update={"auth_return_internal_tokens": False}
+    )
+    app = _build_app(settings, auth_repository)
+    with TestClient(app) as client:
+        yield AuthTestContext(client=client, repository=auth_repository)
+
+
+@pytest.fixture
 def client(auth_context: AuthTestContext) -> TestClient:
     """Shortcut fixture for tests that only need the HTTP client."""
     return auth_context.client

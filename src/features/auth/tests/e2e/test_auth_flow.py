@@ -7,6 +7,7 @@ any layer (router, service, repository) surfaces here.
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 import pytest
@@ -71,6 +72,24 @@ def test_login_rate_limit_returns_429_after_repeated_attempts(
         response = client.post("/auth/login", json=body)
         assert response.status_code == 401
     blocked = client.post("/auth/login", json=body)
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"] == "Rate limit exceeded"
+
+
+def test_register_rate_limit_returns_429_after_repeated_attempts(
+    auth_context_rate_limited: AuthTestContext,
+) -> None:
+    client = auth_context_rate_limited.client
+    for i in range(_RATE_LIMIT_ATTEMPTS_BEFORE_429):
+        response = client.post(
+            "/auth/register",
+            json={"email": f"user-{i}@example.com", "password": "UserPassword123!"},
+        )
+        assert response.status_code == 201
+    blocked = client.post(
+        "/auth/register",
+        json={"email": "blocked@example.com", "password": "UserPassword123!"},
+    )
     assert blocked.status_code == 429
     assert blocked.json()["detail"] == "Rate limit exceeded"
 
@@ -174,6 +193,21 @@ def test_password_reset_and_email_verification(client: TestClient) -> None:
     me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
     assert me.json()["is_verified"] is True
+
+
+def test_internal_token_omission_logs_warning(
+    auth_context_internal_tokens_hidden: AuthTestContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = auth_context_internal_tokens_hidden.client
+    _register(client)
+    caplog.set_level(logging.WARNING, logger="src.features.auth.application.services")
+
+    forgot = client.post("/auth/password/forgot", json={"email": "user@example.com"})
+
+    assert forgot.status_code == 200
+    assert forgot.json()["dev_token"] is None
+    assert "no delivery provider is configured" in caplog.text
 
 
 def test_refresh_token_rejected_after_logout(client: TestClient) -> None:

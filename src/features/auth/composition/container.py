@@ -17,7 +17,13 @@ from typing import Union
 from src.features.auth.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
+from src.features.auth.application.cache import (
+    InProcessPrincipalCache,
+    PrincipalCachePort,
+    RedisPrincipalCache,
+)
 from src.features.auth.application.crypto import PasswordService
+from src.features.auth.application.errors import ConfigurationError
 from src.features.auth.application.jwt_tokens import AccessTokenService
 from src.features.auth.application.rate_limit import (
     FixedWindowRateLimiter,
@@ -84,14 +90,37 @@ def build_auth_container(
     password_service = PasswordService()
     token_service = AccessTokenService(settings)
 
+    # Validate the JWT secret early so misconfiguration surfaces at startup
+    # rather than on the first token issuance request.
+    if not settings.auth_jwt_secret_key:
+        if settings.environment == "development":
+            _logger.warning(
+                "APP_AUTH_JWT_SECRET_KEY is not set. "
+                "Token issuance will fail at runtime. "
+                "Set it in .env for local development."
+            )
+        else:
+            raise ConfigurationError(
+                "APP_AUTH_JWT_SECRET_KEY is required in test and "
+                "production environments"
+            )
+
     # Select the rate limiter based on whether a Redis URL is configured.
     # RedisRateLimiter pings Redis at construction, so a bad URL fails here
     # rather than on the first auth request.
     limiter: RateLimiter
+    cache: PrincipalCachePort
     if settings.auth_redis_url:
         limiter = RedisRateLimiter.from_url(settings.auth_redis_url)
+        cache = RedisPrincipalCache.from_url(
+            settings.auth_redis_url,
+            ttl=settings.auth_principal_cache_ttl_seconds,
+        )
     else:
         limiter = FixedWindowRateLimiter()
+        cache = InProcessPrincipalCache.create(
+            ttl=settings.auth_principal_cache_ttl_seconds
+        )
         if settings.auth_rate_limit_enabled:
             _logger.warning(
                 "Using in-memory rate limiter. This is not distributed — "
@@ -101,6 +130,7 @@ def build_auth_container(
     def _shutdown() -> None:
         repo.close()
         limiter.close()
+        cache.close()
 
     return AuthContainer(
         settings=settings,
@@ -110,6 +140,7 @@ def build_auth_container(
             settings=settings,
             password_service=password_service,
             token_service=token_service,
+            cache=cache,
         ),
         rbac_service=RBACService(repository=repo),
         rate_limiter=limiter,

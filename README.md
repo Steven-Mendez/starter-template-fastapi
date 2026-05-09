@@ -144,7 +144,7 @@ Settings use the `APP_` prefix and are loaded from `.env` by
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `APP_ENVIRONMENT` | `development` | Must be `development`, `test`, or `production`. Trusted host middleware is enabled outside development. |
-| `APP_ENABLE_DOCS` | `true` | Enables `/docs` and `/redoc`. The code does not disable `/openapi.json`. |
+| `APP_ENABLE_DOCS` | `true` | Enables `/docs`, `/redoc`, and `/openapi.json`. Set `false` to disable all three. |
 | `APP_CORS_ORIGINS` | `["*"]` | JSON list of allowed CORS origins. `["*"]` is treated as any origin. |
 | `APP_TRUSTED_HOSTS` | `["*"]` | Hosts allowed by `TrustedHostMiddleware` outside development. |
 | `APP_LOG_LEVEL` | `INFO` | Parsed setting. The current code does not apply it to logging configuration. |

@@ -44,3 +44,13 @@ def test_lifespan_sets_and_clears_container(test_settings: AppSettings) -> None:
         assert resp.status_code == 200
     assert len(constructed) == 1
     assert cleared["value"] is True
+
+
+def test_openapi_json_disabled_when_docs_disabled(test_settings: AppSettings) -> None:
+    settings = test_settings.model_copy(update={"enable_docs": False})
+    app = build_fastapi_app(settings)
+
+    with TestClient(app) as c:
+        assert c.get("/docs").status_code == 404
+        assert c.get("/redoc").status_code == 404
+        assert c.get("/openapi.json").status_code == 404

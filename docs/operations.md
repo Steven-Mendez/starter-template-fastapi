@@ -64,7 +64,7 @@ The runtime image default command starts Uvicorn and does not run migrations.
 - Set `APP_ENVIRONMENT=production`.
 - Set `APP_TRUSTED_HOSTS` to the public hostnames accepted by the app.
 - Set `APP_CORS_ORIGINS` to explicit browser origins if browsers call the API.
-- Set `APP_ENABLE_DOCS=false` if Swagger UI and ReDoc should not be exposed.
+- Set `APP_ENABLE_DOCS=false` so Swagger UI, ReDoc, and `/openapi.json` are not exposed.
 - Set `APP_WRITE_API_KEY` if write routes should require a shared key.
 - Configure the load balancer or orchestrator to check `/health`.
 
@@ -125,6 +125,19 @@ unset AUTH_BOOTSTRAP_PASSWORD
 Public registration never grants administrative permissions. Use the admin RBAC
 endpoints only after authenticating as a user with explicit permissions such as
 `roles:manage`, `permissions:manage`, or `users:roles:manage`.
+
+### Authorization Cache Window
+
+Authenticated requests resolve the current principal from the access token and
+cache it by token ID for up to 30 seconds to avoid a database read on every
+request. Role or permission changes are enforced when the cached principal
+expires or is explicitly evicted, so emergency authorization revocations can have
+a maximum 30-second propagation window per running process.
+
+`POST /auth/logout-all` and password reset revoke refresh tokens and evict cached
+principals in the process handling the request. In multi-process or multi-replica
+deployments, access-token authorization should still be treated as taking effect
+within the documented cache window.
 
 ### OAuth Preparation
 

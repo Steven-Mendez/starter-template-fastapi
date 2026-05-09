@@ -3,28 +3,20 @@
 This module hosts :class:`AuthService` (registration, login, token rotation,
 password reset, email verification) and :class:`RBACService` (roles,
 permissions, and assignments). Every flow records audit events and bumps
-``authz_version`` whenever a change must take effect immediately on
-already-issued tokens.
+``authz_version`` whenever a change must invalidate already-issued tokens
+without waiting for their JWT expiry.
 """
 
 from __future__ import annotations
 
-import threading
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from cachetools import TTLCache
-
-from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
-    PermissionTable,
-    RefreshTokenTable,
-    RoleTable,
-    UserTable,
-    utc_now,
-)
-from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
-    SQLModelAuthRepository,
+from src.features.auth.application.cache import (
+    InProcessPrincipalCache,
+    PrincipalCachePort,
 )
 from src.features.auth.application.crypto import (
     PasswordService,
@@ -49,6 +41,9 @@ from src.features.auth.application.normalization import (
     normalize_permission_name,
     normalize_role_name,
 )
+from src.features.auth.application.ports.outbound.auth_repository import (
+    AuthRepositoryPort,
+)
 from src.features.auth.application.seed import (
     ALL_PERMISSIONS,
     ROLE_DESCRIPTIONS,
@@ -59,12 +54,21 @@ from src.features.auth.application.types import (
     IssuedTokens,
     Principal,
 )
+from src.features.auth.domain.models import (
+    InternalToken,
+    Permission,
+    RefreshToken,
+    Role,
+    User,
+)
 from src.platform.config.settings import AppSettings
 
 # Purpose strings are validated by a DB CHECK constraint, so typos fail at
 # the database level rather than silently creating unreachable tokens.
 PASSWORD_RESET_PURPOSE = "password_reset"
 EMAIL_VERIFY_PURPOSE = "email_verify"
+
+_logger = logging.getLogger(__name__)
 
 
 def _aware(value: datetime) -> datetime:
@@ -91,20 +95,19 @@ class AuthService:
     def __init__(
         self,
         *,
-        repository: SQLModelAuthRepository,
+        repository: AuthRepositoryPort,
         settings: AppSettings,
         password_service: PasswordService,
         token_service: AccessTokenService,
+        cache: PrincipalCachePort | None = None,
     ) -> None:
         self._repo = repository
         self._settings = settings
         self._passwords = password_service
         self._tokens = token_service
-        # Short-TTL cache keyed by token_id (JWT jti) to avoid a DB round-trip
-        # on every authenticated request. TTL matches the acceptable window for
-        # ban/deactivation propagation. The lock makes TTLCache thread-safe.
-        self._principal_cache: TTLCache[str, Principal] = TTLCache(maxsize=1000, ttl=30)
-        self._principal_cache_lock = threading.Lock()
+        self._cache: PrincipalCachePort = cache or InProcessPrincipalCache.create(
+            ttl=30
+        )
         # Pre-compute a dummy hash at startup so that login attempts for
         # non-existent emails spend the same time verifying a hash as for
         # real users, preventing user-enumeration via timing differences.
@@ -117,7 +120,7 @@ class AuthService:
         password: str,
         ip_address: str | None = None,
         user_agent: str | None = None,
-    ) -> UserTable:
+    ) -> User:
         """Create a new user account and assign the default role.
 
         The default role (``auth_default_user_role``) is only assigned if it
@@ -214,7 +217,7 @@ class AuthService:
                 metadata={"reason": "invalid_credentials"},
             )
             raise InvalidCredentialsError("Invalid credentials")
-        self._repo.update_user_login(user.id, utc_now())
+        self._repo.update_user_login(user.id, datetime.now(timezone.utc))
         tokens, principal = self._issue_tokens(
             user.id, ip_address=ip_address, user_agent=user_agent
         )
@@ -230,9 +233,9 @@ class AuthService:
         """Validate a JWT and resolve the current identity from the database.
 
         Results are cached for up to 30 seconds keyed by the token's ``jti``
-        claim to avoid a DB round-trip on every authenticated request. The
-        cache is skipped on a miss and on permission changes (``authz_version``
-        mismatch), which immediately evicts the stale entry.
+        claim to avoid a DB round-trip on every authenticated request. Permission
+        or role revocations can therefore take up to 30 seconds to propagate for
+        tokens whose principal is already cached.
 
         Args:
             token: Encoded JWT access token received from the client.
@@ -250,9 +253,7 @@ class AuthService:
         payload = self._tokens.decode(token)
         token_id = payload.token_id
 
-        with self._principal_cache_lock:
-            cached = self._principal_cache.get(token_id)
-
+        cached = self._cache.get(token_id)
         if cached is not None:
             return cached
 
@@ -264,12 +265,10 @@ class AuthService:
         if principal.authz_version != payload.authz_version:
             # Evict any stale entry and reject the request so the client must
             # re-authenticate with a freshly issued token.
-            with self._principal_cache_lock:
-                self._principal_cache.pop(token_id, None)
+            self._cache.pop(token_id)
             raise StaleTokenError("Stale authorization token")
 
-        with self._principal_cache_lock:
-            self._principal_cache[token_id] = principal
+        self._cache.set(token_id, principal)
         return principal
 
     def invalidate_principal_cache_for_user(self, user_id: UUID) -> None:
@@ -278,12 +277,7 @@ class AuthService:
         Called by ``logout_all`` so that sessions are denied immediately
         rather than waiting for the 30-second TTL to elapse.
         """
-        with self._principal_cache_lock:
-            stale = [
-                k for k, v in self._principal_cache.items() if v.user_id == user_id
-            ]
-            for k in stale:
-                del self._principal_cache[k]
+        self._cache.invalidate_user(user_id)
 
     def refresh(
         self,
@@ -311,44 +305,78 @@ class AuthService:
             InvalidTokenError: If the token is missing, not found, already
                 revoked, or expired.
         """
-        record = self._get_refresh_or_raise(refresh_token)
-        now = utc_now()
-        if record.revoked_at is not None:
-            # A revoked token being presented again signals a theft scenario:
-            # the original token was likely stolen and used after rotation.
-            # Revoking the entire family forces all active sessions for that
-            # login chain to re-authenticate.
-            self._repo.revoke_refresh_family(record.family_id)
-            self._repo.record_audit_event(
-                event_type="auth.refresh_reuse_detected",
-                user_id=record.user_id,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                metadata={"family_id": str(record.family_id)},
-            )
+        if not refresh_token:
             raise InvalidTokenError("Invalid refresh token")
-        if _aware(record.expires_at) <= now:
-            self._repo.revoke_refresh_token(record.id)
+
+        invalid_token_error: InvalidTokenError | None = None
+        tokens: IssuedTokens | None = None
+        principal: Principal | None = None
+        with self._repo.refresh_token_transaction() as tx:
+            record = tx.get_refresh_token_for_update(hash_token(refresh_token))
+            if record is None:
+                raise InvalidTokenError("Invalid refresh token")
+
+            now = datetime.now(timezone.utc)
+            if record.revoked_at is not None:
+                # A revoked token being presented again signals a theft scenario:
+                # the original token was likely stolen and used after rotation.
+                # Revoking the entire family forces all active sessions for that
+                # login chain to re-authenticate.
+                tx.revoke_refresh_family(record.family_id)
+                tx.record_audit_event(
+                    event_type="auth.refresh_reuse_detected",
+                    user_id=record.user_id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    metadata={"family_id": str(record.family_id)},
+                )
+                invalid_token_error = InvalidTokenError("Invalid refresh token")
+            elif _aware(record.expires_at) <= now:
+                tx.revoke_refresh_token(record.id)
+                invalid_token_error = InvalidTokenError("Invalid refresh token")
+            else:
+                principal = tx.get_principal(record.user_id)
+                if principal is None:
+                    raise InvalidCredentialsError("Invalid credentials")
+                if not principal.is_active:
+                    raise InactiveUserError("Inactive user")
+
+                access_token, expires_in = self._tokens.issue(
+                    subject=record.user_id,
+                    roles=set(principal.roles),
+                    authz_version=principal.authz_version,
+                )
+                raw_refresh_token = generate_opaque_token()
+                replacement = tx.create_refresh_token(
+                    user_id=record.user_id,
+                    token_hash=hash_token(raw_refresh_token),
+                    family_id=record.family_id,
+                    expires_at=now
+                    + timedelta(days=self._settings.auth_refresh_token_expire_days),
+                    created_ip=ip_address,
+                    user_agent=user_agent,
+                )
+                tx.revoke_refresh_token(
+                    record.id,
+                    replaced_by_token_id=replacement.id,
+                )
+                tx.record_audit_event(
+                    event_type="auth.refresh_succeeded",
+                    user_id=record.user_id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                )
+                tokens = IssuedTokens(
+                    access_token=access_token,
+                    refresh_token=raw_refresh_token,
+                    token_type="bearer",
+                    expires_in=expires_in,
+                )
+
+        if invalid_token_error is not None:
+            raise invalid_token_error
+        if tokens is None or principal is None:
             raise InvalidTokenError("Invalid refresh token")
-        tokens, principal = self._issue_tokens(
-            record.user_id,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            family_id=record.family_id,
-        )
-        replacement = self._repo.get_refresh_token_by_hash(
-            hash_token(tokens.refresh_token)
-        )
-        self._repo.revoke_refresh_token(
-            record.id,
-            replaced_by_token_id=replacement.id if replacement is not None else None,
-        )
-        self._repo.record_audit_event(
-            event_type="auth.refresh_succeeded",
-            user_id=record.user_id,
-            ip_address=ip_address,
-            user_agent=user_agent,
-        )
         return tokens, principal
 
     def logout(self, refresh_token: str | None) -> None:
@@ -432,6 +460,11 @@ class AuthService:
             user_id=user.id,
             ip_address=ip_address,
         )
+        if not self._settings.auth_return_internal_tokens:
+            _logger.warning(
+                "Password-reset token was generated but no delivery provider is "
+                "configured; dev_token will be omitted from the response."
+            )
         return InternalTokenResult(
             token=token if self._settings.auth_return_internal_tokens else None,
             expires_at=expires_at,
@@ -503,6 +536,11 @@ class AuthService:
             user_id=user.id,
             ip_address=ip_address,
         )
+        if not self._settings.auth_return_internal_tokens:
+            _logger.warning(
+                "Email-verification token was generated but no delivery provider "
+                "is configured; dev_token will be omitted from the response."
+            )
         return InternalTokenResult(
             token=token if self._settings.auth_return_internal_tokens else None,
             expires_at=expires_at,
@@ -562,7 +600,7 @@ class AuthService:
             user_id=user_id,
             token_hash=hash_token(refresh_token),
             family_id=family_id or uuid4(),
-            expires_at=utc_now()
+            expires_at=datetime.now(timezone.utc)
             + timedelta(days=self._settings.auth_refresh_token_expire_days),
             created_ip=ip_address,
             user_agent=user_agent,
@@ -577,7 +615,7 @@ class AuthService:
             principal,
         )
 
-    def _get_refresh_or_raise(self, refresh_token: str | None) -> RefreshTokenTable:
+    def _get_refresh_or_raise(self, refresh_token: str | None) -> RefreshToken:
         """Resolve a raw refresh token to its DB record or raise.
 
         Raises:
@@ -605,7 +643,7 @@ class AuthService:
             to the caller for delivery; only its hash is stored in the DB.
         """
         token = generate_opaque_token()
-        expires_at = utc_now() + expires_delta
+        expires_at = datetime.now(timezone.utc) + expires_delta
         self._repo.create_internal_token(
             user_id=user_id,
             purpose=purpose,
@@ -615,7 +653,9 @@ class AuthService:
         )
         return token, expires_at
 
-    def _get_internal_token_or_raise(self, *, token: str, purpose: str):  # type: ignore[no-untyped-def]
+    def _get_internal_token_or_raise(
+        self, *, token: str, purpose: str
+    ) -> InternalToken:
         """Resolve and validate a single-use internal token or raise.
 
         Rejects the token if it has already been used or has expired,
@@ -630,7 +670,7 @@ class AuthService:
         if (
             record is None
             or record.used_at is not None
-            or _aware(record.expires_at) <= utc_now()
+            or _aware(record.expires_at) <= datetime.now(timezone.utc)
         ):
             raise InvalidTokenError("Invalid token")
         return record
@@ -644,14 +684,14 @@ class RBACService:
     All operations are recorded in the audit log.
     """
 
-    def __init__(self, *, repository: SQLModelAuthRepository) -> None:
+    def __init__(self, *, repository: AuthRepositoryPort) -> None:
         self._repo = repository
 
-    def list_roles(self) -> list[RoleTable]:
+    def list_roles(self) -> list[Role]:
         """Return all roles ordered alphabetically."""
         return self._repo.list_roles()
 
-    def list_users(self) -> list[UserTable]:
+    def list_users(self) -> list[User]:
         """Return all users ordered alphabetically by email."""
         return self._repo.list_users()
 
@@ -663,7 +703,7 @@ class RBACService:
         description: str | None,
         ip_address: str | None = None,
         user_agent: str | None = None,
-    ) -> RoleTable:
+    ) -> Role:
         """Create a new role with a normalised name.
 
         Args:
@@ -704,7 +744,7 @@ class RBACService:
         is_active: bool | None,
         ip_address: str | None = None,
         user_agent: str | None = None,
-    ) -> RoleTable:
+    ) -> Role:
         """Update mutable fields of a role.
 
         When ``is_active`` changes, all users holding the role have their
@@ -755,7 +795,7 @@ class RBACService:
         )
         return updated
 
-    def list_permissions(self) -> list[PermissionTable]:
+    def list_permissions(self) -> list[Permission]:
         """Return all permissions ordered alphabetically."""
         return self._repo.list_permissions()
 
@@ -767,7 +807,7 @@ class RBACService:
         description: str | None,
         ip_address: str | None = None,
         user_agent: str | None = None,
-    ) -> PermissionTable:
+    ) -> Permission:
         """Create a new permission with a validated ``resource:action`` name.
 
         Args:
@@ -918,7 +958,7 @@ class RBACService:
         Idempotent: skips any item that already exists. Safe to run on every
         deployment or startup without duplicating data.
         """
-        permissions: dict[str, PermissionTable] = {}
+        permissions: dict[str, Permission] = {}
         for name, description in ALL_PERMISSIONS.items():
             permission = self._repo.get_permission_by_name(name)
             if permission is None:
@@ -927,7 +967,7 @@ class RBACService:
                 )
             if permission is not None:
                 permissions[name] = permission
-        roles: dict[str, RoleTable] = {}
+        roles: dict[str, Role] = {}
         for role_name, description in ROLE_DESCRIPTIONS.items():
             role = self._repo.get_role_by_name(role_name)
             if role is None:
@@ -949,7 +989,7 @@ class RBACService:
         auth_service: AuthService,
         email: str,
         password: str,
-    ) -> UserTable:
+    ) -> User:
         """Seed data and ensure the given account has the ``super_admin`` role.
 
         Creates the account if it does not exist yet. Intended for one-time

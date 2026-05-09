@@ -29,11 +29,13 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
     """
     docs_url = "/docs" if settings.enable_docs else None
     redoc_url = "/redoc" if settings.enable_docs else None
+    openapi_url = "/openapi.json" if settings.enable_docs else None
 
     app = FastAPI(
         title="starter-template-fastapi",
         description="FastAPI starter service",
         version="0.1.0",
+        openapi_url=openapi_url,
         docs_url=docs_url,
         redoc_url=redoc_url,
     )

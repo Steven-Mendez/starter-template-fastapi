@@ -8,6 +8,7 @@ pools and Redis connections only exist while the app is serving.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import AsyncIterator
@@ -36,6 +37,12 @@ class _PlatformAppContainer:
     """Thin wrapper on ``app.state`` exposing settings to platform code."""
 
     settings: AppSettings
+
+
+def _configure_logging(log_level: str) -> None:
+    """Apply the configured log level to the application logger hierarchy."""
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    logging.getLogger("src").setLevel(level)
 
 
 def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
@@ -72,6 +79,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         containers in the correct order.
     """
     app_settings = settings or get_settings()
+    _configure_logging(app_settings.log_level)
     app = build_fastapi_app(app_settings)
 
     # Routes are mounted eagerly so OpenAPI reflects them and routing works

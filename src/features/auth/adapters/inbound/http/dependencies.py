@@ -55,8 +55,9 @@ def get_current_principal(
 ) -> Principal:
     """Resolve the authenticated principal from the Bearer token.
 
-    Performs a DB read on every call to ensure bans and permission changes
-    take effect immediately, without waiting for the JWT to expire.
+    Delegates token validation and principal resolution to ``AuthService``.
+    Resolved principals may be cached for up to 30 seconds, so emergency
+    permission revocations are not guaranteed to take effect instantly.
 
     Args:
         request: The current FastAPI ``Request``, used to access the container.

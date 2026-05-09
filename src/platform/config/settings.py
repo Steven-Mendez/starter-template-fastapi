@@ -65,6 +65,10 @@ class AppSettings(BaseSettings):
     # When set, the auth rate limiter uses Redis so the limit applies
     # globally across all replicas; otherwise an in-process limiter is used.
     auth_redis_url: str | None = None
+    # TTL in seconds for the in-process principal cache. Set to 0 to disable
+    # caching entirely. When Redis is configured, a Redis-backed cache is used
+    # instead and this value controls its TTL.
+    auth_principal_cache_ttl_seconds: int = 30
 
     @model_validator(mode="after")
     def _validate_production_settings(self) -> "AppSettings":
@@ -83,6 +87,8 @@ class AppSettings(BaseSettings):
             errors.append("APP_AUTH_COOKIE_SECURE must be True in production")
         if self.enable_docs:
             errors.append("APP_ENABLE_DOCS must be False in production")
+        if not self.auth_rbac_enabled:
+            errors.append("APP_AUTH_RBAC_ENABLED must be True in production")
         if errors:
             raise ValueError(
                 "Production configuration errors:\n"

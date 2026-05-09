@@ -38,3 +38,9 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
+      - id: pip-audit
+        name: pip-audit (dependency vulnerability scan)
+        entry: uv run pip-audit
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

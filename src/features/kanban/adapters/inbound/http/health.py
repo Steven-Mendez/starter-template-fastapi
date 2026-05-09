@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import redis as redis_lib
-from fastapi import APIRouter
+from fastapi import APIRouter, Response, status
 
 from src.features.kanban.adapters.inbound.http.dependencies import (
     CheckReadinessUseCaseDep,
@@ -25,6 +25,7 @@ def health(
     use_case: CheckReadinessUseCaseDep,
     settings: AppSettingsDep,
     redis_client: AppRedisClientDep,
+    response: Response,
 ) -> HealthRead:
     """Report whether the persistence backend and optional Redis are reachable.
 
@@ -47,6 +48,8 @@ def health(
             redis_health = HealthRedis(configured=True, ready=False)
 
     overall_ok = ready and (redis_health is None or redis_health.ready)
+    if not overall_ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthRead(
         status="ok" if overall_ok else "degraded",
         persistence=HealthPersistence(

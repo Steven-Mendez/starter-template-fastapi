@@ -233,3 +233,79 @@ name = "Kanban tests scope"
 type = "forbidden"
 source_modules = ["src.features.kanban.tests"]
 forbidden_modules = []
+
+# === Auth feature contracts ===
+
+# Domain purity: no application, adapters, framework, or other feature imports.
+[[tool.importlinter.contracts]]
+name = "Auth domain: pure"
+type = "forbidden"
+source_modules = ["src.features.auth.domain"]
+forbidden_modules = [
+    "src.features.auth.application",
+    "src.features.auth.adapters",
+    "src.features.auth.composition",
+    "src.platform.api",
+    "src.platform.persistence",
+    "src.platform.config",
+    "fastapi",
+    "starlette",
+    "sqlmodel",
+    "sqlalchemy",
+    "uvicorn",
+    "httpx",
+    "alembic",
+    "pydantic_settings",
+    "psycopg",
+    "pydantic",
+]
+
+# Application: no adapters/composition/api/framework. Pydantic allowed for DTOs.
+# allow_indirect_imports=true because jwt_tokens.py depends on platform.config.settings
+# which pulls in pydantic_settings transitively — that transitive dependency is acceptable.
+[[tool.importlinter.contracts]]
+name = "Auth application: framework-free"
+type = "forbidden"
+source_modules = ["src.features.auth.application"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "src.features.auth.adapters",
+    "src.features.auth.composition",
+    "src.platform.api",
+    "src.platform.persistence",
+    "fastapi",
+    "starlette",
+    "sqlmodel",
+    "sqlalchemy",
+    "uvicorn",
+    "httpx",
+    "alembic",
+    "pydantic_settings",
+    "psycopg",
+]
+
+# Inbound adapters do not reach into outbound adapters or domain directly.
+[[tool.importlinter.contracts]]
+name = "Auth inbound adapter: no outbound bypass"
+type = "forbidden"
+source_modules = ["src.features.auth.adapters.inbound"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "src.features.auth.adapters.outbound",
+    "src.features.auth.domain",
+    "sqlmodel",
+    "sqlalchemy",
+    "alembic",
+    "uvicorn",
+    "psycopg",
+]
+
+# Inward dependency direction inside Auth.
+[[tool.importlinter.contracts]]
+name = "Auth inward dependency direction"
+type = "layers"
+layers = [
+    "src.features.auth.adapters",
+    "src.features.auth.application",
+    "src.features.auth.domain",
+]

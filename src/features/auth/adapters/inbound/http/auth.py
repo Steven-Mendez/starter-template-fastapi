@@ -151,6 +151,9 @@ def _check_rate_limit(request: Request, key: str) -> None:
 )
 def register(body: RegisterRequest, request: Request) -> UserPublic:
     """Register a new user account and return the created user's public data."""
+    # Registration hashes passwords, so limit by IP instead of email to avoid
+    # trivial bypass with random addresses.
+    _check_rate_limit(request, "registration")
     try:
         user = get_auth_container(request).auth_service.register(
             email=body.email,
