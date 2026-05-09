@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,7 +44,7 @@ class AppSettings(BaseSettings):
     auth_access_token_expire_minutes: int = 15
     auth_refresh_token_expire_days: int = 30
     auth_cookie_secure: bool = False
-    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "strict"
     auth_password_reset_token_expire_minutes: int = 30
     auth_email_verify_token_expire_minutes: int = 1440
     auth_rate_limit_enabled: bool = True
@@ -64,6 +65,30 @@ class AppSettings(BaseSettings):
     # When set, the auth rate limiter uses Redis so the limit applies
     # globally across all replicas; otherwise an in-process limiter is used.
     auth_redis_url: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_production_settings(self) -> "AppSettings":
+        """Refuse to start in production if critical security settings are missing."""
+        if self.environment != "production":
+            return self
+        errors: list[str] = []
+        if not self.auth_jwt_secret_key:
+            errors.append("APP_AUTH_JWT_SECRET_KEY must be set in production")
+        if self.cors_origins == ["*"] or "*" in self.cors_origins:
+            errors.append(
+                "APP_CORS_ORIGINS must not be ['*'] in production; "
+                "provide explicit allowed origins"
+            )
+        if not self.auth_cookie_secure:
+            errors.append("APP_AUTH_COOKIE_SECURE must be True in production")
+        if self.enable_docs:
+            errors.append("APP_ENABLE_DOCS must be False in production")
+        if errors:
+            raise ValueError(
+                "Production configuration errors:\n"
+                + "\n".join(f"  - {e}" for e in errors)
+            )
+        return self
 
 
 @lru_cache

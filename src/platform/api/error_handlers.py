@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.platform.api.dependencies.container import DependencyContainerNotReadyError
 from src.platform.api.error_handlers_app_exception import ApplicationHTTPException
+from src.platform.config.settings import AppSettings
 
 PROBLEM_JSON = "application/problem+json"
 
@@ -84,7 +85,7 @@ def problem_json_response(
     )
 
 
-def register_problem_details(app: FastAPI) -> None:
+def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
     """Install the platform-wide exception handlers that produce RFC 9457 responses.
 
     Covers the dependency-container readiness error, application-level
@@ -133,12 +134,25 @@ def register_problem_details(app: FastAPI) -> None:
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        if settings.environment != "production":
+            extra: dict[str, Any] = {"errors": exc.errors()}
+        else:
+            logger.warning(
+                json.dumps(
+                    {
+                        "request_id": getattr(request.state, "request_id", None),
+                        "path": request.url.path,
+                        "validation_errors": exc.errors(),
+                    }
+                )
+            )
+            extra = {}
         return problem_json_response(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             request=request,
             title=_status_title(status.HTTP_422_UNPROCESSABLE_CONTENT),
             detail="Request validation failed",
-            extra={"errors": exc.errors()},
+            extra=extra if extra else None,
         )
 
     @app.exception_handler(Exception)

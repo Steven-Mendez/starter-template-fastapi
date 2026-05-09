@@ -1,14 +1,16 @@
 """Rate limiters for auth endpoints.
 
 Two interchangeable implementations are provided: an in-process fixed-window
-limiter for single-instance deployments and a Redis-backed limiter for
-horizontally scaled deployments. Both expose the same ``check(key)``
-contract so the application layer can swap them via configuration.
+limiter for single-instance deployments and a Redis-backed sliding-window
+limiter for horizontally scaled deployments. Both expose the same
+``check(key)`` contract so the application layer can swap them via
+configuration.
 """
 
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -16,13 +18,46 @@ import redis as redis_lib
 
 from src.features.auth.application.errors import RateLimitExceededError
 
+# Lua script: atomic sliding-window check using a sorted set.
+#
+# Arguments:
+#   KEYS[1]  - the rate-limit key (e.g. "rate:/auth/login:1.2.3.4:user@x.com")
+#   ARGV[1]  - current time in milliseconds (integer)
+#   ARGV[2]  - window size in milliseconds (integer)
+#   ARGV[3]  - max allowed attempts (integer)
+#   ARGV[4]  - unique member for this attempt (prevents duplicate scores)
+#
+# Returns: 1 if rate-limited, 0 if allowed.
+_SLIDING_WINDOW_SCRIPT = """
+local key        = KEYS[1]
+local now_ms     = tonumber(ARGV[1])
+local window_ms  = tonumber(ARGV[2])
+local max_att    = tonumber(ARGV[3])
+local member     = ARGV[4]
+local window_ttl = math.ceil(window_ms / 1000)
+
+redis.call('ZREMRANGEBYSCORE', key, 0, now_ms - window_ms)
+local count = redis.call('ZCARD', key)
+if count >= max_att then
+    return 1
+end
+redis.call('ZADD', key, now_ms, member)
+redis.call('EXPIRE', key, window_ttl)
+return 0
+"""
+
 
 @dataclass(slots=True)
 class FixedWindowRateLimiter:
     """In-process fixed-window rate limiter.
 
     Counts attempts per key in a local dictionary. Suitable for single-instance
-    deployments. For multi-instance deployments use RedisRateLimiter instead.
+    deployments only.
+
+    WARNING: This limiter is NOT distributed. In horizontally scaled
+    (multi-replica) deployments each replica maintains an independent counter,
+    so the effective rate limit is max_attempts * num_replicas. Set
+    APP_AUTH_REDIS_URL to use RedisRateLimiter for global enforcement.
 
     Attributes:
         max_attempts: Maximum number of allowed attempts within the window.
@@ -66,10 +101,16 @@ class FixedWindowRateLimiter:
 
 
 class RedisRateLimiter:
-    """Distributed fixed-window rate limiter backed by Redis.
+    """Distributed sliding-window rate limiter backed by Redis.
 
-    Uses INCR + EXPIRE so all replicas share a single counter per key,
-    making the limit apply globally across the whole deployment.
+    Uses a sorted set per key and an atomic Lua script to count attempts
+    within a rolling time window. All replicas share the same counters,
+    so the limit applies globally across the entire deployment.
+
+    The sliding window is more accurate than a fixed window: it prevents
+    double-rate-limit bursts at window boundaries (e.g. 5 requests at the
+    end of one window + 5 at the start of the next would both be allowed
+    by a fixed window, but blocked here).
     """
 
     def __init__(
@@ -91,7 +132,7 @@ class RedisRateLimiter:
         """
         self._client = client
         self._max_attempts = max_attempts
-        self._window_seconds = window_seconds
+        self._window_ms = window_seconds * 1000
 
     @classmethod
     def from_url(
@@ -114,8 +155,6 @@ class RedisRateLimiter:
         Raises:
             redis.exceptions.ConnectionError: If the Redis server is not reachable.
         """
-        # decode_responses=False keeps bytes round-tripping consistent with
-        # the INCR return type (int), avoiding extra decode/encode overhead.
         client: redis_lib.Redis = redis_lib.Redis.from_url(url, decode_responses=False)  # type: ignore[type-arg]
         # Ping at construction so a misconfigured URL fails loudly at startup
         # rather than silently on the first auth request.
@@ -125,22 +164,32 @@ class RedisRateLimiter:
     def check(self, key: str) -> None:
         """Record one attempt for key and raise if the limit is exceeded.
 
+        The check-and-record operation is atomic via a Lua script, so there
+        are no race conditions between concurrent requests.
+
         Args:
             key: Unique identifier for the client being rate-limited
                  (e.g. ``"path:ip:email"``).
 
         Raises:
             RateLimitExceededError: When the attempt count within the current
-                window exceeds ``max_attempts``.
+                sliding window exceeds ``max_attempts``.
         """
-        redis_key = f"rate:{key}"
-        # Sync Redis client returns int; stubs may union with coroutine types.
-        count = cast(int, self._client.incr(redis_key))
-        if count == 1:
-            # Set expiry only on the first increment so the window is anchored
-            # at the first attempt, matching the in-memory limiter's behaviour.
-            self._client.expire(redis_key, self._window_seconds)
-        if count > self._max_attempts:
+        now_ms = int(time.time() * 1000)
+        member = f"{now_ms}:{uuid.uuid4()}"
+        result = cast(
+            int,
+            self._client.eval(
+                _SLIDING_WINDOW_SCRIPT,
+                1,
+                f"rate:{key}",
+                now_ms,
+                self._window_ms,
+                self._max_attempts,
+                member,
+            ),
+        )
+        if result == 1:
             raise RateLimitExceededError("Rate limit exceeded")
 
     def reset(self) -> None:

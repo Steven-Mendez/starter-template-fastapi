@@ -85,6 +85,8 @@ def _settings(settings: AppSettings) -> AppSettings:
             "auth_return_internal_tokens": True,
             "auth_rate_limit_enabled": False,
             "auth_cookie_secure": False,
+            # Force in-memory limiter so tests don't require a running Redis.
+            "auth_redis_url": None,
         }
     )
 

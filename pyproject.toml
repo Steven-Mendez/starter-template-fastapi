@@ -3,18 +3,19 @@ name = "starter-template-fastapi"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
-    "alembic>=1.18.4",
-    "argon2-cffi>=25.1.0",
-    "fastapi>=0.135.3",
-    "psycopg[binary]>=3.3.3",
-    "pydantic>=2.10",
-    "pydantic-settings>=2.13.1",
-    "pyjwt>=2.12.1",
-    "redis>=7.4.0",
-    "sqlmodel>=0.0.38",
-    "uvicorn[standard]>=0.44.0",
+    "alembic~=1.18",
+    "argon2-cffi~=25.1",
+    "cachetools~=5.3",
+    "fastapi~=0.135",
+    "psycopg[binary]~=3.3",
+    "pydantic~=2.10",
+    "pydantic-settings~=2.13",
+    "pyjwt~=2.12",
+    "redis~=7.4",
+    "sqlmodel~=0.0.38",
+    "uvicorn[standard]~=0.44",
 ]
 
 [dependency-groups]
@@ -35,6 +36,9 @@ dev = [
     "pytest-sugar>=1.1.1",
     "ruff>=0.14.0",
     "testcontainers[postgresql]>=4.14.2",
+    "pip-audit>=2.7.0",
+    "types-cachetools>=5.3",
+    "lupa>=2.2",
 ]
 
 [tool.fastapi]
@@ -105,13 +109,13 @@ exclude = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.12"
 files = ["."]
 exclude = ["^openspec/", "^\\.cursor/"]
 warn_unused_configs = true

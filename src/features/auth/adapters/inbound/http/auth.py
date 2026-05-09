@@ -113,6 +113,9 @@ def _enforce_cookie_origin(request: Request) -> None:
         return
     settings = get_auth_container(request).settings
     if settings.cors_origins == ["*"] or "*" in settings.cors_origins:
+        # Wildcard CORS is only permitted in development/test environments.
+        # Production settings validation rejects cors_origins=["*"], so this
+        # branch is unreachable in production.
         return
     if origin not in settings.cors_origins:
         raise HTTPException(

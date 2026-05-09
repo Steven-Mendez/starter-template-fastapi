@@ -47,7 +47,7 @@ class PasswordService:
         """
         try:
             return self._hasher.verify(password_hash, password)
-        except VerifyMismatchError, VerificationError:
+        except (VerifyMismatchError, VerificationError):
             return False
 
     def needs_rehash(self, password_hash: str) -> bool:

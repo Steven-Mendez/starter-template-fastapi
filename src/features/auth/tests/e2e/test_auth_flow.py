@@ -174,3 +174,21 @@ def test_password_reset_and_email_verification(client: TestClient) -> None:
     me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
     assert me.json()["is_verified"] is True
+
+
+def test_refresh_token_rejected_after_logout(client: TestClient) -> None:
+    _register(client)
+    _login(client)
+
+    token_before_logout = client.cookies.get("refresh_token")
+    assert token_before_logout is not None
+
+    logout_resp = client.post("/auth/logout")
+    assert logout_resp.status_code == 200
+    assert client.cookies.get("refresh_token") is None
+
+    post_logout_attempt = client.post(
+        "/auth/refresh",
+        cookies={"refresh_token": token_before_logout},
+    )
+    assert post_logout_attempt.status_code == 401

@@ -14,7 +14,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from src.platform.api.error_handlers import register_problem_details
+from src.platform.api.middleware.content_size_limit import ContentSizeLimitMiddleware
 from src.platform.api.middleware.request_context import RequestContextMiddleware
+from src.platform.api.middleware.security_headers import SecurityHeadersMiddleware
 from src.platform.api.root import root_router
 from src.platform.config.settings import AppSettings
 
@@ -37,12 +39,14 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
     )
 
     if settings.cors_origins == ["*"]:
-        # Starlette cannot combine credentialed CORS with a literal wildcard
-        # origin, so the regex path makes it echo the requesting origin.
+        # Wildcard origins cannot be combined with allow_credentials=True per the
+        # CORS spec. This open mode is intentional for local development only.
+        # Production settings validation (AppSettings._validate_production_settings)
+        # rejects cors_origins=["*"], so this branch is unreachable in production.
         app.add_middleware(
             CORSMiddleware,
-            allow_origin_regex=".*",
-            allow_credentials=True,
+            allow_origins=["*"],
+            allow_credentials=False,
             allow_methods=["*"],
             allow_headers=["*"],
         )
@@ -61,7 +65,12 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
             allowed_hosts=settings.trusted_hosts,
         )
 
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        hsts=(settings.environment == "production"),
+    )
+    app.add_middleware(ContentSizeLimitMiddleware, max_bytes=4 * 1024 * 1024)
     app.add_middleware(RequestContextMiddleware)
-    register_problem_details(app)
+    register_problem_details(app, settings)
     app.include_router(root_router)
     return app

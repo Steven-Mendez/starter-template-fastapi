@@ -35,6 +35,23 @@ def test_request_id_echoed(test_settings: AppSettings) -> None:
     assert resp.headers["X-Request-ID"] == "abc-123"
 
 
+def test_invalid_request_id_is_replaced(test_settings: AppSettings) -> None:
+    with TestClient(_ping_app(test_settings)) as c:
+        resp = c.get("/__ping", headers={"X-Request-ID": "<script>alert(1)</script>"})
+    returned_id = resp.headers["X-Request-ID"]
+    assert "<script>" not in returned_id
+    import uuid
+
+    uuid.UUID(returned_id)
+
+
+def test_too_long_request_id_is_replaced(test_settings: AppSettings) -> None:
+    long_id = "a" * 65
+    with TestClient(_ping_app(test_settings)) as c:
+        resp = c.get("/__ping", headers={"X-Request-ID": long_id})
+    assert resp.headers["X-Request-ID"] != long_id
+
+
 def test_access_log_emitted(
     test_settings: AppSettings, caplog: pytest.LogCaptureFixture
 ) -> None:

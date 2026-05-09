@@ -14,8 +14,16 @@ class HealthPersistence(BaseModel):
     ready: bool
 
 
+class HealthRedis(BaseModel):
+    """Redis liveness payload included inside :class:`HealthRead` when configured."""
+
+    configured: bool
+    ready: bool
+
+
 class HealthRead(BaseModel):
     """Top-level response shape for the readiness endpoint."""
 
     status: Literal["ok", "degraded"]
     persistence: HealthPersistence
+    redis: HealthRedis | None = None

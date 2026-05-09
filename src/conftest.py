@@ -17,4 +17,7 @@ def test_settings() -> AppSettings:
         postgresql_dsn="postgresql+psycopg://test:test@localhost:5432/kanban_test",
         health_persistence_backend="postgresql",
         write_api_key=None,
+        # Explicitly null out the Redis URL so tests never require a running
+        # Redis instance (the .env file may configure one for local dev).
+        auth_redis_url=None,
     )

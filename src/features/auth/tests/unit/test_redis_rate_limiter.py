@@ -18,7 +18,7 @@ pytestmark = pytest.mark.unit
 
 def _limiter(max_attempts: int = 3, window_seconds: int = 60) -> RedisRateLimiter:
     """Build a limiter wired to a fresh in-process fake Redis client."""
-    client = fakeredis.FakeRedis()
+    client = fakeredis.FakeRedis(lua_modules=set())
     return RedisRateLimiter(
         client, max_attempts=max_attempts, window_seconds=window_seconds
     )
@@ -57,7 +57,7 @@ def test_reset_clears_all_counters() -> None:
 
 
 def test_window_expiry_allows_new_attempts() -> None:
-    client = fakeredis.FakeRedis()
+    client = fakeredis.FakeRedis(lua_modules=set())
     limiter = RedisRateLimiter(client, max_attempts=1, window_seconds=1)
     limiter.check("client")
 
@@ -69,7 +69,7 @@ def test_window_expiry_allows_new_attempts() -> None:
 
 def test_two_limiter_instances_share_redis_global_counter() -> None:
     """Two app instances sharing one Redis enforce a combined cap (replica scenario)."""
-    shared = fakeredis.FakeRedis(decode_responses=False)
+    shared = fakeredis.FakeRedis(decode_responses=False, lua_modules=set())
     limiter_a = RedisRateLimiter(shared, max_attempts=3, window_seconds=60)
     limiter_b = RedisRateLimiter(shared, max_attempts=3, window_seconds=60)
     limiter_a.check("client")

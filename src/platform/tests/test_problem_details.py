@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import (
@@ -96,3 +97,41 @@ def test_dependency_container_not_ready(
     assert resp.status_code == 503
     body = resp.json()
     assert body["code"] == "dependency_container_not_ready"
+
+
+def _build_with_validate_endpoint(settings: AppSettings) -> FastAPI:
+    app = build_fastapi_app(settings)
+
+    class _Body(BaseModel):
+        value: int
+
+    @app.post("/__validate")
+    def _validate(body: _Body) -> dict[str, int]:
+        return {"value": body.value}
+
+    return app
+
+
+def test_validation_error_in_development_returns_field_details(
+    test_settings: AppSettings,
+) -> None:
+    dev_settings = test_settings.model_copy(update={"environment": "development"})
+    with TestClient(_build_with_validate_endpoint(dev_settings)) as c:
+        resp = c.post("/__validate", json={"value": "not-an-int"})
+    assert resp.status_code == 422
+    body = resp.json()
+    assert "errors" in body
+    assert isinstance(body["errors"], list)
+
+
+def test_validation_error_in_test_env_returns_field_details(
+    test_settings: AppSettings,
+) -> None:
+    # Non-production environments (dev and test) both expose field-level details.
+    assert test_settings.environment == "test"
+    with TestClient(_build_with_validate_endpoint(test_settings)) as c:
+        resp = c.post("/__validate", json={"value": "not-an-int"})
+    assert resp.status_code == 422
+    body = resp.json()
+    assert "errors" in body
+    assert isinstance(body["errors"], list)

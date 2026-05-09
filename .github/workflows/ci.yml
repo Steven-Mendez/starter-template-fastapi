@@ -25,6 +25,24 @@ jobs:
       - name: Quality + tests
         run: make ci
 
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Python
+        run: uv python install
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Audit dependencies for known vulnerabilities
+        run: uv run pip-audit
+
   integration:
     needs: quality
     runs-on: ubuntu-latest

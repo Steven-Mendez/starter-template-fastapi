@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import AsyncIterator
 
+import redis as redis_lib
 from fastapi import FastAPI
 
 from src.features.auth.composition import (
@@ -87,6 +88,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         set_app_container(lifespan_app, _PlatformAppContainer(settings=app_settings))
         attach_auth_container(lifespan_app, auth)
         attach_kanban_container(lifespan_app, kanban)
+
+        # Shared Redis client used by health probes and other platform consumers.
+        # Stored on app.state so it can be injected without coupling features.
+        redis_client: redis_lib.Redis | None = None  # type: ignore[type-arg]
+        if app_settings.auth_redis_url:
+            redis_client = redis_lib.Redis.from_url(app_settings.auth_redis_url)
+        lifespan_app.state.redis_client = redis_client
+
         try:
             yield
         finally:
@@ -94,7 +103,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             # (e.g. connection pools) are closed after the services that use them.
             kanban.shutdown()
             auth.shutdown()
+            if redis_client is not None:
+                redis_client.close()
             lifespan_app.state.container = None
+            lifespan_app.state.redis_client = None
 
     app.router.lifespan_context = lifespan
     return app

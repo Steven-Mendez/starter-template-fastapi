@@ -9,9 +9,12 @@ already-issued tokens.
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
+
+from cachetools import TTLCache
 
 from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     PermissionTable,
@@ -97,6 +100,11 @@ class AuthService:
         self._settings = settings
         self._passwords = password_service
         self._tokens = token_service
+        # Short-TTL cache keyed by token_id (JWT jti) to avoid a DB round-trip
+        # on every authenticated request. TTL matches the acceptable window for
+        # ban/deactivation propagation. The lock makes TTLCache thread-safe.
+        self._principal_cache: TTLCache[str, Principal] = TTLCache(maxsize=1000, ttl=30)
+        self._principal_cache_lock = threading.Lock()
         # Pre-compute a dummy hash at startup so that login attempts for
         # non-existent emails spend the same time verifying a hash as for
         # real users, preventing user-enumeration via timing differences.
@@ -221,10 +229,10 @@ class AuthService:
     def principal_from_access_token(self, token: str) -> Principal:
         """Validate a JWT and resolve the current identity from the database.
 
-        Reading from the DB on every request is the deliberate trade-off for
-        immediate propagation of bans and permission changes. The
-        ``authz_version`` claim is compared against the DB value to detect
-        tokens that are structurally valid but carry a stale permission set.
+        Results are cached for up to 30 seconds keyed by the token's ``jti``
+        claim to avoid a DB round-trip on every authenticated request. The
+        cache is skipped on a miss and on permission changes (``authz_version``
+        mismatch), which immediately evicts the stale entry.
 
         Args:
             token: Encoded JWT access token received from the client.
@@ -240,19 +248,42 @@ class AuthService:
                 the current DB value (permission set has changed).
         """
         payload = self._tokens.decode(token)
-        # A DB read on every request is the deliberate trade-off for immediate
-        # ban and permission-change propagation. Pure stateless JWTs would not
-        # catch a revoked or deactivated user until the token expired.
+        token_id = payload.token_id
+
+        with self._principal_cache_lock:
+            cached = self._principal_cache.get(token_id)
+
+        if cached is not None:
+            return cached
+
         principal = self._repo.get_principal(payload.subject)
         if principal is None:
             raise InvalidTokenError("Could not validate credentials")
         if not principal.is_active:
             raise InactiveUserError("Inactive user")
-        # Comparing authz_version invalidates tokens whose permission set has
-        # changed since issuance, forcing a re-login without a token blacklist.
         if principal.authz_version != payload.authz_version:
+            # Evict any stale entry and reject the request so the client must
+            # re-authenticate with a freshly issued token.
+            with self._principal_cache_lock:
+                self._principal_cache.pop(token_id, None)
             raise StaleTokenError("Stale authorization token")
+
+        with self._principal_cache_lock:
+            self._principal_cache[token_id] = principal
         return principal
+
+    def invalidate_principal_cache_for_user(self, user_id: UUID) -> None:
+        """Evict all cached principals for ``user_id``.
+
+        Called by ``logout_all`` so that sessions are denied immediately
+        rather than waiting for the 30-second TTL to elapse.
+        """
+        with self._principal_cache_lock:
+            stale = [
+                k for k, v in self._principal_cache.items() if v.user_id == user_id
+            ]
+            for k in stale:
+                del self._principal_cache[k]
 
     def refresh(
         self,
@@ -353,6 +384,7 @@ class AuthService:
             user_agent: Client User-Agent for audit logging.
         """
         self._repo.revoke_user_refresh_tokens(user_id)
+        self.invalidate_principal_cache_for_user(user_id)
         self._repo.record_audit_event(
             event_type="auth.logout_all",
             user_id=user_id,
@@ -492,6 +524,7 @@ class AuthService:
             raise InvalidTokenError("Invalid token")
         self._repo.set_user_verified(record.user_id)
         self._repo.mark_internal_token_used(record.id)
+        self.invalidate_principal_cache_for_user(record.user_id)
         self._repo.record_audit_event(
             event_type="auth.email_verified",
             user_id=record.user_id,

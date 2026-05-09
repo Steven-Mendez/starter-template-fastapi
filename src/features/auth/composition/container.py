@@ -9,6 +9,7 @@ behaviour.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Union
@@ -24,6 +25,8 @@ from src.features.auth.application.rate_limit import (
 )
 from src.features.auth.application.services import AuthService, RBACService
 from src.platform.config.settings import AppSettings
+
+_logger = logging.getLogger(__name__)
 
 RateLimiter = Union[FixedWindowRateLimiter, RedisRateLimiter]
 
@@ -89,6 +92,11 @@ def build_auth_container(
         limiter = RedisRateLimiter.from_url(settings.auth_redis_url)
     else:
         limiter = FixedWindowRateLimiter()
+        if settings.auth_rate_limit_enabled:
+            _logger.warning(
+                "Using in-memory rate limiter. This is not distributed — "
+                "set APP_AUTH_REDIS_URL to enforce limits across all replicas."
+            )
 
     def _shutdown() -> None:
         repo.close()
