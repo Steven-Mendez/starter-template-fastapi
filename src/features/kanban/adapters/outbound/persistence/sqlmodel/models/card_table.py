@@ -29,6 +29,11 @@ class CardTable(SQLModel, table=True):
             initially="DEFERRED",
         ),
         sa.CheckConstraint("position >= 0", name="ck_cards_position_non_negative"),
+        sa.Index(
+            "ix_cards_active",
+            "id",
+            postgresql_where=sa.text("deleted_at IS NULL"),
+        ),
     )
 
     id: str = Field(primary_key=True)

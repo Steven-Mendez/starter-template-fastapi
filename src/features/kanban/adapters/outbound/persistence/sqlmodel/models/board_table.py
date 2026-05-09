@@ -18,6 +18,13 @@ class BoardTable(SQLModel, table=True):
     """
 
     __tablename__ = "boards"
+    __table_args__ = (
+        sa.Index(
+            "ix_boards_active",
+            "id",
+            postgresql_where=sa.text("deleted_at IS NULL"),
+        ),
+    )
 
     id: str = Field(primary_key=True)
     title: str

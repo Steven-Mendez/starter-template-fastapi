@@ -14,6 +14,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from sqlmodel import Field, SQLModel
 
 
@@ -115,9 +116,13 @@ class UserRoleTable(SQLModel, table=True):
     """
 
     __tablename__ = "user_roles"
+    __table_args__ = (
+        sa.Index("ix_user_roles_user_id", "user_id"),
+        sa.Index("ix_user_roles_role_id", "role_id"),
+    )
 
-    user_id: UUID = Field(foreign_key="users.id", primary_key=True)
-    role_id: UUID = Field(foreign_key="roles.id", primary_key=True)
+    user_id: UUID = Field(foreign_key="users.id", primary_key=True, ondelete="CASCADE")
+    role_id: UUID = Field(foreign_key="roles.id", primary_key=True, ondelete="CASCADE")
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
@@ -128,9 +133,15 @@ class RolePermissionTable(SQLModel, table=True):
     """Join table linking roles to their granted permissions."""
 
     __tablename__ = "role_permissions"
+    __table_args__ = (
+        sa.Index("ix_role_permissions_role_id", "role_id"),
+        sa.Index("ix_role_permissions_permission_id", "permission_id"),
+    )
 
-    role_id: UUID = Field(foreign_key="roles.id", primary_key=True)
-    permission_id: UUID = Field(foreign_key="permissions.id", primary_key=True)
+    role_id: UUID = Field(foreign_key="roles.id", primary_key=True, ondelete="CASCADE")
+    permission_id: UUID = Field(
+        foreign_key="permissions.id", primary_key=True, ondelete="CASCADE"
+    )
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
@@ -151,7 +162,9 @@ class RefreshTokenTable(SQLModel, table=True):
     __table_args__ = (sa.UniqueConstraint("token_hash", name="uq_refresh_tokens_hash"),)
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_id: UUID = Field(foreign_key="users.id", index=True, nullable=False)
+    user_id: UUID = Field(
+        foreign_key="users.id", index=True, nullable=False, ondelete="CASCADE"
+    )
     token_hash: str = Field(index=True, nullable=False)
     family_id: UUID = Field(index=True, nullable=False)
     expires_at: datetime = Field(
@@ -162,7 +175,7 @@ class RefreshTokenTable(SQLModel, table=True):
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True),
     )
     replaced_by_token_id: UUID | None = Field(
-        default=None, foreign_key="refresh_tokens.id"
+        default=None, foreign_key="refresh_tokens.id", ondelete="SET NULL"
     )
     created_at: datetime = Field(
         default_factory=utc_now,
@@ -178,13 +191,21 @@ class AuthAuditEventTable(SQLModel, table=True):
     __tablename__ = "auth_audit_events"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_id: UUID | None = Field(default=None, foreign_key="users.id", index=True)
+    user_id: UUID | None = Field(
+        default=None, foreign_key="users.id", index=True, ondelete="SET NULL"
+    )
     event_type: str = Field(index=True, nullable=False)
     ip_address: str | None = Field(default=None)
     user_agent: str | None = Field(default=None)
     event_metadata: dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=sa.Column("metadata", sa.JSON(), nullable=False),
+        sa_column=sa.Column(
+            "metadata",
+            sa.JSON().with_variant(
+                postgresql.JSONB(astext_type=sa.Text()), "postgresql"
+            ),
+            nullable=False,
+        ),
     )
     created_at: datetime = Field(
         default_factory=utc_now,
@@ -206,7 +227,9 @@ class AuthInternalTokenTable(SQLModel, table=True):
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_id: UUID | None = Field(default=None, foreign_key="users.id", index=True)
+    user_id: UUID | None = Field(
+        default=None, foreign_key="users.id", index=True, ondelete="CASCADE"
+    )
     purpose: str = Field(index=True, nullable=False)
     token_hash: str = Field(index=True, nullable=False)
     expires_at: datetime = Field(
