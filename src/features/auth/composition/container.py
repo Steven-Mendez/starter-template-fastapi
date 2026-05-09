@@ -17,6 +17,7 @@ from typing import Union
 from src.features.auth.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
+from src.features.auth.application.auth_service import AuthService
 from src.features.auth.application.cache import (
     InProcessPrincipalCache,
     PrincipalCachePort,
@@ -28,7 +29,7 @@ from src.features.auth.application.rate_limit import (
     FixedWindowRateLimiter,
     RedisRateLimiter,
 )
-from src.features.auth.application.services import AuthService, RBACService
+from src.features.auth.application.rbac_service import RBACService
 from src.platform.config.settings import AppSettings
 
 _logger = logging.getLogger(__name__)

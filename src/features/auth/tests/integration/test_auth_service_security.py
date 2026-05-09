@@ -10,11 +10,12 @@ import pytest
 from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
+from src.features.auth.application.authorization import ensure_permissions
 from src.features.auth.application.errors import (
     EmailNotVerifiedError,
     PermissionDeniedError,
 )
-from src.features.auth.application.services import RBACService, ensure_permissions
+from src.features.auth.application.rbac_service import RBACService
 from src.features.auth.application.types import Principal
 from src.features.auth.composition.container import build_auth_container
 from src.platform.config.settings import AppSettings

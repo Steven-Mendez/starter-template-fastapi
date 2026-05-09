@@ -1,8 +1,17 @@
-"""Outbound port protocol for auth persistence.
+"""Outbound port protocols for auth persistence.
 
-The application layer depends on this protocol, never on the concrete
-SQLModel adapter, keeping the domain and application layers free of
+The application layer depends on these protocols, never on the concrete
+SQLModel adapter, keeping domain and application layers free of
 framework-specific types.
+
+Sub-protocols follow the Interface Segregation Principle — each service
+declares only the slice of persistence it actually uses:
+
+  AuthService  → UserRepositoryPort + TokenRepositoryPort + AuditRepositoryPort
+  RBACService  → RBACRepositoryPort + AuditRepositoryPort + (user read/authz)
+
+``AuthRepositoryPort`` is the full composite used by the concrete adapter and
+the container; it inherits all sub-protocols so the existing wiring is unchanged.
 """
 
 from __future__ import annotations
@@ -20,6 +29,8 @@ from src.features.auth.domain.models import (
     Role,
     User,
 )
+
+# ── Transaction protocols ─────────────────────────────────────────────────────
 
 
 class AuthRefreshTokenTransactionPort(Protocol):
@@ -72,10 +83,11 @@ class AuthInternalTokenTransactionPort(Protocol):
     ) -> None: ...
 
 
-class AuthRepositoryPort(Protocol):
-    """All persistence operations the auth application layer requires."""
+# ── Sub-protocols (ISP slices) ────────────────────────────────────────────────
 
-    # ── Users ──────────────────────────────────────────────────────────────
+
+class UserRepositoryPort(Protocol):
+    """Persistence operations scoped to the User aggregate."""
 
     def get_user_by_email(self, email: str) -> User | None: ...
     def get_user_by_id(self, user_id: UUID) -> User | None: ...
@@ -90,42 +102,9 @@ class AuthRepositoryPort(Protocol):
     def list_user_ids_for_role(self, role_id: UUID) -> list[UUID]: ...
     def get_principal(self, user_id: UUID) -> Principal | None: ...
 
-    # ── Roles ───────────────────────────────────────────────────────────────
 
-    def list_roles(self, *, limit: int = 100, offset: int = 0) -> list[Role]: ...
-    def get_role(self, role_id: UUID) -> Role | None: ...
-    def get_role_by_name(self, name: str) -> Role | None: ...
-    def create_role(
-        self, *, name: str, description: str | None = None
-    ) -> Role | None: ...
-    def update_role(
-        self,
-        role_id: UUID,
-        *,
-        name: str | None,
-        description: str | None,
-        is_active: bool | None,
-    ) -> Role | None: ...
-
-    # ── Permissions ─────────────────────────────────────────────────────────
-
-    def list_permissions(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> list[Permission]: ...
-    def get_permission(self, permission_id: UUID) -> Permission | None: ...
-    def get_permission_by_name(self, name: str) -> Permission | None: ...
-    def create_permission(
-        self, *, name: str, description: str | None = None
-    ) -> Permission | None: ...
-
-    # ── Assignments ─────────────────────────────────────────────────────────
-
-    def assign_user_role(self, user_id: UUID, role_id: UUID) -> bool: ...
-    def remove_user_role(self, user_id: UUID, role_id: UUID) -> bool: ...
-    def assign_role_permission(self, role_id: UUID, permission_id: UUID) -> bool: ...
-    def remove_role_permission(self, role_id: UUID, permission_id: UUID) -> bool: ...
-
-    # ── Refresh tokens ───────────────────────────────────────────────────────
+class TokenRepositoryPort(Protocol):
+    """Persistence operations for refresh tokens and single-use internal tokens."""
 
     def create_refresh_token(
         self,
@@ -149,9 +128,6 @@ class AuthRepositoryPort(Protocol):
     ) -> None: ...
     def revoke_refresh_family(self, family_id: UUID) -> None: ...
     def revoke_user_refresh_tokens(self, user_id: UUID) -> None: ...
-
-    # ── Internal tokens ──────────────────────────────────────────────────────
-
     def create_internal_token(
         self,
         *,
@@ -166,7 +142,40 @@ class AuthRepositoryPort(Protocol):
     ) -> InternalToken | None: ...
     def mark_internal_token_used(self, token_id: UUID) -> None: ...
 
-    # ── Audit ────────────────────────────────────────────────────────────────
+
+class RBACRepositoryPort(Protocol):
+    """Persistence operations for roles, permissions, and their assignments."""
+
+    def list_roles(self, *, limit: int = 100, offset: int = 0) -> list[Role]: ...
+    def get_role(self, role_id: UUID) -> Role | None: ...
+    def get_role_by_name(self, name: str) -> Role | None: ...
+    def create_role(
+        self, *, name: str, description: str | None = None
+    ) -> Role | None: ...
+    def update_role(
+        self,
+        role_id: UUID,
+        *,
+        name: str | None,
+        description: str | None,
+        is_active: bool | None,
+    ) -> Role | None: ...
+    def list_permissions(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> list[Permission]: ...
+    def get_permission(self, permission_id: UUID) -> Permission | None: ...
+    def get_permission_by_name(self, name: str) -> Permission | None: ...
+    def create_permission(
+        self, *, name: str, description: str | None = None
+    ) -> Permission | None: ...
+    def assign_user_role(self, user_id: UUID, role_id: UUID) -> bool: ...
+    def remove_user_role(self, user_id: UUID, role_id: UUID) -> bool: ...
+    def assign_role_permission(self, role_id: UUID, permission_id: UUID) -> bool: ...
+    def remove_role_permission(self, role_id: UUID, permission_id: UUID) -> bool: ...
+
+
+class AuditRepositoryPort(Protocol):
+    """Persistence operations for the audit event log."""
 
     def record_audit_event(
         self,
@@ -186,6 +195,22 @@ class AuthRepositoryPort(Protocol):
         limit: int = 100,
     ) -> list[AuditEvent]: ...
 
-    # ── Lifecycle ────────────────────────────────────────────────────────────
+
+# ── Composite port (used by the concrete adapter and AuthContainer) ────────────
+
+
+class AuthRepositoryPort(
+    UserRepositoryPort,
+    TokenRepositoryPort,
+    RBACRepositoryPort,
+    AuditRepositoryPort,
+    Protocol,
+):
+    """Full persistence surface for the auth feature.
+
+    Inherits all sub-protocols. The concrete ``SQLModelAuthRepository``
+    implements this combined interface; services may accept narrower
+    sub-protocol types when that improves testability.
+    """
 
     def close(self) -> None: ...

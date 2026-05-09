@@ -14,11 +14,11 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.features.auth.adapters.inbound.http.errors import raise_http_from_auth_error
+from src.features.auth.application.authorization import ensure_permissions, ensure_roles
 from src.features.auth.application.errors import (
     AuthError,
     PermissionDeniedError,
 )
-from src.features.auth.application.services import ensure_permissions, ensure_roles
 from src.features.auth.application.types import Principal
 from src.features.auth.composition.app_state import get_auth_container
 
