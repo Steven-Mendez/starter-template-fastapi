@@ -1,0 +1,9 @@
+title = "gitleaks config"
+
+[allowlist]
+  description = "Known placeholder values used in CI and local dev that are not real secrets"
+  regexes = [
+    # Hardcoded dummy JWT key used in the Docker smoke-test and the
+    # app-import-smoke Makefile target. It is intentionally public.
+    '''ci-test-secret-key-min-32-chars''',
+  ]

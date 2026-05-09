@@ -21,14 +21,13 @@ jobs:
   branch-protection:
     name: Apply branch protection rules
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      administration: write
-
+    # GITHUB_TOKEN does not have branch-protection write access on personal repos.
+    # Store a classic PAT (repo scope + admin:repo_hook) as REPO_ADMIN_TOKEN.
+    # See: https://github.com/settings/tokens/new?scopes=repo
     steps:
       - name: Protect main branch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
         run: |
           gh api \
             --method PUT \
