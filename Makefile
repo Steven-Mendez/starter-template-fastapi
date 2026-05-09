@@ -2,7 +2,7 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check app-import-smoke ci precommit-install precommit-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports
+.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -36,6 +36,20 @@ app-import-smoke: ## Verify the ASGI entrypoint imports in a fresh process
 	APP_AUTH_JWT_SECRET_KEY=ci-test-secret-key-min-32-chars \
 	APP_ENVIRONMENT=development \
 	uv run python -c "import src.main"
+
+audit: ## Audit dependencies for known vulnerabilities
+	uv run pip-audit
+
+sast: ## Run Bandit static security scan
+	uv run --with bandit bandit -r src \
+		--exclude src/features/auth/tests,src/features/kanban/tests,src/platform/tests \
+		--severity-level medium
+
+migration-check: ## Verify Alembic upgrade/check/downgrade against ephemeral PostgreSQL
+	scripts/migration-check.sh
+
+docker-smoke: ## Build and smoke-test the runtime Docker image
+	scripts/docker-smoke.sh
 
 test: ## Run unit + e2e tests (no docker)
 	uv run pytest -m "not integration"
@@ -88,11 +102,16 @@ clean-reports: ## Remove generated reports/ and .coverage artifacts
 
 ci: quality test test-integration ## Full gate: quality + unit + e2e + integration
 
-precommit-install: ## Install git pre-commit and pre-push hooks
-	uv run pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push
+ci-local: quality app-import-smoke test test-integration migration-check audit sast docker-smoke ## Local pre-push gate mirroring CI jobs
 
-precommit-run: ## Run all pre-commit hooks
-	uv run pre-commit run --all-files
+precommit-install: ## Install git pre-commit and pre-push hooks
+	uv run pre-commit install --install-hooks
+
+precommit-run: ## Run pre-commit-stage hooks on all files
+	uv run pre-commit run --hook-stage pre-commit --all-files
+
+prepush-run: ## Run pre-push-stage hooks on all files
+	uv run pre-commit run --hook-stage pre-push --all-files
 
 precommit-update: ## Update pre-commit hook versions
 	uv run pre-commit autoupdate

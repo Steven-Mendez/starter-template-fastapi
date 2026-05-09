@@ -1,59 +1,35 @@
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: check-merge-conflict
+        stages: [pre-commit]
       - id: end-of-file-fixer
+        stages: [pre-commit]
       - id: trailing-whitespace
+        stages: [pre-commit]
 
   - repo: local
     hooks:
-      - id: ruff-check
-        name: ruff check
-        entry: make lint
-        language: system
-        pass_filenames: false
-        stages: [pre-commit, pre-push]
       - id: ruff-format
         name: ruff format
         entry: uv run ruff format --force-exclude
         language: system
         types_or: [python, pyi]
         stages: [pre-commit]
-      - id: architecture-lint
-        name: architecture lint (import-linter)
-        entry: make lint-arch
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        stages: [pre-commit]
+      - id: ci-local
+        name: local CI gate (quality, tests, security, migrations, docker)
+        entry: make ci-local
         language: system
         pass_filenames: false
-        stages: [pre-commit, pre-push]
-      - id: mypy
-        name: mypy
-        entry: make typecheck
-        language: system
-        pass_filenames: false
-        stages: [pre-commit, pre-push]
-      - id: app-import-smoke
-        name: app import smoke
-        entry: make app-import-smoke
-        language: system
-        pass_filenames: false
+        always_run: true
         stages: [pre-push]
-      - id: pytest
-        name: pytest (unit + e2e, no docker)
-        entry: make test
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-      - id: pip-audit
-        name: pip-audit (dependency vulnerability scan)
-        entry: uv run pip-audit
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-      - id: pytest-integration
-        name: pytest (integration — only on persistence or migration changes)
-        entry: make test-integration
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-        files: ^(alembic/|src/features/.*/adapters/outbound/persistence/)

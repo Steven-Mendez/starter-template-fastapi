@@ -6,12 +6,12 @@ on:
     branches:
       - main
 
+env:
+  PYTHON_VERSION: "3.12"
+
 jobs:
   quality:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,14 +19,33 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Setup Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Sync dependencies
-        run: uv sync --frozen --python ${{ matrix.python-version }}
+        run: uv sync --frozen --python ${{ env.PYTHON_VERSION }}
 
-      - name: Quality + tests
-        run: make ci
+      - name: Quality
+        run: make quality
+
+  tests:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Sync dependencies
+        run: uv sync --frozen --python ${{ env.PYTHON_VERSION }}
+
+      - name: Unit + e2e tests
+        run: make test
 
   audit:
     runs-on: ubuntu-latest
@@ -37,11 +56,11 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Setup Python
-        run: uv python install
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Sync dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --python ${{ env.PYTHON_VERSION }}
 
       - name: Audit dependencies for known vulnerabilities
         run: uv run pip-audit
@@ -55,15 +74,15 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Setup Python
-        run: uv python install
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Static analysis (Bandit)
         # ``--severity-level medium`` skips low-confidence stylistic
         # findings. Tests are excluded because they intentionally use
         # constructs (assert, hardcoded creds) Bandit flags by default.
         run: |
-          uv run --with bandit bandit -r src \
+          uv run --python ${{ env.PYTHON_VERSION }} --with bandit bandit -r src \
             --exclude src/features/auth/tests,src/features/kanban/tests,src/platform/tests \
             --severity-level medium
 
@@ -75,9 +94,6 @@ jobs:
   integration:
     needs: quality
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -85,11 +101,11 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Setup Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Sync dependencies
-        run: uv sync --frozen --python ${{ matrix.python-version }}
+        run: uv sync --frozen --python ${{ env.PYTHON_VERSION }}
 
       - name: Run integration tests (Docker via testcontainers)
         run: make test-integration
@@ -118,11 +134,11 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Setup Python
-        run: uv python install
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Sync dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --python ${{ env.PYTHON_VERSION }}
 
       - name: Apply migrations
         env:
@@ -173,11 +189,11 @@ jobs:
           docker stop ci-smoke
 
   # Single aggregator job used as the required status check in branch protection.
-  # Requiring one check instead of enumerating every matrix permutation keeps
-  # the protection rule stable when jobs or Python versions change.
+  # Requiring one check instead of enumerating every job keeps branch
+  # protection stable when the workflow changes.
   ci-gate:
     name: CI Gate
-    needs: [quality, audit, sast, integration, migrations, docker]
+    needs: [quality, tests, audit, sast, integration, migrations, docker]
     runs-on: ubuntu-latest
     if: always()
     steps:
