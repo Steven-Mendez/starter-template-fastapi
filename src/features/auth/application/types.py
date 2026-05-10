@@ -24,13 +24,14 @@ class AccessTokenPayload:
 
     Only the claims that business logic actually consumes are exposed; the
     raw JWT dict stays inside the token service so the JWT format remains
-    an implementation detail.
+    an implementation detail. Under ReBAC, no roles or permissions are
+    embedded in the token — every authorization check goes through
+    ``AuthorizationPort`` against the relationships store.
 
     Attributes:
         subject: User UUID extracted from the ``sub`` claim.
         authz_version: Authorization version embedded at issuance, used to
-            detect tokens whose permission set is now stale.
-        roles: Roles snapshotted at issuance, in deterministic order.
+            detect tokens issued before a relevant relationship change.
         expires_at: Absolute expiration timestamp from the ``exp`` claim.
         token_id: Unique JWT identifier (``jti``), useful for logging and
             future per-token revocation.
@@ -38,7 +39,6 @@ class AccessTokenPayload:
 
     subject: UUID
     authz_version: int
-    roles: tuple[str, ...]
     expires_at: datetime
     token_id: str
 

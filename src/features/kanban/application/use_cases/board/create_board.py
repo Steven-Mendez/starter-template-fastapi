@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.features.auth.application.authorization.types import Relationship
 from src.features.kanban.application.commands.board.create import CreateBoardCommand
 from src.features.kanban.application.contracts import AppBoardSummary
 from src.features.kanban.application.errors import ApplicationError
@@ -17,7 +18,12 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class CreateBoardUseCase:
-    """Create a new empty board and persist it under a fresh identifier."""
+    """Create a new empty board, persist it, and grant its creator ownership.
+
+    The board insert and the initial ``kanban:{board.id}#owner@user:{actor}``
+    tuple share one transaction so a partial failure cannot leave a board
+    with no owner — and therefore no path to delete or restore it.
+    """
 
     uow: UnitOfWorkPort
     id_gen: IdGeneratorPort
@@ -27,7 +33,7 @@ class CreateBoardUseCase:
         self,
         command: CreateBoardCommand,
     ) -> Result[AppBoardSummary, ApplicationError]:
-        """Save the new board in a UoW and return its summary projection."""
+        """Save the new board + owner relationship and return its summary."""
         board = Board(
             id=self.id_gen.next_id(),
             title=command.title,
@@ -38,6 +44,18 @@ class CreateBoardUseCase:
         with self.uow:
             try:
                 self.uow.commands.save(board)
+                if command.actor_id is not None:
+                    self.uow.authorization.write_relationships(
+                        [
+                            Relationship(
+                                resource_type="kanban",
+                                resource_id=board.id,
+                                relation="owner",
+                                subject_type="user",
+                                subject_id=str(command.actor_id),
+                            )
+                        ]
+                    )
                 self.uow.commit()
             except PersistenceConflictError:
                 return Err(ApplicationError.STALE_WRITE)

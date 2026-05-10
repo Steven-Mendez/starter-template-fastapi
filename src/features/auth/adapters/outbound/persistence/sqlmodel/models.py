@@ -1,10 +1,11 @@
 """SQLModel table definitions for the auth feature.
 
-These mappings own the database schema for users, roles, permissions,
-their join tables, refresh tokens, internal (single-use) tokens, and the
-auth audit log. Every timestamp is timezone-aware UTC and ID columns are
-UUIDs so the schema is portable across PostgreSQL replicas without
-relying on a sequence.
+These mappings own the database schema for users, refresh tokens,
+internal (single-use) tokens, the auth audit log, and the
+relationships table that drives the ReBAC authorization engine.
+Every timestamp is timezone-aware UTC and ID columns are UUIDs so the
+schema is portable across PostgreSQL replicas without relying on a
+sequence.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ class UserTable(SQLModel, table=True):
 
     Holds the password hash, activity flags, and the ``authz_version``
     counter used to invalidate already-issued JWTs whenever a user's
-    permissions or status change.
+    relationships change.
     """
 
     __tablename__ = "users"
@@ -67,81 +68,52 @@ class UserTable(SQLModel, table=True):
     )
 
 
-class RoleTable(SQLModel, table=True):
-    """Role definition.
+class RelationshipTable(SQLModel, table=True):
+    """Zanzibar-style relationship tuple backing the ReBAC engine.
 
-    ``is_active=False`` disables the role globally without deleting assignments.
+    Each row reads as ``{subject_type}:{subject_id}`` has relation
+    ``{relation}`` on ``{resource_type}:{resource_id}``. Subjects are
+    typed strings to leave room for non-user subjects (group sets,
+    service accounts) without a schema migration.
+
+    The unique constraint over the full tuple makes ``write_relationships``
+    naturally idempotent: a duplicate write hits the constraint and the
+    adapter swallows it. The two indexes drive the two read patterns:
+    ``check`` / ``lookup_subjects`` (resource side) and ``lookup_resources``
+    (subject side).
     """
 
-    __tablename__ = "roles"
-    __table_args__ = (sa.UniqueConstraint("name", name="uq_roles_name"),)
+    __tablename__ = "relationships"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "resource_type",
+            "resource_id",
+            "relation",
+            "subject_type",
+            "subject_id",
+            name="uq_relationships_tuple",
+        ),
+        sa.Index(
+            "ix_relationships_resource",
+            "resource_type",
+            "resource_id",
+            "relation",
+        ),
+        sa.Index(
+            "ix_relationships_subject",
+            "subject_type",
+            "subject_id",
+            "resource_type",
+            "relation",
+        ),
+    )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    name: str = Field(index=True, nullable=False)
-    description: str | None = Field(default=None)
-    is_active: bool = Field(default=True, nullable=False)
-    created_at: datetime = Field(
-        default_factory=utc_now,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
-    )
-    updated_at: datetime = Field(
-        default_factory=utc_now,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
-    )
-
-
-class PermissionTable(SQLModel, table=True):
-    """Permission definition, named with the ``resource:action`` convention."""
-
-    __tablename__ = "permissions"
-    __table_args__ = (sa.UniqueConstraint("name", name="uq_permissions_name"),)
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    name: str = Field(index=True, nullable=False)
-    description: str | None = Field(default=None)
-    created_at: datetime = Field(
-        default_factory=utc_now,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
-    )
-    updated_at: datetime = Field(
-        default_factory=utc_now,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
-    )
-
-
-class UserRoleTable(SQLModel, table=True):
-    """Join table linking users to roles.
-
-    Composite PK prevents duplicate assignments.
-    """
-
-    __tablename__ = "user_roles"
-    __table_args__ = (
-        sa.Index("ix_user_roles_user_id", "user_id"),
-        sa.Index("ix_user_roles_role_id", "role_id"),
-    )
-
-    user_id: UUID = Field(foreign_key="users.id", primary_key=True, ondelete="CASCADE")
-    role_id: UUID = Field(foreign_key="roles.id", primary_key=True, ondelete="CASCADE")
-    created_at: datetime = Field(
-        default_factory=utc_now,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
-    )
-
-
-class RolePermissionTable(SQLModel, table=True):
-    """Join table linking roles to their granted permissions."""
-
-    __tablename__ = "role_permissions"
-    __table_args__ = (
-        sa.Index("ix_role_permissions_role_id", "role_id"),
-        sa.Index("ix_role_permissions_permission_id", "permission_id"),
-    )
-
-    role_id: UUID = Field(foreign_key="roles.id", primary_key=True, ondelete="CASCADE")
-    permission_id: UUID = Field(
-        foreign_key="permissions.id", primary_key=True, ondelete="CASCADE"
-    )
+    resource_type: str = Field(nullable=False, max_length=50)
+    resource_id: str = Field(nullable=False, max_length=64)
+    relation: str = Field(nullable=False, max_length=50)
+    subject_type: str = Field(nullable=False, max_length=50)
+    subject_id: str = Field(nullable=False, max_length=64)
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
@@ -186,7 +158,7 @@ class RefreshTokenTable(SQLModel, table=True):
 
 
 class AuthAuditEventTable(SQLModel, table=True):
-    """Append-only audit log row for any auth/RBAC-relevant action."""
+    """Append-only audit log row for any auth/authz-relevant action."""
 
     __tablename__ = "auth_audit_events"
 
@@ -249,11 +221,8 @@ class AuthInternalTokenTable(SQLModel, table=True):
 __all__ = [
     "AuthAuditEventTable",
     "AuthInternalTokenTable",
-    "PermissionTable",
     "RefreshTokenTable",
-    "RolePermissionTable",
-    "RoleTable",
-    "UserRoleTable",
+    "RelationshipTable",
     "UserTable",
     "utc_now",
 ]

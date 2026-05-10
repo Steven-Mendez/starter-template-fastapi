@@ -26,7 +26,6 @@ from src.features.kanban.composition import (
     mount_kanban_routes,
 )
 from src.platform.api.app_factory import build_fastapi_app
-from src.platform.api.authorization import require_permissions
 from src.platform.api.dependencies.container import set_app_container
 from src.platform.config.settings import AppSettings, get_settings
 from src.platform.observability import configure_logging
@@ -52,10 +51,13 @@ def _configure_logging(settings: AppSettings) -> None:
 
 
 def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
-    """Seed RBAC data and optionally create a first super-admin on startup."""
+    """Optionally create the first ``system:main#admin`` tuple at startup.
+
+    Idempotent: re-runs against an already-bootstrapped DB simply re-write
+    the same relationship tuple (no-op via the unique constraint).
+    """
     if not settings.auth_seed_on_startup:
         return
-    auth.seed_initial_data.execute()
 
     email = settings.auth_bootstrap_super_admin_email
     password = settings.auth_bootstrap_super_admin_password
@@ -65,21 +67,11 @@ def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
             "APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD must be set together."
         )
     if email and password:
-        auth.bootstrap_super_admin.execute(email=email, password=password)
+        auth.bootstrap_system_admin.execute(email=email, password=password)
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
-    """Build the FastAPI application and configure its lifespan.
-
-    Args:
-        settings: Optional pre-built settings. Defaults to the cached
-            :func:`get_settings` instance, which reads the environment.
-
-    Returns:
-        A ready-to-serve FastAPI application with auth and kanban features
-        mounted and a lifespan that initialises and disposes their
-        containers in the correct order.
-    """
+    """Build the FastAPI application and configure its lifespan."""
     app_settings = settings or get_settings()
     _configure_logging(app_settings)
     configure_tracing(app_settings)
@@ -89,30 +81,34 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     # before lifespan startup completes. Containers are attached in lifespan
     # because they require DB connections that should not outlive the process.
     mount_auth_routes(app)
-    read_guard = [require_permissions("kanban:read")]
-    write_guard = [require_permissions("kanban:write")]
-    mount_kanban_routes(
-        app,
-        read_dependencies=read_guard,
-        write_dependencies=write_guard,
-    )
+    mount_kanban_routes(app)
     instrument_fastapi_app(app, app_settings)
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         auth = build_auth_container(settings=app_settings)
-        _run_auth_bootstrap(auth, app_settings)
         kanban = build_kanban_container(
             postgresql_dsn=app_settings.postgresql_dsn,
+            authorization=auth.authorization,
             pool_size=app_settings.db_pool_size,
             max_overflow=app_settings.db_max_overflow,
             pool_recycle=app_settings.db_pool_recycle_seconds,
             pool_pre_ping=app_settings.db_pool_pre_ping,
         )
+        # Wire the kanban-aware parent resolver back into the auth feature's
+        # authorization adapter so HTTP-layer checks on column/card resources
+        # can walk to the parent board. The auth container builds before
+        # kanban exists, so this back-reference is the cleanest seam.
+        # SpiceDB and other adapters that resolve inheritance natively don't
+        # need this hook — duck-type to skip them.
+        set_parent = getattr(auth.authorization, "set_parent_resolver", None)
+        if callable(set_parent):
+            set_parent(kanban.parent_resolver)
+        _run_auth_bootstrap(auth, app_settings)
         set_app_container(lifespan_app, _PlatformAppContainer(settings=app_settings))
         # Register the principal resolver so platform-level authorization
-        # dependencies (require_permissions, etc.) can resolve tokens without
-        # importing from the auth feature.
+        # dependencies (require_authorization, etc.) can resolve tokens
+        # without importing from the auth feature.
         lifespan_app.state.principal_resolver = auth.resolve_principal.execute
         attach_auth_container(lifespan_app, auth)
         attach_kanban_container(lifespan_app, kanban)

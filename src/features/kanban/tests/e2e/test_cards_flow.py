@@ -36,11 +36,10 @@ def test_get_card(client: TestClient) -> None:
     assert resp.json()["title"] == "t"
 
 
-def test_get_unknown_card_returns_problem_404(client: TestClient) -> None:
+def test_get_unknown_card_returns_403_not_404(client: TestClient) -> None:
+    """Under ReBAC, unauthorized access returns 403 even for non-existent ids."""
     resp = client.get("/api/cards/00000000-0000-0000-0000-000000000000")
-    assert resp.status_code == 404
-    body = resp.json()
-    assert body["code"] == "card_not_found"
+    assert resp.status_code == 403
 
 
 def test_patch_card_clear_due_at(client: TestClient) -> None:
@@ -54,10 +53,10 @@ def test_patch_card_clear_due_at(client: TestClient) -> None:
     assert resp.json()["due_at"] is None
 
 
-def test_create_card_under_unknown_column(client: TestClient) -> None:
+def test_create_card_under_unknown_column_is_403(client: TestClient) -> None:
+    """Authorization runs before the use case, so an unknown column returns 403."""
     resp = client.post(
         "/api/columns/00000000-0000-0000-0000-000000000000/cards",
         json={"title": "t"},
     )
-    assert resp.status_code == 404
-    assert resp.json()["code"] == "column_not_found"
+    assert resp.status_code == 403

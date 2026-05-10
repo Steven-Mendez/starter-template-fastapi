@@ -47,7 +47,13 @@ def test_list_boards_returns_summaries(wiring: FakeKanbanWiring) -> None:
         uow=wiring.uow_factory(), id_gen=wiring.id_gen, clock=wiring.clock
     ).execute(CreateBoardCommand(title="B"))
 
-    use_case = ListBoardsUseCase(query_repository=wiring.container.query_repository)
+    use_case = ListBoardsUseCase(
+        query_repository=wiring.container.query_repository,
+        authorization=wiring.container.authorization,
+    )
+    # Anonymous query: under ReBAC no relationship tuples exist, so no
+    # boards are visible. Confirms the use case enforces the authz layer
+    # rather than blindly returning ``list_all``.
     result = use_case.execute(ListBoardsQuery())
     assert isinstance(result, Ok)
-    assert sorted(s.title for s in result.value) == ["A", "B"]
+    assert result.value == []

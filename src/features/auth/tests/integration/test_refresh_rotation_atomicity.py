@@ -53,9 +53,7 @@ def test_concurrent_refresh_serializes_on_presented_token_row(
     issue_calls: list[str] = []
     issue_calls_lock = threading.Lock()
 
-    def gated_issue(
-        *, subject: UUID, roles: set[str], authz_version: int
-    ) -> tuple[str, int]:
+    def gated_issue(*, subject: UUID, authz_version: int) -> tuple[str, int]:
         with issue_calls_lock:
             issue_calls.append(threading.current_thread().name)
             call_number = len(issue_calls)
@@ -64,7 +62,7 @@ def test_concurrent_refresh_serializes_on_presented_token_row(
             assert release_first_issue.wait(timeout=5)
         else:
             second_reached_issue.set()
-        return original_issue(subject=subject, roles=roles, authz_version=authz_version)
+        return original_issue(subject=subject, authz_version=authz_version)
 
     monkeypatch.setattr(token_service, "issue", gated_issue)
 

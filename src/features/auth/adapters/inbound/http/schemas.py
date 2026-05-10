@@ -2,7 +2,7 @@
 
 Normalisation lives in field validators so that the service layer always
 receives canonical values regardless of what the client sends, removing
-any chance of duplicate accounts or roles from inconsistent casing.
+any chance of duplicate accounts from inconsistent casing.
 """
 
 from __future__ import annotations
@@ -13,11 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.features.auth.application.normalization import (
-    normalize_email,
-    normalize_permission_name,
-    normalize_role_name,
-)
+from src.features.auth.application.normalization import normalize_email
 
 # NIST SP 800-63B §5.1.1.2 finds long passphrases with low character-class
 # diversity at least as strong as short complex ones, and cautions that
@@ -54,8 +50,6 @@ class RegisterRequest(BaseModel):
     @classmethod
     def normalize_email_value(cls, value: str) -> str:
         normalized = normalize_email(value)
-        # Reject bare strings without "@" early so the service layer never
-        # has to consider obviously invalid emails.
         if "@" not in normalized:
             raise ValueError("Invalid email")
         return normalized
@@ -94,14 +88,17 @@ class UserPublic(BaseModel):
 
 
 class PrincipalPublic(BaseModel):
-    """Identity payload returned alongside tokens and on ``GET /auth/me``."""
+    """Identity payload returned alongside tokens and on ``GET /auth/me``.
+
+    Under ReBAC, no roles or permissions are part of the principal — every
+    authorization decision goes through the AuthorizationPort against the
+    relationships store.
+    """
 
     id: UUID
     email: str
     is_active: bool
     is_verified: bool
-    roles: list[str]
-    permissions: list[str]
 
 
 class TokenResponse(BaseModel):
@@ -163,86 +160,6 @@ class EmailVerifyRequest(BaseModel):
     """Body of ``POST /auth/email/verify``."""
 
     token: str = Field(min_length=32, max_length=512)
-
-
-class RoleCreate(BaseModel):
-    """Body of ``POST /admin/roles``. Names are normalised before validation."""
-
-    name: str = Field(min_length=1, max_length=100)
-    description: str | None = Field(default=None, max_length=500)
-
-    @field_validator("name")
-    @classmethod
-    def normalize_name(cls, value: str) -> str:
-        return normalize_role_name(value)
-
-
-class RoleUpdate(BaseModel):
-    """Body of ``PATCH /admin/roles/{id}``.
-
-    All fields are optional and patched independently.
-    """
-
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    description: str | None = Field(default=None, max_length=500)
-    is_active: bool | None = None
-
-    @field_validator("name")
-    @classmethod
-    def normalize_name(cls, value: str | None) -> str | None:
-        return normalize_role_name(value) if value is not None else None
-
-
-class RoleRead(BaseModel):
-    """Public projection of a role row."""
-
-    id: UUID
-    name: str
-    description: str | None
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PermissionCreate(BaseModel):
-    """Body of ``POST /admin/permissions``.
-
-    Name must follow ``resource:action`` format.
-    """
-
-    name: str = Field(min_length=3, max_length=150)
-    description: str | None = Field(default=None, max_length=500)
-
-    @field_validator("name")
-    @classmethod
-    def normalize_name(cls, value: str) -> str:
-        return normalize_permission_name(value)
-
-
-class PermissionRead(BaseModel):
-    """Public projection of a permission row."""
-
-    id: UUID
-    name: str
-    description: str | None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PermissionAssignmentRequest(BaseModel):
-    """Body for assigning a permission to a role."""
-
-    permission_id: UUID
-
-
-class UserRoleAssignmentRequest(BaseModel):
-    """Body for assigning a role to a user."""
-
-    role_id: UUID
 
 
 class AuditEventRead(BaseModel):

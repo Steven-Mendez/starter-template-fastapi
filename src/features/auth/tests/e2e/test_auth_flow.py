@@ -175,15 +175,16 @@ def test_logout_all_revokes_all_sessions(client: TestClient) -> None:
     assert refresh.status_code == 401
 
 
-def test_missing_token_is_401_and_user_without_permission_is_403(
+def test_missing_token_is_401_and_user_without_authz_is_403(
     client: TestClient,
 ) -> None:
+    """Missing creds → 401; valid token without system relation → 403."""
     missing = client.get("/auth/me")
     assert missing.status_code == 401
 
     _register(client)
     token = _login(client)
-    forbidden = client.get("/admin/roles", headers={"Authorization": f"Bearer {token}"})
+    forbidden = client.get("/admin/users", headers={"Authorization": f"Bearer {token}"})
     assert forbidden.status_code == 403
 
 
@@ -267,37 +268,21 @@ def test_internal_token_omission_does_not_emit_per_request_warning(
 def test_stale_token_returns_401_with_invalid_token_detail(
     auth_context: AuthTestContext,
 ) -> None:
+    """Bumping a user's authz_version invalidates their existing tokens.
+
+    Under ReBAC, ``increment_user_authz_version`` (called by every relationship
+    write affecting that user) is the trigger; here we call the repository
+    directly to keep the test focused on the staleness contract.
+    """
     client = auth_context.client
 
     # Register a regular user and capture their access token.
-    _register(client)
+    user = _register(client)
     user_token = _login(client)
+    user_id = UUID(user["id"])
 
-    # Log in as the seeded super-admin.
-    admin_resp = client.post(
-        "/auth/login",
-        json={"email": "admin@example.com", "password": "AdminPassword123!"},
-    )
-    assert admin_resp.status_code == 200
-    admin_token = admin_resp.json()["access_token"]
-
-    # Find the user's ID and a role to assign.
-    admin_headers = {"Authorization": f"Bearer {admin_token}"}
-    users = client.get("/admin/users", headers=admin_headers)
-    assert users.status_code == 200
-    user_id = next(u["id"] for u in users.json() if u["email"] == "user@example.com")
-
-    roles = client.get("/admin/roles", headers=admin_headers)
-    assert roles.status_code == 200
-    manager_role_id = next(r["id"] for r in roles.json() if r["name"] == "manager")
-
-    # Assign the manager role, which bumps the user's authz_version.
-    assign = client.post(
-        f"/admin/users/{user_id}/roles",
-        headers={"Authorization": f"Bearer {admin_token}"},
-        json={"role_id": manager_role_id},
-    )
-    assert assign.status_code == 201
+    # Bump the user's authz_version (as a relationship write would).
+    auth_context.repository.increment_user_authz_version(user_id)
 
     # The old token now carries a stale authz_version — it must be rejected
     # with a machine-readable code so clients know to re-authenticate rather

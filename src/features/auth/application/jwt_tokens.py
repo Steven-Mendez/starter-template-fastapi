@@ -54,16 +54,18 @@ class AccessTokenService:
             raise ConfigurationError("AUTH_JWT_SECRET_KEY is required")
         return secret
 
-    def issue(
-        self, *, subject: UUID, roles: set[str], authz_version: int
-    ) -> tuple[str, int]:
+    def issue(self, *, subject: UUID, authz_version: int) -> tuple[str, int]:
         """Issue a signed JWT access token for the given principal.
+
+        Under ReBAC, the token carries only identity and the authz version;
+        every authorization check goes through the AuthorizationPort.
+        Removing ``roles`` from the payload also keeps tokens uniform across
+        users regardless of how many relationships they hold.
 
         Args:
             subject: The user's UUID, stored in the ``sub`` claim.
-            roles: Set of role names to embed in the token payload.
             authz_version: The user's current authorization version; used to
-                detect stale tokens after permission changes.
+                detect tokens issued before a relevant relationship change.
 
         Returns:
             A tuple of ``(encoded_token, expires_in_seconds)``.
@@ -87,9 +89,6 @@ class AccessTokenService:
             # jti makes each token unique, enabling future token-level
             # revocation without a full token blacklist.
             "jti": token_id,
-            # Sorting roles makes the token deterministic for the same
-            # principal so caching or signature comparison is predictable.
-            "roles": sorted(roles),
             "authz_version": authz_version,
         }
         if self._settings.auth_jwt_issuer:
@@ -137,14 +136,13 @@ class AccessTokenService:
                 **kwargs,
             )
             subject = UUID(str(payload["sub"]))
-            roles_raw = payload.get("roles", [])
-            if not isinstance(roles_raw, list):
-                raise InvalidTokenError("Invalid roles claim")
             exp = datetime.fromtimestamp(float(payload["exp"]), tz=timezone.utc)
+            # Legacy tokens may carry a ``roles`` claim from before the ReBAC
+            # migration. We accept and ignore it: authorization is resolved
+            # through ``AuthorizationPort`` regardless of token contents.
             return AccessTokenPayload(
                 subject=subject,
                 authz_version=int(payload["authz_version"]),
-                roles=tuple(str(role) for role in roles_raw),
                 expires_at=exp,
                 token_id=str(payload["jti"]),
             )

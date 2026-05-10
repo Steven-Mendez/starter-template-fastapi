@@ -4,10 +4,7 @@ from dataclasses import dataclass
 
 from src.features.auth.application.crypto import PasswordService
 from src.features.auth.application.errors import DuplicateEmailError, NotFoundError
-from src.features.auth.application.normalization import (
-    normalize_email,
-    normalize_role_name,
-)
+from src.features.auth.application.normalization import normalize_email
 from src.features.auth.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
@@ -18,7 +15,14 @@ from src.platform.shared.result import Err, Ok, Result
 
 @dataclass(slots=True)
 class RegisterUser:
-    """Create a new user account and assign the default role."""
+    """Create a new user account.
+
+    Under ReBAC, registration does not assign a default role: a freshly
+    registered user holds no relationship tuples and therefore has no
+    access to any resource. Access is granted explicitly afterwards
+    (typically by a system admin or by the user creating their own
+    resources, in which case they receive the owner relation).
+    """
 
     _repository: AuthRepositoryPort
     _password_service: PasswordService
@@ -39,14 +43,6 @@ class RegisterUser:
         )
         if user is None:
             return Err(DuplicateEmailError("Email already registered"))
-        default_role = self._repository.get_role_by_name(
-            normalize_role_name(self._settings.auth_default_user_role)
-        )
-        if (
-            default_role is not None
-            and default_role.name != self._settings.auth_super_admin_role
-        ):
-            self._repository.assign_user_role(user.id, default_role.id)
         self._repository.record_audit_event(
             event_type="auth.user_registered",
             user_id=user.id,

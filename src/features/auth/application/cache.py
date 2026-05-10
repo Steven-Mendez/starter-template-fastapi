@@ -106,8 +106,6 @@ class RedisPrincipalCache:
             {
                 "user_id": str(principal.user_id),
                 "email": principal.email,
-                "roles": list(principal.roles),
-                "permissions": list(principal.permissions),
                 "is_active": principal.is_active,
                 "is_verified": principal.is_verified,
                 "authz_version": principal.authz_version,
@@ -119,8 +117,6 @@ class RedisPrincipalCache:
         return Principal(
             user_id=UUID(data["user_id"]),
             email=data["email"],
-            roles=frozenset(data["roles"]),
-            permissions=frozenset(data["permissions"]),
             is_active=data["is_active"],
             is_verified=data["is_verified"],
             authz_version=data["authz_version"],

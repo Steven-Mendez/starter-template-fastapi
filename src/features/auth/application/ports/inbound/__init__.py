@@ -13,21 +13,6 @@ from src.features.auth.application.ports.inbound.confirm_password_reset_port imp
 from src.features.auth.application.ports.inbound.login_user_port import LoginUserPort
 from src.features.auth.application.ports.inbound.logout_all_port import LogoutAllPort
 from src.features.auth.application.ports.inbound.logout_user_port import LogoutUserPort
-from src.features.auth.application.ports.inbound.rbac_ports import (
-    AssignRolePermissionPort,
-    AssignUserRolePort,
-    BootstrapSuperAdminPort,
-    CreatePermissionPort,
-    CreateRolePort,
-    ListAuditEventsPort,
-    ListPermissionsPort,
-    ListRolesPort,
-    ListUsersPort,
-    RemoveRolePermissionPort,
-    RemoveUserRolePort,
-    SeedInitialDataPort,
-    UpdateRolePort,
-)
 from src.features.auth.application.ports.inbound.refresh_token_port import (
     RefreshTokenPort,
 )
@@ -45,27 +30,14 @@ from src.features.auth.application.ports.inbound.resolve_principal_port import (
 )
 
 __all__ = [
-    "RegisterUserPort",
-    "LoginUserPort",
-    "RefreshTokenPort",
-    "LogoutUserPort",
-    "LogoutAllPort",
-    "RequestPasswordResetPort",
-    "ConfirmPasswordResetPort",
-    "RequestEmailVerificationPort",
     "ConfirmEmailVerificationPort",
+    "ConfirmPasswordResetPort",
+    "LoginUserPort",
+    "LogoutAllPort",
+    "LogoutUserPort",
+    "RefreshTokenPort",
+    "RegisterUserPort",
+    "RequestEmailVerificationPort",
+    "RequestPasswordResetPort",
     "ResolvePrincipalFromAccessTokenPort",
-    "CreateRolePort",
-    "UpdateRolePort",
-    "ListRolesPort",
-    "ListUsersPort",
-    "CreatePermissionPort",
-    "ListPermissionsPort",
-    "AssignRolePermissionPort",
-    "RemoveRolePermissionPort",
-    "AssignUserRolePort",
-    "RemoveUserRolePort",
-    "SeedInitialDataPort",
-    "BootstrapSuperAdminPort",
-    "ListAuditEventsPort",
 ]

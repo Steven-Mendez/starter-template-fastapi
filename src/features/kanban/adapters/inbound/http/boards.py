@@ -1,4 +1,16 @@
-"""FastAPI routes for Kanban board resources."""
+"""FastAPI routes for Kanban board resources.
+
+Per-route ``require_authorization`` enforces ReBAC checks on the
+``kanban`` resource type:
+
+* ``POST /boards`` — no check; the use case writes the initial owner
+  tuple from the actor.
+* ``GET /boards`` — no check; the use case calls ``lookup_resources``
+  to filter.
+* ``GET /boards/{id}`` — ``read``.
+* ``PATCH /boards/{id}`` — ``update``.
+* ``DELETE /boards/{id}`` and ``POST /boards/{id}/restore`` — ``delete``.
+"""
 
 from __future__ import annotations
 
@@ -37,7 +49,14 @@ from src.features.kanban.application.commands import (
     RestoreBoardCommand,
 )
 from src.features.kanban.application.queries import GetBoardQuery, ListBoardsQuery
+from src.platform.api.authorization import require_authorization
 from src.platform.shared.result import Err, Ok
+
+
+def _board_id_from_path(request) -> str:  # type: ignore[no-untyped-def]
+    """Resource-id loader that reads ``board_id`` from the path."""
+    return str(request.path_params["board_id"])
+
 
 boards_read_router = APIRouter(tags=["boards"])
 boards_write_router = APIRouter(tags=["boards"])
@@ -49,7 +68,7 @@ def create_board(
     use_case: CreateBoardUseCaseDep,
     actor_id: ActorIdDep,
 ) -> BoardSummary:
-    """Create a new board and return its summary projection."""
+    """Create a new board; the use case writes the initial owner tuple."""
     command = CreateBoardCommand(title=to_create_board_input(body), actor_id=actor_id)
     match use_case.execute(command):
         case Ok(value):
@@ -59,16 +78,22 @@ def create_board(
 
 
 @boards_read_router.get("/boards")
-def list_boards(use_case: ListBoardsUseCaseDep) -> list[BoardSummary]:
-    """Return every board as a list of summaries."""
-    match use_case.execute(ListBoardsQuery()):
+def list_boards(
+    use_case: ListBoardsUseCaseDep,
+    actor_id: ActorIdDep,
+) -> list[BoardSummary]:
+    """Return boards the calling user has at least ``read`` on."""
+    match use_case.execute(ListBoardsQuery(actor_id=actor_id)):
         case Ok(value):
             return [to_board_summary_response(board) for board in value]
         case Err(err):
             raise_http_from_application_error(err)
 
 
-@boards_read_router.get("/boards/{board_id}")
+@boards_read_router.get(
+    "/boards/{board_id}",
+    dependencies=[require_authorization("read", "kanban", _board_id_from_path)],
+)
 def get_board(board_id: UUID, use_case: GetBoardUseCaseDep) -> BoardDetail:
     """Return one board with its columns and cards expanded."""
     match use_case.execute(GetBoardQuery(board_id=str(board_id))):
@@ -78,7 +103,10 @@ def get_board(board_id: UUID, use_case: GetBoardUseCaseDep) -> BoardDetail:
             raise_http_from_application_error(err)
 
 
-@boards_write_router.patch("/boards/{board_id}")
+@boards_write_router.patch(
+    "/boards/{board_id}",
+    dependencies=[require_authorization("update", "kanban", _board_id_from_path)],
+)
 def patch_board(
     board_id: UUID,
     body: BoardUpdate,
@@ -101,6 +129,7 @@ def patch_board(
 @boards_write_router.delete(
     "/boards/{board_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[require_authorization("delete", "kanban", _board_id_from_path)],
 )
 def delete_board(
     board_id: UUID,
@@ -119,16 +148,14 @@ def delete_board(
 @boards_write_router.post(
     "/boards/{board_id}/restore",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[require_authorization("delete", "kanban", _board_id_from_path)],
 )
 def restore_board(
     board_id: UUID,
     use_case: RestoreBoardUseCaseDep,
     actor_id: ActorIdDep,
 ) -> None:
-    """Restore a previously soft-deleted board and its cascaded columns/cards.
-
-    Returns 404 if the board does not exist or has not been deleted.
-    """
+    """Restore a previously soft-deleted board and its cascaded columns/cards."""
     command = RestoreBoardCommand(board_id=str(board_id), actor_id=actor_id)
     match use_case.execute(command):
         case Ok(_):

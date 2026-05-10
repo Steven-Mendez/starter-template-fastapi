@@ -16,16 +16,11 @@ def test_create_board_returns_201_and_payload(client: TestClient) -> None:
     assert isinstance(body["id"], str)
 
 
-def test_get_unknown_board_returns_problem_404(client: TestClient) -> None:
+def test_get_unknown_board_returns_403_not_404(client: TestClient) -> None:
+    """Under ReBAC, unauthorized access returns 403 — never 404 — so the API
+    does not reveal whether a resource exists to callers without access."""
     resp = client.get("/api/boards/00000000-0000-0000-0000-000000000000")
-    assert resp.status_code == 404
-    assert resp.headers["content-type"] == "application/problem+json"
-    body = resp.json()
-    assert body["status"] == 404
-    assert body["title"] == "Not Found"
-    assert body["code"] == "board_not_found"
-    assert body["instance"].endswith("/api/boards/00000000-0000-0000-0000-000000000000")
-    assert "request_id" in body
+    assert resp.status_code == 403
 
 
 def test_list_boards_returns_array(client: TestClient) -> None:

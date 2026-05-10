@@ -1,13 +1,19 @@
 """FastAPI-bound authorization dependencies for the platform layer.
 
-``get_current_principal`` reads the resolver from
-``request.app.state.principal_resolver`` so the platform never imports a
-feature module.  ``main.py`` registers the real resolver during lifespan;
-e2e test fixtures register a fake one.
+The platform exposes two building blocks:
 
-``require_permissions``, ``require_any_permission``, and ``require_roles``
-each return a ``Depends`` object and chain off ``get_current_principal`` so a
-single bearer token lookup satisfies the entire guard chain.
+* ``get_current_principal`` resolves the JWT bearer token via the
+  resolver registered on ``request.app.state.principal_resolver``.
+  No feature import is needed — the resolver is wired by the auth
+  feature inside the lifespan, and tests can register a fake.
+* ``require_authorization`` builds a FastAPI dependency that calls
+  ``AuthorizationPort.check`` for the (action, resource_type, resource_id)
+  triple identified at request time. Resource ids are extracted by a
+  caller-supplied ``id_loader``; system-level routes use the sentinel
+  ``"main"`` and pass ``id_loader=None``.
+
+ReBAC checks are resource-scoped: the deny path returns 403; missing
+credentials return 401.
 """
 
 from __future__ import annotations
@@ -18,7 +24,6 @@ from typing import Annotated, Any, TypeAlias
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from src.platform.api.dependencies.container import AppSettingsDep
 from src.platform.api.request_state import set_actor_id
 from src.platform.shared.authorization import ResolvePrincipalCallable
 from src.platform.shared.principal import Principal
@@ -42,7 +47,7 @@ def _credentials_exception() -> HTTPException:
     )
 
 
-def _forbidden(detail: str = "Not enough permissions") -> HTTPException:
+def _forbidden(detail: str = "Permission denied") -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
@@ -54,6 +59,21 @@ def _get_resolver(request: Request) -> ResolvePrincipalCallable:
             detail="Principal resolver not configured",
         )
     return resolver  # type: ignore[return-value]
+
+
+def _get_authorization(request: Request) -> Any:
+    """Return the AuthorizationPort registered on app.state, or raise 503.
+
+    Typed as ``Any`` so the platform avoids importing from a feature.
+    The auth feature attaches its concrete adapter during lifespan.
+    """
+    authz = getattr(request.app.state, "authorization", None)
+    if authz is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authorization port not configured",
+        )
+    return authz
 
 
 def get_current_principal(
@@ -109,49 +129,50 @@ def build_principal_dependency(
     return _dep
 
 
-def require_permissions(*permissions: str) -> Any:
-    """Return a Depends that requires the principal to hold **all** permissions."""
-    required = set(permissions)
+def require_authorization(
+    action: str,
+    resource_type: str,
+    id_loader: Callable[[Request], str] | None = None,
+) -> Any:
+    """Return a FastAPI dependency that gates a route on a ReBAC check.
+
+    Behaviour:
+
+    * Resolves the current principal (raising 401 if missing/invalid).
+    * Computes the resource id via ``id_loader(request)`` or uses the
+      sentinel ``"main"`` when ``id_loader`` is ``None`` (system-level routes).
+    * Calls ``AuthorizationPort.check(user_id, action, resource_type, resource_id)``.
+    * Raises 403 on deny.
+
+    Args:
+        action: The action name as declared in
+            ``src/features/auth/application/authorization/actions.py``.
+        resource_type: The resource type the action targets
+            (e.g. ``"kanban"``, ``"system"``, ``"column"``, ``"card"``).
+        id_loader: Callable that extracts the resource id from the request
+            (typically a one-line lambda reading ``request.path_params``).
+            Pass ``None`` for system-level routes; the sentinel ``"main"``
+            is used.
+
+    Returns:
+        A FastAPI ``Depends`` object suitable for the ``dependencies=[...]``
+        argument of a route decorator.
+    """
 
     def dependency(
-        principal: CurrentPrincipalDep, settings: AppSettingsDep
+        request: Request,
+        principal: CurrentPrincipalDep,
     ) -> Principal:
-        if not settings.auth_rbac_enabled:
-            return principal
-        if not required.issubset(principal.permissions):
+        authz = _get_authorization(request)
+        resource_id = id_loader(request) if id_loader is not None else "main"
+        allowed = authz.check(
+            user_id=principal.user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+        )
+        if not allowed:
             raise _forbidden()
-        return principal
-
-    return Depends(dependency)
-
-
-def require_any_permission(*permissions: str) -> Any:
-    """Return a Depends that requires at least **one** of the given permissions."""
-    required = set(permissions)
-
-    def dependency(
-        principal: CurrentPrincipalDep, settings: AppSettingsDep
-    ) -> Principal:
-        if not settings.auth_rbac_enabled:
-            return principal
-        if not required.intersection(principal.permissions):
-            raise _forbidden()
-        return principal
-
-    return Depends(dependency)
-
-
-def require_roles(*roles: str) -> Any:
-    """Return a Depends that requires the principal to hold at least one role."""
-    required = set(roles)
-
-    def dependency(
-        principal: CurrentPrincipalDep, settings: AppSettingsDep
-    ) -> Principal:
-        if not settings.auth_rbac_enabled:
-            return principal
-        if not required.intersection(principal.roles):
-            raise _forbidden("Not enough roles")
         return principal
 
     return Depends(dependency)
@@ -161,7 +182,5 @@ __all__ = [
     "CurrentPrincipalDep",
     "build_principal_dependency",
     "get_current_principal",
-    "require_any_permission",
-    "require_permissions",
-    "require_roles",
+    "require_authorization",
 ]

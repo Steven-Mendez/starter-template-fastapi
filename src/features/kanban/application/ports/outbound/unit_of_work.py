@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Protocol, Self
 
+from src.features.auth.application.authorization.ports import AuthorizationPort
 from src.features.kanban.application.ports.outbound.kanban_command_repository import (
     KanbanCommandRepositoryPort,
 )
@@ -14,16 +15,18 @@ from src.features.kanban.application.ports.outbound.kanban_lookup_repository imp
 
 
 class UnitOfWorkPort(Protocol):
-    """Outbound port that groups command + lookup access into a single transaction.
+    """Outbound port that groups command + lookup + authorization writes.
 
-    Use cases call ``with unit_of_work() as uow:`` to ensure that all
-    repository writes either commit together or roll back together,
-    keeping the :class:`Board` aggregate consistent across multi-step
-    operations.
+    Use cases call ``with unit_of_work() as uow:`` to ensure that
+    repository writes and the relationship tuples written by the
+    authorization layer either commit together or roll back together,
+    keeping the :class:`Board` aggregate and its access tuples
+    consistent across multi-step operations.
     """
 
     commands: KanbanCommandRepositoryPort
     lookup: KanbanLookupRepositoryPort
+    authorization: AuthorizationPort
 
     def __enter__(self) -> Self:
         """Begin a transaction and return the unit of work."""

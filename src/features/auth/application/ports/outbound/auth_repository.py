@@ -8,7 +8,6 @@ Sub-protocols follow the Interface Segregation Principle — each service
 declares only the slice of persistence it actually uses:
 
   Auth use cases  → UserRepositoryPort + TokenRepositoryPort + AuditRepositoryPort
-  RBAC use cases  → RBACRepositoryPort + AuditRepositoryPort + (user read/authz)
 
 ``AuthRepositoryPort`` is the full composite used by the concrete adapter and
 the container; it inherits all sub-protocols so the existing wiring is unchanged.
@@ -23,9 +22,7 @@ from uuid import UUID
 from src.features.auth.domain.models import (
     AuditEvent,
     InternalToken,
-    Permission,
     RefreshToken,
-    Role,
     User,
 )
 from src.platform.shared.principal import Principal
@@ -98,8 +95,6 @@ class UserRepositoryPort(Protocol):
     def set_user_verified(self, user_id: UUID) -> None: ...
     def update_user_password(self, user_id: UUID, password_hash: str) -> None: ...
     def increment_user_authz_version(self, user_id: UUID) -> None: ...
-    def increment_authz_for_role_users(self, role_id: UUID) -> None: ...
-    def list_user_ids_for_role(self, role_id: UUID) -> list[UUID]: ...
     def get_principal(self, user_id: UUID) -> Principal | None: ...
 
 
@@ -143,37 +138,6 @@ class TokenRepositoryPort(Protocol):
     def mark_internal_token_used(self, token_id: UUID) -> None: ...
 
 
-class RBACRepositoryPort(Protocol):
-    """Persistence operations for roles, permissions, and their assignments."""
-
-    def list_roles(self, *, limit: int = 100, offset: int = 0) -> list[Role]: ...
-    def get_role(self, role_id: UUID) -> Role | None: ...
-    def get_role_by_name(self, name: str) -> Role | None: ...
-    def create_role(
-        self, *, name: str, description: str | None = None
-    ) -> Role | None: ...
-    def update_role(
-        self,
-        role_id: UUID,
-        *,
-        name: str | None,
-        description: str | None,
-        is_active: bool | None,
-    ) -> Role | None: ...
-    def list_permissions(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> list[Permission]: ...
-    def get_permission(self, permission_id: UUID) -> Permission | None: ...
-    def get_permission_by_name(self, name: str) -> Permission | None: ...
-    def create_permission(
-        self, *, name: str, description: str | None = None
-    ) -> Permission | None: ...
-    def assign_user_role(self, user_id: UUID, role_id: UUID) -> bool: ...
-    def remove_user_role(self, user_id: UUID, role_id: UUID) -> bool: ...
-    def assign_role_permission(self, role_id: UUID, permission_id: UUID) -> bool: ...
-    def remove_role_permission(self, role_id: UUID, permission_id: UUID) -> bool: ...
-
-
 class AuditRepositoryPort(Protocol):
     """Persistence operations for the audit event log."""
 
@@ -202,7 +166,6 @@ class AuditRepositoryPort(Protocol):
 class AuthRepositoryPort(
     UserRepositoryPort,
     TokenRepositoryPort,
-    RBACRepositoryPort,
     AuditRepositoryPort,
     Protocol,
 ):

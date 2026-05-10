@@ -55,17 +55,12 @@ def _user_agent(request: Request) -> str | None:
 
 
 def _principal_response(principal: Principal) -> PrincipalPublic:
-    """Convert a domain ``Principal`` to the public-facing response schema.
-
-    Roles and permissions are sorted for deterministic API output.
-    """
+    """Convert a domain ``Principal`` to the public-facing response schema."""
     return PrincipalPublic(
         id=principal.user_id,
         email=principal.email,
         is_active=principal.is_active,
         is_verified=principal.is_verified,
-        roles=sorted(principal.roles),
-        permissions=sorted(principal.permissions),
     )
 
 

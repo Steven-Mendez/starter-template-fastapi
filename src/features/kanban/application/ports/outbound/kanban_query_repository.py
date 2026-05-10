@@ -21,6 +21,15 @@ class KanbanQueryRepositoryPort(Protocol):
         """Return a lightweight summary for every board, ordered by creation time."""
         ...
 
+    def list_by_ids(self, board_ids: list[str]) -> list[BoardSummary]:
+        """Return summaries restricted to ``board_ids``, preserving creation order.
+
+        Used by ``ListBoardsUseCase`` after the authorization layer resolves
+        the user's readable boards. An empty input list SHALL return an
+        empty list without hitting the database.
+        """
+        ...
+
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
         """Load a read-only :class:`Board` aggregate, or return ``BOARD_NOT_FOUND``."""
         ...

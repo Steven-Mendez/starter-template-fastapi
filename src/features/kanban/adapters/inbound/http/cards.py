@@ -1,4 +1,12 @@
-"""FastAPI routes for Kanban card resources."""
+"""FastAPI routes for Kanban card resources.
+
+ReBAC checks resolve at the card or column level via parent walk to the
+owning board:
+
+* ``POST /columns/{column_id}/cards`` — ``update`` on the column.
+* ``GET /cards/{card_id}`` — ``read`` on the card.
+* ``PATCH /cards/{card_id}`` — ``update`` on the card.
+"""
 
 from __future__ import annotations
 
@@ -30,7 +38,17 @@ from src.features.kanban.application.commands import (
     PatchCardCommand,
 )
 from src.features.kanban.application.queries import GetCardQuery
+from src.platform.api.authorization import require_authorization
 from src.platform.shared.result import Err, Ok
+
+
+def _column_id_from_path(request) -> str:  # type: ignore[no-untyped-def]
+    return str(request.path_params["column_id"])
+
+
+def _card_id_from_path(request) -> str:  # type: ignore[no-untyped-def]
+    return str(request.path_params["card_id"])
+
 
 cards_read_router = APIRouter(tags=["cards"])
 cards_write_router = APIRouter(tags=["cards"])
@@ -39,6 +57,7 @@ cards_write_router = APIRouter(tags=["cards"])
 @cards_write_router.post(
     "/columns/{column_id}/cards",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[require_authorization("update", "column", _column_id_from_path)],
 )
 def create_card(
     column_id: UUID,
@@ -63,7 +82,10 @@ def create_card(
             raise_http_from_application_error(err)
 
 
-@cards_read_router.get("/cards/{card_id}")
+@cards_read_router.get(
+    "/cards/{card_id}",
+    dependencies=[require_authorization("read", "card", _card_id_from_path)],
+)
 def get_card(card_id: UUID, use_case: GetCardUseCaseDep) -> CardRead:
     """Return one card by id without loading its parent board."""
     match use_case.execute(GetCardQuery(card_id=str(card_id))):
@@ -73,7 +95,10 @@ def get_card(card_id: UUID, use_case: GetCardUseCaseDep) -> CardRead:
             raise_http_from_application_error(err)
 
 
-@cards_write_router.patch("/cards/{card_id}")
+@cards_write_router.patch(
+    "/cards/{card_id}",
+    dependencies=[require_authorization("update", "card", _card_id_from_path)],
+)
 def patch_card(
     card_id: UUID,
     body: CardUpdate,

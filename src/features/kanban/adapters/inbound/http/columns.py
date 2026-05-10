@@ -1,4 +1,12 @@
-"""FastAPI routes for Kanban column resources."""
+"""FastAPI routes for Kanban column resources.
+
+ReBAC checks resolve at the column level via parent walk to the owning
+board:
+
+* ``POST /boards/{board_id}/columns`` — ``update`` on the parent board.
+* ``DELETE /columns/{column_id}`` — ``update`` on the column (engine
+  walks to the parent board).
+"""
 
 from __future__ import annotations
 
@@ -23,7 +31,17 @@ from src.features.kanban.application.commands import (
     CreateColumnCommand,
     DeleteColumnCommand,
 )
+from src.platform.api.authorization import require_authorization
 from src.platform.shared.result import Err, Ok
+
+
+def _board_id_from_path(request) -> str:  # type: ignore[no-untyped-def]
+    return str(request.path_params["board_id"])
+
+
+def _column_id_from_path(request) -> str:  # type: ignore[no-untyped-def]
+    return str(request.path_params["column_id"])
+
 
 columns_write_router = APIRouter(tags=["columns"])
 
@@ -31,6 +49,7 @@ columns_write_router = APIRouter(tags=["columns"])
 @columns_write_router.post(
     "/boards/{board_id}/columns",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[require_authorization("update", "kanban", _board_id_from_path)],
 )
 def create_column(
     board_id: UUID,
@@ -52,7 +71,9 @@ def create_column(
 
 
 @columns_write_router.delete(
-    "/columns/{column_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/columns/{column_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[require_authorization("update", "column", _column_id_from_path)],
 )
 def delete_column(
     column_id: UUID,

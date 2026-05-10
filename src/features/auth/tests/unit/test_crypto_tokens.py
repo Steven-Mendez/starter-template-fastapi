@@ -51,9 +51,7 @@ def test_access_token_requires_configured_audience() -> None:
     )
     token_service = AccessTokenService(settings)
 
-    token, expires_in = token_service.issue(
-        subject=uuid4(), roles={"user"}, authz_version=1
-    )
+    token, expires_in = token_service.issue(subject=uuid4(), authz_version=1)
 
     assert expires_in > 0
     decoded = token_service.decode(token)

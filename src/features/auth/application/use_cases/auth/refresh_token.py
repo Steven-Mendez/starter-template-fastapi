@@ -72,7 +72,6 @@ class RotateRefreshToken:
 
                 access_token, expires_in = self._token_service.issue(
                     subject=record.user_id,
-                    roles=set(principal.roles),
                     authz_version=principal.authz_version,
                 )
                 raw_refresh = generate_opaque_token()

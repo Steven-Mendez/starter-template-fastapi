@@ -26,20 +26,14 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
-    PermissionTable,
     RefreshTokenTable,
-    RolePermissionTable,
-    RoleTable,
-    UserRoleTable,
     UserTable,
     utc_now,
 )
 from src.features.auth.domain.models import (
     AuditEvent,
     InternalToken,
-    Permission,
     RefreshToken,
-    Role,
     User,
 )
 from src.platform.shared.principal import Principal
@@ -79,27 +73,6 @@ def _to_user(row: UserTable) -> User:
         created_at=_ensure_utc(row.created_at),
         updated_at=_ensure_utc(row.updated_at),
         last_login_at=_ensure_utc(row.last_login_at),
-    )
-
-
-def _to_role(row: RoleTable) -> Role:
-    return Role(
-        id=row.id,
-        name=row.name,
-        description=row.description,
-        is_active=row.is_active,
-        created_at=_ensure_utc(row.created_at),
-        updated_at=_ensure_utc(row.updated_at),
-    )
-
-
-def _to_permission(row: PermissionTable) -> Permission:
-    return Permission(
-        id=row.id,
-        name=row.name,
-        description=row.description,
-        created_at=_ensure_utc(row.created_at),
-        updated_at=_ensure_utc(row.updated_at),
     )
 
 
@@ -144,46 +117,20 @@ def _to_audit_event(row: AuthAuditEventTable) -> AuditEvent:
 
 
 def _get_principal_from_session(session: Session, user_id: UUID) -> Principal | None:
-    # Two queries cover everything: the user row, plus one join that returns
-    # (role_name, permission_name) pairs across all active roles. This
-    # replaces the previous three-query pattern (user, roles, permissions)
-    # with no Cartesian explosion on the user side.
+    """Build a ``Principal`` from the user row alone.
+
+    Under ReBAC, the principal carries only identity and lifecycle flags;
+    authorization is resolved through ``AuthorizationPort`` per check.
+    """
     user = session.get(UserTable, user_id)
     if user is None:
         return None
-    role_perm_rows = session.exec(
-        select(RoleTable.name, PermissionTable.name)
-        .select_from(UserRoleTable)
-        .join(
-            RoleTable,
-            cast(
-                Any,
-                (RoleTable.id == UserRoleTable.role_id)
-                & (cast(Any, RoleTable.is_active).is_(True)),
-            ),
-        )
-        .join(
-            RolePermissionTable,
-            cast(Any, RolePermissionTable.role_id == RoleTable.id),
-            isouter=True,
-        )
-        .join(
-            PermissionTable,
-            cast(Any, PermissionTable.id == RolePermissionTable.permission_id),
-            isouter=True,
-        )
-        .where(cast(Any, UserRoleTable.user_id == user_id))
-    ).all()
-    roles = {str(row[0]) for row in role_perm_rows if row[0] is not None}
-    permissions = {str(row[1]) for row in role_perm_rows if row[1] is not None}
     return Principal(
         user_id=user.id,
         email=user.email,
         is_active=user.is_active,
         is_verified=user.is_verified,
         authz_version=user.authz_version,
-        roles=frozenset(roles),
-        permissions=frozenset(permissions),
     )
 
 
@@ -608,191 +555,15 @@ class SQLModelAuthRepository:
             user.updated_at = utc_now()
             session.add(user)
 
-    def increment_authz_for_role_users(self, role_id: UUID) -> None:
-        """Bump authz_version for every user that holds the given role."""
-        with self._write_session_scope() as session:
-            links = session.exec(
-                select(UserRoleTable).where(UserRoleTable.role_id == role_id)
-            ).all()
-            for link in links:
-                user = session.get(UserTable, link.user_id)
-                if user is not None:
-                    user.authz_version += 1
-                    user.updated_at = utc_now()
-                    session.add(user)
-
-    def list_user_ids_for_role(self, role_id: UUID) -> list[UUID]:
-        """Return IDs of every user currently assigned to ``role_id``."""
-        with self._session_scope() as session:
-            return list(
-                session.exec(
-                    select(UserRoleTable.user_id).where(
-                        UserRoleTable.role_id == role_id
-                    )
-                ).all()
-            )
-
     def get_principal(self, user_id: UUID) -> Principal | None:
         """Build a ``Principal`` from a user's current DB state.
 
-        Resolves the user's active roles and their associated permissions
-        in a single session. Called on every authenticated request.
+        Called on every authenticated request. Authorization is no longer
+        carried on the principal; callers consult ``AuthorizationPort``
+        for resource-scoped checks.
         """
         with self._session_scope() as session:
             return _get_principal_from_session(session, user_id)
-
-    def list_roles(self, *, limit: int = 100, offset: int = 0) -> list[Role]:
-        with self._session_scope() as session:
-            rows = list(
-                session.exec(
-                    select(RoleTable)
-                    .order_by(RoleTable.name)
-                    .offset(offset)
-                    .limit(limit)
-                ).all()
-            )
-            return [_to_role(r) for r in rows]
-
-    def get_role(self, role_id: UUID) -> Role | None:
-        with self._session_scope() as session:
-            row = session.get(RoleTable, role_id)
-            return _to_role(row) if row is not None else None
-
-    def get_role_by_name(self, name: str) -> Role | None:
-        with self._session_scope() as session:
-            row = session.exec(
-                select(RoleTable).where(RoleTable.name == name)
-            ).one_or_none()
-            return _to_role(row) if row is not None else None
-
-    def create_role(self, *, name: str, description: str | None = None) -> Role | None:
-        role = RoleTable(name=name, description=description)
-        try:
-            with self._write_session_scope() as session:
-                session.add(role)
-                session.flush()
-                session.refresh(role)
-                return _to_role(role)
-        except IntegrityError:
-            return None
-
-    def update_role(
-        self,
-        role_id: UUID,
-        *,
-        name: str | None = None,
-        description: str | None = None,
-        is_active: bool | None = None,
-    ) -> Role | None:
-        try:
-            with self._write_session_scope() as session:
-                role = session.get(RoleTable, role_id)
-                if role is None:
-                    return None
-                if name is not None:
-                    role.name = name
-                if description is not None:
-                    role.description = description
-                if is_active is not None:
-                    role.is_active = is_active
-                role.updated_at = utc_now()
-                session.add(role)
-                session.flush()
-                session.refresh(role)
-                return _to_role(role)
-        except IntegrityError:
-            return None
-
-    def list_permissions(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> list[Permission]:
-        with self._session_scope() as session:
-            rows = list(
-                session.exec(
-                    select(PermissionTable)
-                    .order_by(PermissionTable.name)
-                    .offset(offset)
-                    .limit(limit)
-                ).all()
-            )
-            return [_to_permission(r) for r in rows]
-
-    def get_permission(self, permission_id: UUID) -> Permission | None:
-        with self._session_scope() as session:
-            row = session.get(PermissionTable, permission_id)
-            return _to_permission(row) if row is not None else None
-
-    def get_permission_by_name(self, name: str) -> Permission | None:
-        with self._session_scope() as session:
-            row = session.exec(
-                select(PermissionTable).where(PermissionTable.name == name)
-            ).one_or_none()
-            return _to_permission(row) if row is not None else None
-
-    def create_permission(
-        self, *, name: str, description: str | None = None
-    ) -> Permission | None:
-        permission = PermissionTable(name=name, description=description)
-        try:
-            with self._write_session_scope() as session:
-                session.add(permission)
-                session.flush()
-                session.refresh(permission)
-                return _to_permission(permission)
-        except IntegrityError:
-            return None
-
-    def assign_user_role(self, user_id: UUID, role_id: UUID) -> bool:
-        with self._write_session_scope() as session:
-            if (
-                session.get(UserTable, user_id) is None
-                or session.get(RoleTable, role_id) is None
-            ):
-                return False
-            existing = session.get(UserRoleTable, (user_id, role_id))
-            if existing is None:
-                session.add(UserRoleTable(user_id=user_id, role_id=role_id))
-                user = session.get(UserTable, user_id)
-                if user is not None:
-                    user.authz_version += 1
-                    user.updated_at = utc_now()
-                    session.add(user)
-            return True
-
-    def remove_user_role(self, user_id: UUID, role_id: UUID) -> bool:
-        with self._write_session_scope() as session:
-            link = session.get(UserRoleTable, (user_id, role_id))
-            if link is None:
-                return False
-            session.delete(link)
-            user = session.get(UserTable, user_id)
-            if user is not None:
-                user.authz_version += 1
-                user.updated_at = utc_now()
-                session.add(user)
-            return True
-
-    def assign_role_permission(self, role_id: UUID, permission_id: UUID) -> bool:
-        with self._write_session_scope() as session:
-            if (
-                session.get(RoleTable, role_id) is None
-                or session.get(PermissionTable, permission_id) is None
-            ):
-                return False
-            existing = session.get(RolePermissionTable, (role_id, permission_id))
-            if existing is None:
-                session.add(
-                    RolePermissionTable(role_id=role_id, permission_id=permission_id)
-                )
-            return True
-
-    def remove_role_permission(self, role_id: UUID, permission_id: UUID) -> bool:
-        with self._write_session_scope() as session:
-            link = session.get(RolePermissionTable, (role_id, permission_id))
-            if link is None:
-                return False
-            session.delete(link)
-            return True
 
     def create_refresh_token(
         self,

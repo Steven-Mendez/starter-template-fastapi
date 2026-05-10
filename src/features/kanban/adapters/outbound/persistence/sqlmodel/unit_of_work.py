@@ -1,4 +1,11 @@
-"""SQLModel-backed implementation of the Kanban :class:`UnitOfWorkPort`."""
+"""SQLModel-backed implementation of the Kanban :class:`UnitOfWorkPort`.
+
+The UoW opens one Session against the kanban engine and binds both the
+kanban repository and a session-scoped authorization adapter to it. The
+authorization adapter shares the *same* Session, so a relationship write
+(e.g., the initial owner tuple from ``CreateBoardUseCase``) commits or
+rolls back atomically with the kanban write.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +15,11 @@ from typing import Self
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
+from src.features.auth.adapters.outbound.authorization.sqlmodel import (
+    SessionSQLModelAuthorizationAdapter,
+)
+from src.features.auth.application.authorization.ports import AuthorizationPort
+from src.features.auth.application.authorization.resource_graph import ParentResolver
 from src.features.kanban.adapters.outbound.persistence.sqlmodel.repository import (
     SessionSQLModelKanbanRepository,
 )
@@ -21,22 +33,38 @@ from src.features.kanban.application.ports.outbound.unit_of_work import UnitOfWo
 
 
 class SqlModelUnitOfWork(UnitOfWorkPort):
-    """UoW that opens one SQLModel session shared by command and lookup repos."""
+    """UoW that opens one SQLModel session shared by command, lookup, and authz."""
 
     commands: KanbanCommandRepositoryPort
     lookup: KanbanLookupRepositoryPort
+    authorization: AuthorizationPort
 
-    def __init__(self, engine: Engine):
-        """Capture the engine but defer session creation until ``__enter__``."""
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        parent_resolver: ParentResolver | None = None,
+    ) -> None:
+        """Capture the engine but defer session creation until ``__enter__``.
+
+        ``parent_resolver`` is forwarded to the session-scoped authorization
+        adapter so card/column checks performed inside the unit of work can
+        still walk to the parent board.
+        """
         self._engine = engine
+        self._parent_resolver = parent_resolver
         self._session: Session | None = None
 
     def __enter__(self) -> Self:
-        """Open a fresh session and bind both repositories to it."""
+        """Open a fresh session and bind every collaborator to it."""
         self._session = Session(self._engine, expire_on_commit=False)
         repository = SessionSQLModelKanbanRepository(self._session)
         self.commands = repository
         self.lookup = repository
+        self.authorization = SessionSQLModelAuthorizationAdapter(
+            self._session,
+            parent_resolver=self._parent_resolver,
+        )
         return self
 
     def __exit__(
@@ -45,12 +73,7 @@ class SqlModelUnitOfWork(UnitOfWorkPort):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        """Roll back any uncommitted transaction and close the session.
-
-        Use cases may return ``Err`` after staging writes but before
-        committing, so any still-open transaction here must be discarded
-        to keep partial writes from leaking out of the unit-of-work.
-        """
+        """Roll back any uncommitted transaction and close the session."""
         del exc_val, exc_tb
         if self._session is not None:
             if exc_type is not None or self._session.in_transaction():

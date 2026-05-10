@@ -90,7 +90,6 @@ class LoginUser:
             return Err(InvalidCredentialsError("Invalid credentials"))
         access_token, expires_in = self._token_service.issue(
             subject=user.id,
-            roles=set(principal.roles),
             authz_version=principal.authz_version,
         )
         raw_refresh = generate_opaque_token()

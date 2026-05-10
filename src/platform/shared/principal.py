@@ -3,6 +3,11 @@
 Placing ``Principal`` in ``platform.shared`` lets any feature consume it
 without importing from another feature, enforcing the cross-feature isolation
 boundary enforced by Import Linter.
+
+Authorization is no longer carried on the principal: under ReBAC, every
+check goes through ``AuthorizationPort`` against the relationships store.
+The principal carries only the identity and lifecycle flags needed by
+features that don't ask the authorization engine.
 """
 
 from __future__ import annotations
@@ -26,9 +31,7 @@ class Principal:
         authz_version: Monotonic counter compared against the JWT claim on
             every request. Bumping it server-side invalidates any token
             previously issued for this user without waiting for expiry.
-        roles: Role names currently assigned to the user.
-        permissions: Flattened set of permissions resolved from the user's
-            active roles, used for fine-grained access checks.
+            Bumped by every relationship write/delete affecting this user.
     """
 
     user_id: UUID
@@ -36,5 +39,3 @@ class Principal:
     is_active: bool
     is_verified: bool
     authz_version: int
-    roles: frozenset[str]
-    permissions: frozenset[str]

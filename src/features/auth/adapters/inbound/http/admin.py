@@ -1,10 +1,8 @@
-"""Administrative HTTP routes for managing roles, permissions, and assignments.
+"""Administrative HTTP routes guarded by the system-admin relationship.
 
-Every endpoint is gated by an RBAC dependency declared in the route
-decorator (``require_permissions`` / ``require_any_permission``) and any
-mutation is delegated to the relevant RBAC use-case, which records audit
-events and bumps ``authz_version`` so already-issued tokens reflect the
-change on their next request.
+Each endpoint is gated by ``require_authorization`` against the
+``system:main`` resource; only users that hold the ``admin`` relation
+on the system singleton can call them.
 """
 
 from __future__ import annotations
@@ -13,29 +11,16 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, Response, status
+from fastapi import APIRouter, Query, Request
 
-from src.features.auth.adapters.inbound.http.auth import _client_ip, _user_agent
-from src.features.auth.adapters.inbound.http.dependencies import (
-    CurrentPrincipalDep,
-    require_any_permission,
-    require_permissions,
-)
 from src.features.auth.adapters.inbound.http.errors import raise_http_from_auth_error
 from src.features.auth.adapters.inbound.http.schemas import (
     AuditEventRead,
     AuditLogRead,
-    MessageResponse,
-    PermissionAssignmentRequest,
-    PermissionCreate,
-    PermissionRead,
-    RoleCreate,
-    RoleRead,
-    RoleUpdate,
     UserPublic,
-    UserRoleAssignmentRequest,
 )
 from src.features.auth.composition.app_state import get_auth_container
+from src.platform.api.authorization import require_authorization
 from src.platform.shared.result import Err, Ok
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
@@ -44,7 +29,7 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
 @admin_router.get(
     "/users",
     response_model=list[UserPublic],
-    dependencies=[require_any_permission("users:read", "users:roles:manage")],
+    dependencies=[require_authorization("manage_users", "system", None)],
 )
 def list_users(
     request: Request,
@@ -63,7 +48,7 @@ def list_users(
 @admin_router.get(
     "/audit-log",
     response_model=AuditLogRead,
-    dependencies=[require_permissions("audit:read")],
+    dependencies=[require_authorization("read_audit", "system", None)],
 )
 def list_audit_log(
     request: Request,
@@ -72,7 +57,7 @@ def list_audit_log(
     since: Annotated[datetime | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> AuditLogRead:
-    """Return filtered auth/RBAC audit events for super-admin inspection."""
+    """Return filtered auth/authz audit events for system-admin inspection."""
     result = get_auth_container(request).list_audit_events.execute(
         user_id=user_id,
         event_type=event_type,
@@ -83,234 +68,5 @@ def list_audit_log(
         case Ok(value=events):
             items = [AuditEventRead.model_validate(event) for event in events]
             return AuditLogRead(items=items, count=len(items), limit=limit)
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.get(
-    "/roles",
-    response_model=list[RoleRead],
-    dependencies=[require_any_permission("roles:read", "roles:manage")],
-)
-def list_roles(
-    request: Request,
-    offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-) -> list[RoleRead]:
-    """Return roles ordered by name, paginated at the database level."""
-    result = get_auth_container(request).list_roles.execute(limit=limit, offset=offset)
-    match result:
-        case Ok(value=roles):
-            return [RoleRead.model_validate(r) for r in roles]
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.post(
-    "/roles",
-    response_model=RoleRead,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[require_permissions("roles:manage")],
-)
-def create_role(
-    body: RoleCreate,
-    principal: CurrentPrincipalDep,
-    request: Request,
-) -> RoleRead:
-    """Create a new role from a normalised name and optional description."""
-    result = get_auth_container(request).create_role.execute(
-        actor=principal,
-        name=body.name,
-        description=body.description,
-        ip_address=_client_ip(request),
-        user_agent=_user_agent(request),
-    )
-    match result:
-        case Ok(value=role):
-            return RoleRead.model_validate(role)
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.patch(
-    "/roles/{role_id}",
-    response_model=RoleRead,
-    dependencies=[require_permissions("roles:manage")],
-)
-def patch_role(
-    role_id: UUID,
-    body: RoleUpdate,
-    principal: CurrentPrincipalDep,
-    request: Request,
-) -> RoleRead:
-    """Update mutable role fields.
-
-    Toggling ``is_active`` revokes affected tokens immediately.
-    """
-    result = get_auth_container(request).update_role.execute(
-        actor=principal,
-        role_id=role_id,
-        name=body.name,
-        description=body.description,
-        is_active=body.is_active,
-        ip_address=_client_ip(request),
-        user_agent=_user_agent(request),
-    )
-    match result:
-        case Ok(value=role):
-            return RoleRead.model_validate(role)
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.get(
-    "/permissions",
-    response_model=list[PermissionRead],
-    dependencies=[require_any_permission("permissions:read", "permissions:manage")],
-)
-def list_permissions(
-    request: Request,
-    offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-) -> list[PermissionRead]:
-    """Return permissions ordered by name, paginated at the database level."""
-    result = get_auth_container(request).list_permissions.execute(
-        limit=limit, offset=offset
-    )
-    match result:
-        case Ok(value=permissions):
-            return [PermissionRead.model_validate(p) for p in permissions]
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.post(
-    "/permissions",
-    response_model=PermissionRead,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[require_permissions("permissions:manage")],
-)
-def create_permission(
-    body: PermissionCreate,
-    principal: CurrentPrincipalDep,
-    request: Request,
-) -> PermissionRead:
-    """Create a new permission with a validated ``resource:action`` name."""
-    result = get_auth_container(request).create_permission.execute(
-        actor=principal,
-        name=body.name,
-        description=body.description,
-        ip_address=_client_ip(request),
-        user_agent=_user_agent(request),
-    )
-    match result:
-        case Ok(value=permission):
-            return PermissionRead.model_validate(permission)
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.post(
-    "/roles/{role_id}/permissions",
-    response_model=MessageResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[require_permissions("permissions:manage")],
-)
-def add_role_permission(
-    role_id: UUID,
-    body: PermissionAssignmentRequest,
-    principal: CurrentPrincipalDep,
-    request: Request,
-) -> MessageResponse:
-    """Grant a permission to a role and invalidate tokens of all role holders."""
-    result = get_auth_container(request).assign_role_permission.execute(
-        actor=principal,
-        role_id=role_id,
-        permission_id=body.permission_id,
-        ip_address=_client_ip(request),
-        user_agent=_user_agent(request),
-    )
-    match result:
-        case Ok():
-            return MessageResponse(message="Permission assigned")
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.delete(
-    "/roles/{role_id}/permissions/{permission_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[require_permissions("permissions:manage")],
-)
-def remove_role_permission(
-    role_id: UUID,
-    permission_id: UUID,
-    principal: CurrentPrincipalDep,
-    request: Request,
-) -> Response:
-    """Revoke a permission from a role and invalidate tokens of all role holders."""
-    result = get_auth_container(request).remove_role_permission.execute(
-        actor=principal,
-        role_id=role_id,
-        permission_id=permission_id,
-        ip_address=_client_ip(request),
-        user_agent=_user_agent(request),
-    )
-    match result:
-        case Ok():
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.post(
-    "/users/{user_id}/roles",
-    response_model=MessageResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[require_permissions("users:roles:manage")],
-)
-def add_user_role(
-    user_id: UUID,
-    body: UserRoleAssignmentRequest,
-    principal: CurrentPrincipalDep,
-    request: Request,
-) -> MessageResponse:
-    """Assign a role to a user. The user's authz_version is bumped automatically."""
-    result = get_auth_container(request).assign_user_role.execute(
-        actor=principal,
-        user_id=user_id,
-        role_id=body.role_id,
-        ip_address=_client_ip(request),
-        user_agent=_user_agent(request),
-    )
-    match result:
-        case Ok():
-            return MessageResponse(message="Role assigned")
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
-
-
-@admin_router.delete(
-    "/users/{user_id}/roles/{role_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[require_permissions("users:roles:manage")],
-)
-def remove_user_role(
-    user_id: UUID,
-    role_id: UUID,
-    principal: CurrentPrincipalDep,
-    request: Request,
-) -> Response:
-    """Revoke a role from a user."""
-    result = get_auth_container(request).remove_user_role.execute(
-        actor=principal,
-        user_id=user_id,
-        role_id=role_id,
-        ip_address=_client_ip(request),
-        user_agent=_user_agent(request),
-    )
-    match result:
-        case Ok():
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
         case Err(error=exc):
             raise_http_from_auth_error(exc)

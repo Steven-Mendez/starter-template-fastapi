@@ -10,9 +10,7 @@ import pytest
 from src.features.auth.domain.models import (
     AuditEvent,
     InternalToken,
-    Permission,
     RefreshToken,
-    Role,
     User,
 )
 
@@ -50,29 +48,6 @@ def test_user_rejects_naive_last_login_at() -> None:
             created_at=_AWARE,
             updated_at=_AWARE,
             last_login_at=_NAIVE,
-        )
-
-
-def test_role_rejects_naive() -> None:
-    with pytest.raises(ValueError, match="Role.created_at"):
-        Role(
-            id=uuid4(),
-            name="r",
-            description=None,
-            is_active=True,
-            created_at=_NAIVE,
-            updated_at=_AWARE,
-        )
-
-
-def test_permission_rejects_naive() -> None:
-    with pytest.raises(ValueError, match="Permission.updated_at"):
-        Permission(
-            id=uuid4(),
-            name="p:read",
-            description=None,
-            created_at=_AWARE,
-            updated_at=_NAIVE,
         )
 
 

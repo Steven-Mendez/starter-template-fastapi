@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from types import TracebackType
 from typing import Self
+from uuid import UUID
 
+from src.features.auth.application.authorization.ports import (
+    LOOKUP_DEFAULT_LIMIT,
+    AuthorizationPort,
+)
+from src.features.auth.application.authorization.types import Relationship
 from src.features.kanban.application.ports.outbound import (
     KanbanCommandRepositoryPort,
     KanbanLookupRepositoryPort,
@@ -15,22 +21,63 @@ from src.features.kanban.tests.fakes.in_memory_repository import (
 )
 
 
-class InMemoryUnitOfWork(UnitOfWorkPort):
-    """In-memory UoW backed by the same repository for read and write.
+class _NoopAuthorization:
+    """Default no-op authorization adapter used when tests don't care about authz."""
 
-    The counters and flags expose the unit-of-work's lifecycle to tests
-    so they can assert that a use case really committed (or rolled back)
-    instead of just running the happy-path code.
-    """
+    def check(
+        self,
+        *,
+        user_id: UUID,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+    ) -> bool:
+        return True
+
+    def lookup_resources(
+        self,
+        *,
+        user_id: UUID,
+        action: str,
+        resource_type: str,
+        limit: int = LOOKUP_DEFAULT_LIMIT,
+    ) -> list[str]:
+        return []
+
+    def lookup_subjects(
+        self,
+        *,
+        resource_type: str,
+        resource_id: str,
+        relation: str,
+    ) -> list[UUID]:
+        return []
+
+    def write_relationships(self, tuples: list[Relationship]) -> None:
+        return None
+
+    def delete_relationships(self, tuples: list[Relationship]) -> None:
+        return None
+
+
+class InMemoryUnitOfWork(UnitOfWorkPort):
+    """In-memory UoW backed by the same repository for read and write."""
 
     commands: KanbanCommandRepositoryPort
     lookup: KanbanLookupRepositoryPort
+    authorization: AuthorizationPort
 
-    def __init__(self, repository: InMemoryKanbanRepository) -> None:
+    def __init__(
+        self,
+        repository: InMemoryKanbanRepository,
+        *,
+        authorization: AuthorizationPort | None = None,
+    ) -> None:
         """Wire the unit-of-work to a shared in-memory repository."""
         self._repository = repository
         self.commands = repository
         self.lookup = repository
+        self.authorization = authorization or _NoopAuthorization()
         self.commit_count = 0
         self.rollback_count = 0
         self.entered = False
@@ -61,14 +108,20 @@ class InMemoryUnitOfWork(UnitOfWorkPort):
 class RecordingUnitOfWorkFactory:
     """Factory that records every UoW it creates for transactional assertions."""
 
-    def __init__(self, repository: InMemoryKanbanRepository) -> None:
+    def __init__(
+        self,
+        repository: InMemoryKanbanRepository,
+        *,
+        authorization: AuthorizationPort | None = None,
+    ) -> None:
         """Bind the factory to the shared in-memory repository."""
         self._repository = repository
+        self._authorization = authorization
         self.created: list[InMemoryUnitOfWork] = []
 
     def __call__(self) -> InMemoryUnitOfWork:
         """Build and remember a new :class:`InMemoryUnitOfWork`."""
-        uow = InMemoryUnitOfWork(self._repository)
+        uow = InMemoryUnitOfWork(self._repository, authorization=self._authorization)
         self.created.append(uow)
         return uow
 

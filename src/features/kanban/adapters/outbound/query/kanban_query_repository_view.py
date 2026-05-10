@@ -26,6 +26,11 @@ class KanbanQueryRepositoryView(KanbanQueryRepositoryPort):
     def list_all(self) -> list[BoardSummary]:
         return self._repository.list_all()
 
+    def list_by_ids(self, board_ids: list[str]) -> list[BoardSummary]:
+        if not board_ids:
+            return []
+        return self._repository.list_by_ids(board_ids)
+
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
         return self._repository.find_by_id(board_id)
 

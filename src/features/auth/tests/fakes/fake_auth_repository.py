@@ -11,9 +11,7 @@ from uuid import UUID, uuid4
 from src.features.auth.domain.models import (
     AuditEvent,
     InternalToken,
-    Permission,
     RefreshToken,
-    Role,
     User,
 )
 from src.platform.shared.principal import Principal
@@ -31,21 +29,11 @@ class _Stores:
     refresh_token_by_hash: dict[str, UUID] = field(default_factory=dict)
     internal_tokens: dict[UUID, InternalToken] = field(default_factory=dict)
     internal_token_by_hash: dict[tuple[str, str], UUID] = field(default_factory=dict)
-    roles: dict[UUID, Role] = field(default_factory=dict)
-    role_by_name: dict[str, UUID] = field(default_factory=dict)
-    permissions: dict[UUID, Permission] = field(default_factory=dict)
-    permission_by_name: dict[str, UUID] = field(default_factory=dict)
-    user_roles: dict[UUID, set[UUID]] = field(default_factory=dict)
-    role_permissions: dict[UUID, set[UUID]] = field(default_factory=dict)
     audit_events: list[AuditEvent] = field(default_factory=list)
 
 
 class FakeAuthRepository:
-    """Dict-backed implementation of ``AuthRepositoryPort`` for unit tests.
-
-    Implements the full composite port. Mutations are not concurrency-safe
-    on purpose: the fake exists for deterministic single-threaded tests.
-    """
+    """Dict-backed implementation of ``AuthRepositoryPort`` for unit tests."""
 
     def __init__(self) -> None:
         self._s = _Stores()
@@ -86,7 +74,6 @@ class FakeAuthRepository:
         )
         self._s.users[user.id] = user
         self._s.users_by_email[email] = user.id
-        self._s.user_roles.setdefault(user.id, set())
         return user
 
     def update_user_login(self, user_id: UUID, when: datetime) -> None:
@@ -129,40 +116,16 @@ class FakeAuthRepository:
             updated_at=_aware_now(),
         )
 
-    def increment_authz_for_role_users(self, role_id: UUID) -> None:
-        for user_id, role_ids in self._s.user_roles.items():
-            if role_id in role_ids:
-                self.increment_user_authz_version(user_id)
-
-    def list_user_ids_for_role(self, role_id: UUID) -> list[UUID]:
-        return [
-            user_id
-            for user_id, role_ids in self._s.user_roles.items()
-            if role_id in role_ids
-        ]
-
     def get_principal(self, user_id: UUID) -> Principal | None:
         user = self._s.users.get(user_id)
         if user is None:
             return None
-        role_ids = self._s.user_roles.get(user_id, set())
-        roles = {self._s.roles[rid].name for rid in role_ids if rid in self._s.roles}
-        permission_ids: set[UUID] = set()
-        for rid in role_ids:
-            permission_ids.update(self._s.role_permissions.get(rid, set()))
-        permissions = {
-            self._s.permissions[pid].name
-            for pid in permission_ids
-            if pid in self._s.permissions
-        }
         return Principal(
             user_id=user.id,
             email=user.email,
             is_active=user.is_active,
             is_verified=user.is_verified,
             authz_version=user.authz_version,
-            roles=frozenset(roles),
-            permissions=frozenset(permissions),
         )
 
     # ── Refresh token operations ─────────────────────────────────────────────
@@ -280,124 +243,6 @@ class FakeAuthRepository:
         if existing is None:
             return
         self._s.internal_tokens[token_id] = _replace(existing, used_at=_aware_now())
-
-    # ── RBAC role / permission operations ────────────────────────────────────
-
-    def list_roles(self, *, limit: int = 100, offset: int = 0) -> list[Role]:
-        ordered = sorted(self._s.roles.values(), key=lambda r: r.created_at)
-        return ordered[offset : offset + limit]
-
-    def get_role(self, role_id: UUID) -> Role | None:
-        return self._s.roles.get(role_id)
-
-    def get_role_by_name(self, name: str) -> Role | None:
-        rid = self._s.role_by_name.get(name)
-        return self._s.roles.get(rid) if rid else None
-
-    def create_role(self, *, name: str, description: str | None = None) -> Role | None:
-        if name in self._s.role_by_name:
-            return None
-        now = _aware_now()
-        role = Role(
-            id=uuid4(),
-            name=name,
-            description=description,
-            is_active=True,
-            created_at=now,
-            updated_at=now,
-        )
-        self._s.roles[role.id] = role
-        self._s.role_by_name[name] = role.id
-        self._s.role_permissions.setdefault(role.id, set())
-        return role
-
-    def update_role(
-        self,
-        role_id: UUID,
-        *,
-        name: str | None,
-        description: str | None,
-        is_active: bool | None,
-    ) -> Role | None:
-        existing = self._s.roles.get(role_id)
-        if existing is None:
-            return None
-        new_name = name if name is not None else existing.name
-        if name is not None and name != existing.name:
-            self._s.role_by_name.pop(existing.name, None)
-            self._s.role_by_name[new_name] = role_id
-        updated = Role(
-            id=existing.id,
-            name=new_name,
-            description=(
-                description if description is not None else existing.description
-            ),
-            is_active=(is_active if is_active is not None else existing.is_active),
-            created_at=existing.created_at,
-            updated_at=_aware_now(),
-        )
-        self._s.roles[role_id] = updated
-        return updated
-
-    def list_permissions(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> list[Permission]:
-        ordered = sorted(self._s.permissions.values(), key=lambda p: p.created_at)
-        return ordered[offset : offset + limit]
-
-    def get_permission(self, permission_id: UUID) -> Permission | None:
-        return self._s.permissions.get(permission_id)
-
-    def get_permission_by_name(self, name: str) -> Permission | None:
-        pid = self._s.permission_by_name.get(name)
-        return self._s.permissions.get(pid) if pid else None
-
-    def create_permission(
-        self, *, name: str, description: str | None = None
-    ) -> Permission | None:
-        if name in self._s.permission_by_name:
-            return None
-        now = _aware_now()
-        permission = Permission(
-            id=uuid4(),
-            name=name,
-            description=description,
-            created_at=now,
-            updated_at=now,
-        )
-        self._s.permissions[permission.id] = permission
-        self._s.permission_by_name[name] = permission.id
-        return permission
-
-    def assign_user_role(self, user_id: UUID, role_id: UUID) -> bool:
-        if user_id not in self._s.users or role_id not in self._s.roles:
-            return False
-        self._s.user_roles.setdefault(user_id, set()).add(role_id)
-        return True
-
-    def remove_user_role(self, user_id: UUID, role_id: UUID) -> bool:
-        if user_id not in self._s.users or role_id not in self._s.roles:
-            return False
-        roles = self._s.user_roles.get(user_id, set())
-        if role_id not in roles:
-            return False
-        roles.discard(role_id)
-        return True
-
-    def assign_role_permission(self, role_id: UUID, permission_id: UUID) -> bool:
-        if role_id not in self._s.roles or permission_id not in self._s.permissions:
-            return False
-        self._s.role_permissions.setdefault(role_id, set()).add(permission_id)
-        return True
-
-    def remove_role_permission(self, role_id: UUID, permission_id: UUID) -> bool:
-        if role_id not in self._s.roles or permission_id not in self._s.permissions:
-            return False
-        perms = self._s.role_permissions.get(role_id, set())
-        if permission_id not in perms:
-            return False
-        perms.discard(permission_id)
-        return True
 
     # ── Audit operations ─────────────────────────────────────────────────────
 

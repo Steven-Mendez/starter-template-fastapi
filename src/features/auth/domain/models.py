@@ -45,33 +45,6 @@ class User:
 
 
 @dataclass(frozen=True, slots=True)
-class Role:
-    id: UUID
-    name: str
-    description: str | None
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-
-    def __post_init__(self) -> None:
-        _require_aware(self.created_at, field="Role.created_at")
-        _require_aware(self.updated_at, field="Role.updated_at")
-
-
-@dataclass(frozen=True, slots=True)
-class Permission:
-    id: UUID
-    name: str
-    description: str | None
-    created_at: datetime
-    updated_at: datetime
-
-    def __post_init__(self) -> None:
-        _require_aware(self.created_at, field="Permission.created_at")
-        _require_aware(self.updated_at, field="Permission.updated_at")
-
-
-@dataclass(frozen=True, slots=True)
 class RefreshToken:
     id: UUID
     user_id: UUID

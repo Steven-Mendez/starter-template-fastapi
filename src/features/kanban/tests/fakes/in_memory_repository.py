@@ -50,6 +50,16 @@ class InMemoryKanbanRepository(
             for b in sorted(self._boards.values(), key=lambda b: b.created_at)
         ]
 
+    def list_by_ids(self, board_ids: list[str]) -> list[BoardSummary]:
+        if not board_ids:
+            return []
+        wanted = set(board_ids)
+        return [
+            BoardSummary(id=b.id, title=b.title, created_at=b.created_at)
+            for b in sorted(self._boards.values(), key=lambda b: b.created_at)
+            if b.id in wanted
+        ]
+
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
         board = self._boards.get(board_id)
         if board is None:

@@ -14,11 +14,8 @@ from sqlmodel import Session, SQLModel, create_engine
 from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
-    PermissionTable,
     RefreshTokenTable,
-    RolePermissionTable,
-    RoleTable,
-    UserRoleTable,
+    RelationshipTable,
     UserTable,
 )
 from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
@@ -27,10 +24,7 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import 
 
 AUTH_TABLES: list[Any] = [
     UserTable,
-    RoleTable,
-    PermissionTable,
-    UserRoleTable,
-    RolePermissionTable,
+    RelationshipTable,
     RefreshTokenTable,
     AuthAuditEventTable,
     AuthInternalTokenTable,

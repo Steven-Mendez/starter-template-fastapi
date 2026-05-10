@@ -22,11 +22,8 @@ from sqlmodel import create_engine
 from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
-    PermissionTable,
     RefreshTokenTable,
-    RolePermissionTable,
-    RoleTable,
-    UserRoleTable,
+    RelationshipTable,
     UserTable,
 )
 from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
@@ -65,10 +62,7 @@ class AuthTestContext:
 
 AUTH_TABLES: list[Any] = [
     UserTable,
-    RoleTable,
-    PermissionTable,
-    UserRoleTable,
-    RolePermissionTable,
+    RelationshipTable,
     RefreshTokenTable,
     AuthAuditEventTable,
     AuthInternalTokenTable,
@@ -116,12 +110,11 @@ def auth_repository() -> Iterator[SQLModelAuthRepository]:
 
 
 def _build_app(settings: AppSettings, repository: SQLModelAuthRepository) -> FastAPI:
-    """Build a wired FastAPI app with seeded RBAC and a super-admin account."""
+    """Build a wired FastAPI app with a bootstrapped system-admin account."""
     app = build_fastapi_app(settings)
     mount_auth_routes(app)
     auth = build_auth_container(settings=settings, repository=repository)
-    auth.seed_initial_data.execute()
-    auth.bootstrap_super_admin.execute(
+    auth.bootstrap_system_admin.execute(
         email="admin@example.com",
         password="AdminPassword123!",
     )
@@ -129,6 +122,9 @@ def _build_app(settings: AppSettings, repository: SQLModelAuthRepository) -> Fas
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI):  # type: ignore[no-untyped-def]
         set_app_container(lifespan_app, _Container(settings=settings))
+        # Register the principal resolver so platform-level dependencies
+        # (require_authorization) can resolve tokens via app.state.
+        lifespan_app.state.principal_resolver = auth.resolve_principal.execute
         attach_auth_container(lifespan_app, auth)
         yield
         lifespan_app.state.container = None

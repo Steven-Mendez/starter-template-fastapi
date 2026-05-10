@@ -111,6 +111,20 @@ class _BaseSQLModelKanbanRepository(
             ).all()
         return [board_table_to_read_model(board) for board in boards]
 
+    def list_by_ids(self, board_ids: list[str]) -> list[BoardSummary]:
+        """List active boards whose ids are in ``board_ids``, ordered by creation."""
+        if not board_ids:
+            return []
+        self._ensure_open()
+        with self._session_scope() as session:
+            boards = session.exec(
+                select(BoardTable)
+                .where(BoardTable.id.in_(board_ids))  # type: ignore[attr-defined]
+                .where(BoardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+                .order_by("created_at")
+            ).all()
+        return [board_table_to_read_model(board) for board in boards]
+
     def find_by_id(self, board_id: str) -> Result[Board, KanbanError]:
         """Hydrate a complete :class:`Board` aggregate (columns + cards) by id."""
         self._ensure_open()

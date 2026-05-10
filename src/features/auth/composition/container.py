@@ -1,10 +1,10 @@
 """Composition root for the auth feature.
 
-Builds and groups every collaborator (repository, use cases, rate limiter)
-in a single container so the rest of the application receives a single
-object instead of dozens of individual dependencies. Tests construct
-their own container with substitute components when they need to swap
-behaviour.
+Builds and groups every collaborator (repository, use cases, rate
+limiter, principal cache, authorization adapter) in a single container
+so the rest of the application receives a single object instead of
+dozens of individual dependencies. Tests construct their own container
+with substitute components when they need to swap behaviour.
 """
 
 from __future__ import annotations
@@ -14,9 +14,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Union
 
+from src.features.auth.adapters.outbound.authorization.sqlmodel import (
+    SQLModelAuthorizationAdapter,
+)
 from src.features.auth.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
+from src.features.auth.application.authorization.ports import AuthorizationPort
 from src.features.auth.application.cache import (
     InProcessPrincipalCache,
     PrincipalCachePort,
@@ -28,6 +32,13 @@ from src.features.auth.application.rate_limit import (
     FixedWindowRateLimiter,
     RedisRateLimiter,
 )
+from src.features.auth.application.use_cases.admin.bootstrap_admin import (
+    BootstrapSystemAdmin,
+)
+from src.features.auth.application.use_cases.admin.list_audit_events import (
+    ListAuditEvents,
+)
+from src.features.auth.application.use_cases.admin.list_users import ListUsers
 from src.features.auth.application.use_cases.auth.confirm_email_verification import (
     ConfirmEmailVerification,
 )
@@ -52,33 +63,6 @@ from src.features.auth.application.use_cases.auth.request_password_reset import 
 from src.features.auth.application.use_cases.auth.resolve_principal import (
     ResolvePrincipalFromAccessToken,
 )
-from src.features.auth.application.use_cases.rbac.assign_role_permission import (
-    AssignRolePermission,
-)
-from src.features.auth.application.use_cases.rbac.assign_user_role import AssignUserRole
-from src.features.auth.application.use_cases.rbac.bootstrap_super_admin import (
-    BootstrapSuperAdmin,
-)
-from src.features.auth.application.use_cases.rbac.create_permission import (
-    CreatePermission,
-)
-from src.features.auth.application.use_cases.rbac.create_role import CreateRole
-from src.features.auth.application.use_cases.rbac.list_audit_events import (
-    ListAuditEvents,
-)
-from src.features.auth.application.use_cases.rbac.list_permissions import (
-    ListPermissions,
-)
-from src.features.auth.application.use_cases.rbac.list_roles import ListRoles
-from src.features.auth.application.use_cases.rbac.list_users import ListUsers
-from src.features.auth.application.use_cases.rbac.remove_role_permission import (
-    RemoveRolePermission,
-)
-from src.features.auth.application.use_cases.rbac.remove_user_role import RemoveUserRole
-from src.features.auth.application.use_cases.rbac.seed_initial_data import (
-    SeedInitialData,
-)
-from src.features.auth.application.use_cases.rbac.update_role import UpdateRole
 from src.platform.config.settings import AppSettings
 
 _logger = logging.getLogger(__name__)
@@ -88,34 +72,13 @@ RateLimiter = Union[FixedWindowRateLimiter, RedisRateLimiter]
 
 @dataclass(slots=True)
 class AuthContainer:
-    """Bundle of every collaborator the auth feature needs at runtime.
-
-    Attributes:
-        settings: Effective application settings.
-        repository: Persistence adapter shared across use cases.
-        rate_limiter: Either the in-process or the Redis-backed limiter.
-        principal_cache: Cache for resolved principals.
-        shutdown: Callback invoked during application shutdown to release
-            external resources (DB pool, Redis connection, ...).
-        register_user: Use case for new user registration.
-        login_user: Use case for credential authentication.
-        rotate_refresh_token: Use case for refresh-token rotation.
-        logout_user: Use case for single-session logout.
-        logout_all_sessions: Use case for revoking all active sessions.
-        request_password_reset: Use case for initiating a password reset.
-        confirm_password_reset: Use case for applying a reset token.
-        request_email_verification: Use case for requesting email verification.
-        confirm_email_verification: Use case for consuming a verify token.
-        resolve_principal: Use case for resolving a JWT to a Principal.
-        list_roles / list_users / ...: RBAC management use cases.
-        seed_initial_data: Use case that seeds default roles and permissions.
-        bootstrap_super_admin: Use case for one-time super-admin creation.
-    """
+    """Bundle of every collaborator the auth feature needs at runtime."""
 
     settings: AppSettings
     repository: SQLModelAuthRepository
     rate_limiter: RateLimiter
     principal_cache: PrincipalCachePort
+    authorization: AuthorizationPort
     shutdown: Callable[[], None]
     # Auth use cases
     register_user: RegisterUser
@@ -128,20 +91,10 @@ class AuthContainer:
     request_email_verification: RequestEmailVerification
     confirm_email_verification: ConfirmEmailVerification
     resolve_principal: ResolvePrincipalFromAccessToken
-    # RBAC use cases
-    list_roles: ListRoles
+    # Admin use cases (gated by system:main checks at the HTTP layer)
     list_users: ListUsers
-    create_role: CreateRole
-    update_role: UpdateRole
-    list_permissions: ListPermissions
-    create_permission: CreatePermission
-    assign_role_permission: AssignRolePermission
-    remove_role_permission: RemoveRolePermission
-    assign_user_role: AssignUserRole
-    remove_user_role: RemoveUserRole
     list_audit_events: ListAuditEvents
-    seed_initial_data: SeedInitialData
-    bootstrap_super_admin: BootstrapSuperAdmin
+    bootstrap_system_admin: BootstrapSystemAdmin
 
 
 def build_auth_container(
@@ -149,23 +102,7 @@ def build_auth_container(
     settings: AppSettings,
     repository: SQLModelAuthRepository | None = None,
 ) -> AuthContainer:
-    """Wire all auth dependencies and return a ready-to-use container.
-
-    Selects the rate limiter based on ``settings.auth_redis_url``:
-    ``RedisRateLimiter`` when a URL is provided, ``FixedWindowRateLimiter``
-    otherwise. The Redis limiter pings the server at construction, so an
-    invalid URL fails loudly here rather than on the first request.
-
-    Args:
-        settings: Application settings, typically loaded from the environment.
-        repository: An optional pre-built repository. When ``None``, a new
-            ``SQLModelAuthRepository`` connected to ``settings.postgresql_dsn``
-            is created automatically. Pass an explicit repository in tests to
-            inject a SQLite in-memory engine.
-
-    Returns:
-        A fully initialised ``AuthContainer``.
-    """
+    """Wire all auth dependencies and return a ready-to-use container."""
     repo = repository or SQLModelAuthRepository(
         settings.postgresql_dsn,
         create_schema=False,
@@ -208,6 +145,13 @@ def build_auth_container(
                 "set APP_AUTH_REDIS_URL to enforce limits across replicas"
             )
 
+    # Authorization adapter shares the auth repository's engine so cache
+    # invalidation (via authz_version bumps on the users table) and tuple
+    # writes hit the same database. Read paths do not need a parent resolver
+    # because card/column checks are performed by use cases that wire a
+    # session-scoped adapter with its own resolver via the kanban UoW.
+    authorization = SQLModelAuthorizationAdapter(repo.engine)
+
     dummy_hash = password_service.hash_password("dummy-password")
 
     register_user = RegisterUser(
@@ -215,7 +159,6 @@ def build_auth_container(
         _password_service=password_service,
         _settings=settings,
     )
-    seed = SeedInitialData(_repository=repo)
 
     def _shutdown() -> None:
         repo.close()
@@ -227,8 +170,8 @@ def build_auth_container(
         repository=repo,
         rate_limiter=limiter,
         principal_cache=cache,
+        authorization=authorization,
         shutdown=_shutdown,
-        # Auth use cases
         register_user=register_user,
         login_user=LoginUser(
             _repository=repo,
@@ -267,24 +210,12 @@ def build_auth_container(
             settings=settings,
             cache=cache,
         ),
-        # RBAC use cases
-        list_roles=ListRoles(_repository=repo),
         list_users=ListUsers(_repository=repo),
-        create_role=CreateRole(_repository=repo),
-        update_role=UpdateRole(_repository=repo, _cache=cache),
-        list_permissions=ListPermissions(_repository=repo),
-        create_permission=CreatePermission(_repository=repo),
-        assign_role_permission=AssignRolePermission(_repository=repo, _cache=cache),
-        remove_role_permission=RemoveRolePermission(_repository=repo, _cache=cache),
-        assign_user_role=AssignUserRole(_repository=repo, _cache=cache),
-        remove_user_role=RemoveUserRole(_repository=repo, _cache=cache),
         list_audit_events=ListAuditEvents(_repository=repo),
-        seed_initial_data=seed,
-        bootstrap_super_admin=BootstrapSuperAdmin(
+        bootstrap_system_admin=BootstrapSystemAdmin(
             _repository=repo,
-            _seed=seed,
             _register_user=register_user,
-            _cache=cache,
+            _authorization=authorization,
         ),
     )
 

@@ -3,6 +3,12 @@
 Builds a :class:`KanbanContainer` that exposes use-case factories so
 each request gets a fresh unit-of-work without rebuilding repositories
 or shared adapters every time.
+
+The container takes an ``AuthorizationPort`` from the auth feature so
+kanban use cases can write the initial owner tuple on board creation
+and filter listings to a user's accessible boards. The port is the only
+auth dependency exposed here — use cases never see relationship tuples
+for resources they don't own.
 """
 
 from __future__ import annotations
@@ -13,6 +19,8 @@ from typing import Protocol
 
 from sqlalchemy.engine import Engine  # noqa: F401  (used in Protocol)
 
+from src.features.auth.application.authorization.ports import AuthorizationPort
+from src.features.auth.application.authorization.resource_graph import ParentResolver
 from src.features.kanban.adapters.outbound.persistence import SQLModelKanbanRepository
 from src.features.kanban.adapters.outbound.persistence.sqlmodel.unit_of_work import (
     SqlModelUnitOfWork,
@@ -76,13 +84,7 @@ class _ManagedKanbanRepository(
     ReadinessProbe,
     Protocol,
 ):
-    """Shape every "owned" repository must satisfy: ports + ``engine`` + ``close``.
-
-    The container only knows how to wire something that exposes this
-    full surface, which lets either the production
-    ``SQLModelKanbanRepository`` or a test fake be plugged in
-    interchangeably.
-    """
+    """Shape every "owned" repository must satisfy: ports + ``engine`` + ``close``."""
 
     @property
     def engine(self) -> Engine: ...
@@ -90,76 +92,77 @@ class _ManagedKanbanRepository(
     def close(self) -> None: ...
 
 
+class _LookupParentResolver:
+    """Adapt the kanban lookup repository to the ``ParentResolver`` Protocol."""
+
+    def __init__(self, lookup: KanbanLookupRepositoryPort) -> None:
+        self._lookup = lookup
+
+    def board_id_for_card(self, card_id: str) -> str | None:
+        return self._lookup.find_board_id_by_card(card_id)
+
+    def board_id_for_column(self, column_id: str) -> str | None:
+        return self._lookup.find_board_id_by_column(column_id)
+
+
 @dataclass(slots=True)
 class KanbanContainer:
-    """Holds shared adapters and produces fresh use-case instances per request.
-
-    Building use cases lazily through factories means each invocation
-    receives its own unit-of-work / session, while the comparatively
-    expensive repository, clock, and id generator are reused across the
-    whole process.
-    """
+    """Holds shared adapters and produces fresh use-case instances per request."""
 
     query_repository: KanbanQueryRepositoryPort
     uow_factory: UnitOfWorkFactory
+    authorization: AuthorizationPort
+    parent_resolver: ParentResolver
     id_gen: IdGeneratorPort
     clock: ClockPort
     readiness_probe: ReadinessProbe
     shutdown: Callable[[], None]
 
     def create_board_use_case(self) -> CreateBoardUseCasePort:
-        """Build a :class:`CreateBoardUseCase` with a fresh unit-of-work."""
         return CreateBoardUseCase(
             uow=self.uow_factory(), id_gen=self.id_gen, clock=self.clock
         )
 
     def patch_board_use_case(self) -> PatchBoardUseCasePort:
-        """Build a :class:`PatchBoardUseCase` with a fresh unit-of-work."""
         return PatchBoardUseCase(uow=self.uow_factory())
 
     def delete_board_use_case(self) -> DeleteBoardUseCasePort:
-        """Build a :class:`DeleteBoardUseCase` with a fresh unit-of-work."""
         return DeleteBoardUseCase(uow=self.uow_factory())
 
     def restore_board_use_case(self) -> RestoreBoardUseCasePort:
-        """Build a :class:`RestoreBoardUseCase` with a fresh unit-of-work."""
         return RestoreBoardUseCase(uow=self.uow_factory())
 
     def get_board_use_case(self) -> GetBoardUseCasePort:
-        """Build :class:`GetBoardUseCase` with the shared query repository."""
         return GetBoardUseCase(query_repository=self.query_repository)
 
     def list_boards_use_case(self) -> ListBoardsUseCasePort:
-        """Build :class:`ListBoardsUseCase` with the shared query repository."""
-        return ListBoardsUseCase(query_repository=self.query_repository)
+        return ListBoardsUseCase(
+            query_repository=self.query_repository,
+            authorization=self.authorization,
+        )
 
     def create_column_use_case(self) -> CreateColumnUseCasePort:
-        """Build a :class:`CreateColumnUseCase` with a fresh unit-of-work."""
         return CreateColumnUseCase(uow=self.uow_factory(), id_gen=self.id_gen)
 
     def delete_column_use_case(self) -> DeleteColumnUseCasePort:
-        """Build a :class:`DeleteColumnUseCase` with a fresh unit-of-work."""
         return DeleteColumnUseCase(uow=self.uow_factory())
 
     def create_card_use_case(self) -> CreateCardUseCasePort:
-        """Build a :class:`CreateCardUseCase` with a fresh unit-of-work."""
         return CreateCardUseCase(uow=self.uow_factory(), id_gen=self.id_gen)
 
     def patch_card_use_case(self) -> PatchCardUseCasePort:
-        """Build a :class:`PatchCardUseCase` with a fresh unit-of-work."""
         return PatchCardUseCase(uow=self.uow_factory())
 
     def get_card_use_case(self) -> GetCardUseCasePort:
-        """Build :class:`GetCardUseCase` with the shared query repository."""
         return GetCardUseCase(query_repository=self.query_repository)
 
     def check_readiness_use_case(self) -> CheckReadinessUseCasePort:
-        """Build :class:`CheckReadinessUseCase` using the readiness probe."""
         return CheckReadinessUseCase(readiness=self.readiness_probe)
 
 
 def build_kanban_container(
     *,
+    authorization: AuthorizationPort,
     postgresql_dsn: str | None = None,
     repository: _ManagedKanbanRepository | None = None,
     pool_size: int = 5,
@@ -169,9 +172,16 @@ def build_kanban_container(
 ) -> KanbanContainer:
     """Wire the Kanban container.
 
-    In production, pass ``postgresql_dsn`` and the container manages its own
-    engine via ``SQLModelKanbanRepository``. In tests, pass a fake ``repository``
-    implementing the managed-repository surface.
+    Args:
+        authorization: The auth feature's ``AuthorizationPort``. Reused for
+            list filtering; a session-scoped variant is constructed per
+            unit-of-work for transactional writes (see ``SqlModelUnitOfWork``).
+        postgresql_dsn: Production DSN for the kanban database.
+        repository: Optional pre-built repository for tests.
+
+    The container resolves the parent walk for cross-resource authorization
+    via the kanban lookup repository, so card/column checks performed inside
+    a unit of work can navigate to the owning board without extra wiring.
     """
     if repository is None:
         if postgresql_dsn is None:
@@ -188,9 +198,14 @@ def build_kanban_container(
         repo = repository
 
     query_repo = KanbanQueryRepositoryView(repo)
+    parent_resolver: ParentResolver = _LookupParentResolver(repo)
     return KanbanContainer(
         query_repository=query_repo,
-        uow_factory=lambda: SqlModelUnitOfWork(repo.engine),
+        uow_factory=lambda: SqlModelUnitOfWork(
+            repo.engine, parent_resolver=parent_resolver
+        ),
+        authorization=authorization,
+        parent_resolver=parent_resolver,
         id_gen=UUIDIdGenerator(),
         clock=SystemClock(),
         readiness_probe=repo,

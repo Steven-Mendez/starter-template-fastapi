@@ -23,17 +23,26 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 
-def _resolve_database_url() -> str:
-    """Resolve the migration target DSN, preferring an explicit env var.
+_DEFAULT_INI_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
 
-    Reading ``APP_POSTGRESQL_DSN`` directly avoids loading the full
-    settings stack — which would require a ``.env`` file — when migrations
-    run inside CI or a Docker container where the DSN is injected as a
-    plain environment variable.
+
+def _resolve_database_url() -> str:
+    """Resolve the migration target DSN.
+
+    Resolution order:
+    1. ``APP_POSTGRESQL_DSN`` from the environment — Docker / CI inject it.
+    2. A non-default URL already on the Alembic ``Config`` (e.g., a test
+       fixture passing a testcontainer URL via ``set_main_option``). The
+       hard-coded local-dev URL in ``alembic.ini`` is treated as "no URL
+       set" so it does not shadow the env var or the test fixture.
+    3. ``AppSettings().postgresql_dsn`` from the application settings.
     """
     env_dsn = os.getenv("APP_POSTGRESQL_DSN")
     if env_dsn:
         return env_dsn
+    existing = config.get_main_option("sqlalchemy.url")
+    if existing and existing != _DEFAULT_INI_URL:
+        return existing
     return AppSettings().postgresql_dsn
 
 

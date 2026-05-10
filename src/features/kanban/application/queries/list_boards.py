@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
 class ListBoardsQuery:
-    """Empty payload for listing every board.
+    """Listing query.
 
-    Modeled as a query DTO (instead of a no-arg method call) so future
-    pagination or filtering options can be added without changing the
-    use-case signature or any of its callers.
+    The ``actor_id`` is required so the use case can ask the
+    authorization layer which boards the caller has access to. An
+    anonymous request (no actor) returns an empty list.
     """
+
+    actor_id: UUID | None = None
