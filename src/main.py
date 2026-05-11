@@ -15,10 +15,19 @@ from typing import AsyncIterator
 import redis as redis_lib
 from fastapi import FastAPI
 
-from src.features.auth.composition.container import AuthContainer, build_auth_container
+from src.features.auth.adapters.outbound.authz_version import (
+    SessionSQLModelUserAuthzVersionAdapter,
+)
+from src.features.auth.composition.container import build_auth_container
 from src.features.auth.composition.wiring import (
     attach_auth_container,
     mount_auth_routes,
+)
+from src.features.authorization.composition import (
+    AuthorizationContainer,
+    attach_authorization_container,
+    build_authorization_container,
+    register_authorization_error_handlers,
 )
 from src.features.kanban.composition import (
     attach_kanban_container,
@@ -50,7 +59,9 @@ def _configure_logging(settings: AppSettings) -> None:
     )
 
 
-def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
+def _run_authz_bootstrap(
+    authorization: AuthorizationContainer, settings: AppSettings
+) -> None:
     """Optionally create the first ``system:main#admin`` tuple at startup.
 
     Idempotent: re-runs against an already-bootstrapped DB simply re-write
@@ -67,7 +78,7 @@ def _run_auth_bootstrap(auth: AuthContainer, settings: AppSettings) -> None:
             "APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD must be set together."
         )
     if email and password:
-        auth.bootstrap_system_admin.execute(email=email, password=password)
+        authorization.bootstrap_system_admin.execute(email=email, password=password)
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -82,15 +93,23 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     # because they require DB connections that should not outlive the process.
     mount_auth_routes(app)
     mount_kanban_routes(app)
+    register_authorization_error_handlers(app)
     instrument_fastapi_app(app, app_settings)
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         auth = build_auth_container(settings=app_settings)
+        authorization = build_authorization_container(
+            engine=auth.repository.engine,
+            user_authz_version=auth.user_authz_version_adapter,
+            user_registrar=auth.user_registrar_adapter,
+            audit=auth.audit_adapter,
+        )
         kanban = build_kanban_container(
             postgresql_dsn=app_settings.postgresql_dsn,
-            authorization=auth.authorization,
-            registry=auth.registry,
+            authorization=authorization.port,
+            registry=authorization.registry,
+            user_authz_version_factory=SessionSQLModelUserAuthzVersionAdapter,
             pool_size=app_settings.db_pool_size,
             max_overflow=app_settings.db_max_overflow,
             pool_recycle=app_settings.db_pool_recycle_seconds,
@@ -99,13 +118,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         # Every feature has now contributed to the registry; freeze it
         # so a stray runtime ``register_…`` call surfaces as a clear error
         # rather than a silent behaviour change.
-        auth.registry.seal()
-        _run_auth_bootstrap(auth, app_settings)
+        authorization.registry.seal()
+        _run_authz_bootstrap(authorization, app_settings)
         set_app_container(lifespan_app, _PlatformAppContainer(settings=app_settings))
         # Register the principal resolver so platform-level authorization
         # dependencies (require_authorization, etc.) can resolve tokens
         # without importing from the auth feature.
         lifespan_app.state.principal_resolver = auth.resolve_principal.execute
+        attach_authorization_container(lifespan_app, authorization)
         attach_auth_container(lifespan_app, auth)
         attach_kanban_container(lifespan_app, kanban)
 
@@ -129,6 +149,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             # Shutdown order is reverse of startup so dependent resources
             # (e.g. connection pools) are closed after the services that use them.
             kanban.shutdown()
+            authorization.shutdown()
             auth.shutdown()
             if redis_client is not None:
                 redis_client.close()

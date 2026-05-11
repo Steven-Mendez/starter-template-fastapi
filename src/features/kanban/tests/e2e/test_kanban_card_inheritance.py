@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from src.features.auth.application.authorization.types import Relationship
+from src.features.authorization.application.types import Relationship
 from src.features.kanban.tests.e2e.conftest import (
     _READ_ONLY_PRINCIPAL,
     FakeAuthorization,

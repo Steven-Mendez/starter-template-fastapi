@@ -15,12 +15,12 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
     RefreshTokenTable,
-    RelationshipTable,
     UserTable,
 )
 from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
+from src.platform.persistence.sqlmodel.authorization.models import RelationshipTable
 
 AUTH_TABLES: list[Any] = [
     UserTable,

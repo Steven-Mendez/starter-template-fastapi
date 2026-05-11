@@ -6,11 +6,11 @@ from types import TracebackType
 from typing import Self
 from uuid import UUID
 
-from src.features.auth.application.authorization.ports import (
+from src.features.authorization.application.ports.authorization_port import (
     LOOKUP_DEFAULT_LIMIT,
     AuthorizationPort,
 )
-from src.features.auth.application.authorization.types import Relationship
+from src.features.authorization.application.types import Relationship
 from src.features.kanban.application.ports.outbound import (
     KanbanCommandRepositoryPort,
     KanbanLookupRepositoryPort,

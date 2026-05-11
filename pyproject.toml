@@ -223,21 +223,56 @@ layers = [
     "src.features.kanban.domain",
 ]
 
-# Cross-feature isolation: features must not import each other.
-# Currently only kanban exists; this contract is the template enforced here
-# (extend ``forbidden_modules`` when new features are added).
+# Cross-feature isolation: kanban depends only on the authorization
+# feature's port surface (resource registration + AuthorizationPort).
+# Its production code never reaches into the auth feature directly.
 [[tool.importlinter.contracts]]
 name = "Cross-feature isolation: kanban"
 type = "forbidden"
-source_modules = ["src.features.kanban"]
-forbidden_modules = []
+source_modules = [
+    "src.features.kanban.application",
+    "src.features.kanban.adapters",
+    "src.features.kanban.composition",
+    "src.features.kanban.domain",
+]
+forbidden_modules = ["src.features.auth"]
 
-# Tests scope: a feature's tests cannot import another feature.
+# Tests scope: kanban tests build their own in-memory fixtures and do
+# not depend on the auth feature.
 [[tool.importlinter.contracts]]
 name = "Kanban tests scope"
 type = "forbidden"
 source_modules = ["src.features.kanban.tests"]
-forbidden_modules = []
+forbidden_modules = ["src.features.auth"]
+
+# === Auth ↔ Authorization split ===
+#
+# After ``split-authentication-and-authorization`` the two features
+# communicate only through ports defined on the authorization side and
+# implemented on the auth side. Neither feature's production code may
+# import the other's packages directly. Test trees stay out of scope
+# because they construct integration-style fixtures that legitimately
+# wire both halves; the contract guards production code.
+[[tool.importlinter.contracts]]
+name = "Auth does not import authorization"
+type = "forbidden"
+source_modules = [
+    "src.features.auth.application",
+    "src.features.auth.adapters",
+    "src.features.auth.composition",
+    "src.features.auth.domain",
+]
+forbidden_modules = ["src.features.authorization"]
+
+[[tool.importlinter.contracts]]
+name = "Authorization does not import auth"
+type = "forbidden"
+source_modules = [
+    "src.features.authorization.application",
+    "src.features.authorization.adapters",
+    "src.features.authorization.composition",
+]
+forbidden_modules = ["src.features.auth"]
 
 # === Auth feature contracts ===
 
@@ -313,4 +348,39 @@ layers = [
     "src.features.auth.adapters",
     "src.features.auth.application",
     "src.features.auth.domain",
+]
+
+# === Authorization feature contracts ===
+
+# Application layer of authorization stays framework-free. The
+# in-memory engine and registry are pure Python; adapters and platform
+# infrastructure live elsewhere.
+[[tool.importlinter.contracts]]
+name = "Authorization application: framework-free"
+type = "forbidden"
+source_modules = ["src.features.authorization.application"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "src.features.authorization.adapters",
+    "src.features.authorization.composition",
+    "src.platform.api",
+    "fastapi",
+    "starlette",
+    "sqlmodel",
+    "sqlalchemy",
+    "uvicorn",
+    "httpx",
+    "alembic",
+    "pydantic_settings",
+    "psycopg",
+]
+
+# Inward dependency direction inside Authorization (no domain layer; the
+# application package is the inner ring).
+[[tool.importlinter.contracts]]
+name = "Authorization inward dependency direction"
+type = "layers"
+layers = [
+    "src.features.authorization.adapters",
+    "src.features.authorization.application",
 ]

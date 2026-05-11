@@ -22,13 +22,14 @@ from typing import Protocol
 
 from sqlalchemy.engine import Engine  # noqa: F401  (used in Protocol)
 
-from src.features.auth.application.authorization.ports import AuthorizationPort
-from src.features.auth.application.authorization.registry import (
-    AuthorizationRegistry,
+from src.features.authorization.application.ports.authorization_port import (
+    AuthorizationPort,
 )
+from src.features.authorization.application.registry import AuthorizationRegistry
 from src.features.kanban.adapters.outbound.persistence import SQLModelKanbanRepository
 from src.features.kanban.adapters.outbound.persistence.sqlmodel.unit_of_work import (
     SqlModelUnitOfWork,
+    UserAuthzVersionFactory,
 )
 from src.features.kanban.adapters.outbound.query.kanban_query_repository_view import (
     KanbanQueryRepositoryView,
@@ -155,6 +156,7 @@ def build_kanban_container(
     *,
     authorization: AuthorizationPort,
     registry: AuthorizationRegistry,
+    user_authz_version_factory: UserAuthzVersionFactory,
     postgresql_dsn: str | None = None,
     repository: _ManagedKanbanRepository | None = None,
     pool_size: int = 5,
@@ -165,13 +167,19 @@ def build_kanban_container(
     """Wire the Kanban container.
 
     Args:
-        authorization: The auth feature's ``AuthorizationPort``. Reused for
-            list filtering; a session-scoped variant is constructed per
-            unit-of-work for transactional writes (see ``SqlModelUnitOfWork``).
-        registry: The auth feature's ``AuthorizationRegistry``. Kanban
-            contributes its resource types, hierarchy, and parent-walk
-            callables here at construction time so card/column checks can
-            navigate to the owning board without a dedicated seam.
+        authorization: The authorization feature's ``AuthorizationPort``.
+            Reused for list filtering; a session-scoped variant is
+            constructed per unit-of-work for transactional writes (see
+            ``SqlModelUnitOfWork``).
+        registry: The authorization feature's ``AuthorizationRegistry``.
+            Kanban contributes its resource types, hierarchy, and
+            parent-walk callables here at construction time so card and
+            column checks can navigate to the owning board.
+        user_authz_version_factory: Factory the UoW uses to build a
+            session-bound ``UserAuthzVersionPort`` so the
+            authz_version bump commits or rolls back atomically with
+            kanban writes. Kanban never imports auth-side adapter code;
+            the factory closure is wired in by ``main.py``.
         postgresql_dsn: Production DSN for the kanban database.
         repository: Optional pre-built repository for tests.
     """
@@ -201,7 +209,11 @@ def build_kanban_container(
     query_repo = KanbanQueryRepositoryView(repo)
     return KanbanContainer(
         query_repository=query_repo,
-        uow_factory=lambda: SqlModelUnitOfWork(repo.engine, registry=registry),
+        uow_factory=lambda: SqlModelUnitOfWork(
+            repo.engine,
+            registry=registry,
+            user_authz_version_factory=user_authz_version_factory,
+        ),
         authorization=authorization,
         id_gen=UUIDIdGenerator(),
         clock=SystemClock(),

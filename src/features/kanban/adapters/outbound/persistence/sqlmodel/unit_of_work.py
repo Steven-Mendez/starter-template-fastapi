@@ -5,23 +5,32 @@ kanban repository and a session-scoped authorization adapter to it. The
 authorization adapter shares the *same* Session, so a relationship write
 (e.g., the initial owner tuple from ``CreateBoardUseCase``) commits or
 rolls back atomically with the kanban write.
+
+The session-scoped ``UserAuthzVersionPort`` adapter is built through a
+factory supplied at composition time. Kanban never imports auth-side
+adapter code directly; the closure that wraps the auth-side session
+adapter is wired in by ``main.py``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import TracebackType
 from typing import Self
 
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from src.features.auth.adapters.outbound.authorization.sqlmodel import (
+from src.features.authorization.adapters.outbound.sqlmodel import (
     SessionSQLModelAuthorizationAdapter,
 )
-from src.features.auth.application.authorization.ports import AuthorizationPort
-from src.features.auth.application.authorization.registry import (
-    AuthorizationRegistry,
+from src.features.authorization.application.ports.authorization_port import (
+    AuthorizationPort,
 )
+from src.features.authorization.application.ports.outbound import (
+    UserAuthzVersionPort,
+)
+from src.features.authorization.application.registry import AuthorizationRegistry
 from src.features.kanban.adapters.outbound.persistence.sqlmodel.repository import (
     SessionSQLModelKanbanRepository,
 )
@@ -33,6 +42,8 @@ from src.features.kanban.application.ports.outbound.kanban_lookup_repository imp
 )
 from src.features.kanban.application.ports.outbound.unit_of_work import UnitOfWorkPort
 
+UserAuthzVersionFactory = Callable[[Session], UserAuthzVersionPort]
+
 
 class SqlModelUnitOfWork(UnitOfWorkPort):
     """UoW that opens one SQLModel session shared by command, lookup, and authz."""
@@ -41,15 +52,21 @@ class SqlModelUnitOfWork(UnitOfWorkPort):
     lookup: KanbanLookupRepositoryPort
     authorization: AuthorizationPort
 
-    def __init__(self, engine: Engine, *, registry: AuthorizationRegistry) -> None:
-        """Capture the engine and registry; defer session creation until ``__enter__``.
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        registry: AuthorizationRegistry,
+        user_authz_version_factory: UserAuthzVersionFactory,
+    ) -> None:
+        """Capture the engine, registry, and version-port factory.
 
-        ``registry`` is forwarded to the session-scoped authorization
-        adapter so card/column checks performed inside the unit of work
-        can walk to the parent board through registered parent callables.
+        Session creation is deferred until ``__enter__`` so the UoW is
+        cheap to construct and a fresh session is opened on each use.
         """
         self._engine = engine
         self._registry = registry
+        self._user_authz_version_factory = user_authz_version_factory
         self._session: Session | None = None
 
     def __enter__(self) -> Self:
@@ -59,7 +76,9 @@ class SqlModelUnitOfWork(UnitOfWorkPort):
         self.commands = repository
         self.lookup = repository
         self.authorization = SessionSQLModelAuthorizationAdapter(
-            self._session, self._registry
+            self._session,
+            self._registry,
+            self._user_authz_version_factory(self._session),
         )
         return self
 

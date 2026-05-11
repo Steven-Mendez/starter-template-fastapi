@@ -23,7 +23,6 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
     RefreshTokenTable,
-    RelationshipTable,
     UserTable,
 )
 from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
@@ -34,9 +33,15 @@ from src.features.auth.composition.wiring import (
     attach_auth_container,
     mount_auth_routes,
 )
+from src.features.authorization.composition import (
+    attach_authorization_container,
+    build_authorization_container,
+    register_authorization_error_handlers,
+)
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import set_app_container
 from src.platform.config.settings import AppSettings
+from src.platform.persistence.sqlmodel.authorization.models import RelationshipTable
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,8 +118,16 @@ def _build_app(settings: AppSettings, repository: SQLModelAuthRepository) -> Fas
     """Build a wired FastAPI app with a bootstrapped system-admin account."""
     app = build_fastapi_app(settings)
     mount_auth_routes(app)
+    register_authorization_error_handlers(app)
     auth = build_auth_container(settings=settings, repository=repository)
-    auth.bootstrap_system_admin.execute(
+    authorization = build_authorization_container(
+        engine=repository.engine,
+        user_authz_version=auth.user_authz_version_adapter,
+        user_registrar=auth.user_registrar_adapter,
+        audit=auth.audit_adapter,
+    )
+    authorization.registry.seal()
+    authorization.bootstrap_system_admin.execute(
         email="admin@example.com",
         password="AdminPassword123!",
     )
@@ -125,6 +138,7 @@ def _build_app(settings: AppSettings, repository: SQLModelAuthRepository) -> Fas
         # Register the principal resolver so platform-level dependencies
         # (require_authorization) can resolve tokens via app.state.
         lifespan_app.state.principal_resolver = auth.resolve_principal.execute
+        attach_authorization_container(lifespan_app, authorization)
         attach_auth_container(lifespan_app, auth)
         yield
         lifespan_app.state.container = None

@@ -11,7 +11,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from src.features.auth.application.authorization.ports import LOOKUP_DEFAULT_LIMIT
+from src.features.authorization.application.ports.authorization_port import (
+    LOOKUP_DEFAULT_LIMIT,
+)
 from src.features.kanban.application.ports.outbound import KanbanQueryRepositoryPort
 from src.features.kanban.application.queries import ListBoardsQuery
 from src.features.kanban.application.use_cases.board import ListBoardsUseCase

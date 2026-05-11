@@ -1,10 +1,15 @@
 """Composition root for the auth feature.
 
 Builds and groups every collaborator (repository, use cases, rate
-limiter, principal cache, authorization adapter) in a single container
-so the rest of the application receives a single object instead of
-dozens of individual dependencies. Tests construct their own container
-with substitute components when they need to swap behaviour.
+limiter, principal cache) in a single container so the rest of the
+application receives a single object instead of dozens of individual
+dependencies. Tests construct their own container with substitute
+components when they need to swap behaviour.
+
+The authorization-feature ports auth implements
+(``UserAuthzVersionPort``, ``UserRegistrarPort``, ``AuditPort``) are
+exposed on the container so the composition root can wire them into
+the authorization container without crossing feature boundaries.
 """
 
 from __future__ import annotations
@@ -14,15 +19,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Union
 
-from src.features.auth.adapters.outbound.authorization.sqlmodel import (
-    SQLModelAuthorizationAdapter,
+from src.features.auth.adapters.outbound.audit import SQLModelAuditAdapter
+from src.features.auth.adapters.outbound.authz_version import (
+    SQLModelUserAuthzVersionAdapter,
 )
 from src.features.auth.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
-from src.features.auth.application.authorization.ports import AuthorizationPort
-from src.features.auth.application.authorization.registry import (
-    AuthorizationRegistry,
+from src.features.auth.adapters.outbound.user_registrar import (
+    SQLModelUserRegistrarAdapter,
 )
 from src.features.auth.application.cache import (
     InProcessPrincipalCache,
@@ -34,9 +39,6 @@ from src.features.auth.application.jwt_tokens import AccessTokenService
 from src.features.auth.application.rate_limit import (
     FixedWindowRateLimiter,
     RedisRateLimiter,
-)
-from src.features.auth.application.use_cases.admin.bootstrap_admin import (
-    BootstrapSystemAdmin,
 )
 from src.features.auth.application.use_cases.admin.list_audit_events import (
     ListAuditEvents,
@@ -81,8 +83,10 @@ class AuthContainer:
     repository: SQLModelAuthRepository
     rate_limiter: RateLimiter
     principal_cache: PrincipalCachePort
-    authorization: AuthorizationPort
-    registry: AuthorizationRegistry
+    # Adapters auth provides to the authorization feature.
+    user_authz_version_adapter: SQLModelUserAuthzVersionAdapter
+    user_registrar_adapter: SQLModelUserRegistrarAdapter
+    audit_adapter: SQLModelAuditAdapter
     shutdown: Callable[[], None]
     # Auth use cases
     register_user: RegisterUser
@@ -98,7 +102,6 @@ class AuthContainer:
     # Admin use cases (gated by system:main checks at the HTTP layer)
     list_users: ListUsers
     list_audit_events: ListAuditEvents
-    bootstrap_system_admin: BootstrapSystemAdmin
 
 
 def build_auth_container(
@@ -149,25 +152,6 @@ def build_auth_container(
                 "set APP_AUTH_REDIS_URL to enforce limits across replicas"
             )
 
-    # Auth pre-registers only the ``system`` resource type. Other
-    # features (kanban, etc.) populate the registry from their own
-    # composition wiring so no auth code references their vocabulary.
-    registry = AuthorizationRegistry()
-    registry.register_resource_type(
-        "system",
-        actions={
-            "manage_users": frozenset({"admin"}),
-            "read_audit": frozenset({"admin"}),
-        },
-        hierarchy={"admin": frozenset({"admin"})},
-    )
-
-    # Authorization adapter shares the auth repository's engine so cache
-    # invalidation (via authz_version bumps on the users table) and tuple
-    # writes hit the same database. The registry is the single seam other
-    # features use to teach the engine about their resource types.
-    authorization = SQLModelAuthorizationAdapter(repo.engine, registry)
-
     dummy_hash = password_service.hash_password("dummy-password")
 
     register_user = RegisterUser(
@@ -175,6 +159,12 @@ def build_auth_container(
         _password_service=password_service,
         _settings=settings,
     )
+
+    user_authz_version_adapter = SQLModelUserAuthzVersionAdapter(repo.engine)
+    user_registrar_adapter = SQLModelUserRegistrarAdapter(
+        repository=repo, register_user=register_user
+    )
+    audit_adapter = SQLModelAuditAdapter(repo)
 
     def _shutdown() -> None:
         repo.close()
@@ -186,8 +176,9 @@ def build_auth_container(
         repository=repo,
         rate_limiter=limiter,
         principal_cache=cache,
-        authorization=authorization,
-        registry=registry,
+        user_authz_version_adapter=user_authz_version_adapter,
+        user_registrar_adapter=user_registrar_adapter,
+        audit_adapter=audit_adapter,
         shutdown=_shutdown,
         register_user=register_user,
         login_user=LoginUser(
@@ -229,11 +220,6 @@ def build_auth_container(
         ),
         list_users=ListUsers(_repository=repo),
         list_audit_events=ListAuditEvents(_repository=repo),
-        bootstrap_system_admin=BootstrapSystemAdmin(
-            _repository=repo,
-            _register_user=register_user,
-            _authorization=authorization,
-        ),
     )
 
 

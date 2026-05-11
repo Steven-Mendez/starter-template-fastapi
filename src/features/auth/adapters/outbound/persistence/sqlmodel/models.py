@@ -1,8 +1,12 @@
 """SQLModel table definitions for the auth feature.
 
 These mappings own the database schema for users, refresh tokens,
-internal (single-use) tokens, the auth audit log, and the
-relationships table that drives the ReBAC authorization engine.
+internal (single-use) tokens, and the auth audit log. The
+``relationships`` table that drives the ReBAC authorization engine is
+*not* declared here — it lives in
+``src/platform/persistence/sqlmodel/authorization/`` because every
+feature reads it at request time.
+
 Every timestamp is timezone-aware UTC and ID columns are UUIDs so the
 schema is portable across PostgreSQL replicas without relying on a
 sequence.
@@ -65,58 +69,6 @@ class UserTable(SQLModel, table=True):
     last_login_at: datetime | None = Field(
         default=None,
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True),
-    )
-
-
-class RelationshipTable(SQLModel, table=True):
-    """Zanzibar-style relationship tuple backing the ReBAC engine.
-
-    Each row reads as ``{subject_type}:{subject_id}`` has relation
-    ``{relation}`` on ``{resource_type}:{resource_id}``. Subjects are
-    typed strings to leave room for non-user subjects (group sets,
-    service accounts) without a schema migration.
-
-    The unique constraint over the full tuple makes ``write_relationships``
-    naturally idempotent: a duplicate write hits the constraint and the
-    adapter swallows it. The two indexes drive the two read patterns:
-    ``check`` / ``lookup_subjects`` (resource side) and ``lookup_resources``
-    (subject side).
-    """
-
-    __tablename__ = "relationships"
-    __table_args__ = (
-        sa.UniqueConstraint(
-            "resource_type",
-            "resource_id",
-            "relation",
-            "subject_type",
-            "subject_id",
-            name="uq_relationships_tuple",
-        ),
-        sa.Index(
-            "ix_relationships_resource",
-            "resource_type",
-            "resource_id",
-            "relation",
-        ),
-        sa.Index(
-            "ix_relationships_subject",
-            "subject_type",
-            "subject_id",
-            "resource_type",
-            "relation",
-        ),
-    )
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    resource_type: str = Field(nullable=False, max_length=50)
-    resource_id: str = Field(nullable=False, max_length=64)
-    relation: str = Field(nullable=False, max_length=50)
-    subject_type: str = Field(nullable=False, max_length=50)
-    subject_id: str = Field(nullable=False, max_length=64)
-    created_at: datetime = Field(
-        default_factory=utc_now,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
     )
 
 
@@ -222,7 +174,6 @@ __all__ = [
     "AuthAuditEventTable",
     "AuthInternalTokenTable",
     "RefreshTokenTable",
-    "RelationshipTable",
     "UserTable",
     "utc_now",
 ]

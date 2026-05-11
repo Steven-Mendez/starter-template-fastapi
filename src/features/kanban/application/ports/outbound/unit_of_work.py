@@ -5,7 +5,9 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Protocol, Self
 
-from src.features.auth.application.authorization.ports import AuthorizationPort
+from src.features.authorization.application.ports.authorization_port import (
+    AuthorizationPort,
+)
 from src.features.kanban.application.ports.outbound.kanban_command_repository import (
     KanbanCommandRepositoryPort,
 )

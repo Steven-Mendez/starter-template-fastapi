@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from src.features.auth.application.authorization.registry import (
+from src.features.authorization.application.registry import (
     AuthorizationRegistry,
 )
 from src.features.kanban.adapters.inbound.http.router import (

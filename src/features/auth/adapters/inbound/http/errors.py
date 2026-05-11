@@ -10,10 +10,6 @@ from typing import NoReturn
 
 from fastapi import HTTPException, status
 
-from src.features.auth.application.authorization.errors import (
-    NotAuthorizedError,
-    UnknownActionError,
-)
 from src.features.auth.application.errors import (
     AuthError,
     ConfigurationError,
@@ -39,13 +35,11 @@ EXPLICIT_AUTH_ERROR_TYPES: tuple[type[AuthError], ...] = (
     InactiveUserError,
     InvalidCredentialsError,
     InvalidTokenError,
-    NotAuthorizedError,
     NotFoundError,
     PermissionDeniedError,
     RateLimitExceededError,
     StaleTokenError,
     TokenAlreadyUsedError,
-    UnknownActionError,
 )
 
 
@@ -106,20 +100,6 @@ def raise_http_from_auth_error(exc: AuthError) -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permission denied",
-        ) from exc
-    if isinstance(exc, NotAuthorizedError):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Permission denied",
-        ) from exc
-    if isinstance(exc, UnknownActionError):
-        # Programmer error: an HTTP route declared an action that has no
-        # entry in ``application/authorization/actions.py``. Treat as 500
-        # so the bug surfaces during integration testing rather than as a
-        # silent 403.
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authorization configuration error",
         ) from exc
     if isinstance(exc, NotFoundError):
         raise HTTPException(

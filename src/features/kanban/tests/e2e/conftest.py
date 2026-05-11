@@ -18,13 +18,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.features.auth.application.authorization.ports import (
+from src.features.authorization.application.ports.authorization_port import (
     LOOKUP_DEFAULT_LIMIT,
 )
-from src.features.auth.application.authorization.registry import (
+from src.features.authorization.application.registry import (
     AuthorizationRegistry,
 )
-from src.features.auth.application.authorization.types import Relationship
+from src.features.authorization.application.types import Relationship
 from src.features.kanban.composition import (
     attach_kanban_container,
     mount_kanban_routes,

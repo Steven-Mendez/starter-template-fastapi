@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.features.auth.application.authorization.ports import AuthorizationPort
+from src.features.authorization.application.ports.authorization_port import (
+    AuthorizationPort,
+)
 from src.features.kanban.composition.container import KanbanContainer
 from src.features.kanban.tests.fakes.fixed_clock import FixedClock
 from src.features.kanban.tests.fakes.in_memory_repository import (

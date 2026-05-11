@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.features.auth.application.authorization.types import Relationship
+from src.features.authorization.application.types import Relationship
 from src.features.kanban.application.commands.board.create import CreateBoardCommand
 from src.features.kanban.application.contracts import AppBoardSummary
 from src.features.kanban.application.errors import ApplicationError

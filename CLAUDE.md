@@ -45,7 +45,15 @@ KANBAN_SKIP_TESTCONTAINERS=1 make test-integration
 
 ## Architecture
 
-Feature-first hexagonal architecture enforced by Import Linter contracts. Two active features: `kanban` and `auth`. `src/features/_template` is an inert scaffold.
+Feature-first hexagonal architecture enforced by Import Linter contracts. Three active features: `auth`, `authorization`, and `kanban`. `src/features/_template` is an inert scaffold.
+
+The three features communicate only through ports:
+
+- **`auth`** owns identity: users, passwords, JWT issuance, refresh-token cookies, password reset, email verify, admin user/audit listings. It consumes nothing from authorization or kanban.
+- **`authorization`** owns the ReBAC engine: the `AuthorizationPort`, the runtime `AuthorizationRegistry` other features register into, the SQLModel adapter, the SpiceDB stub, and `BootstrapSystemAdmin`. It consumes three small outbound ports (`UserAuthzVersionPort`, `UserRegistrarPort`, `AuditPort`) that auth implements.
+- **`kanban`** owns boards, columns, and cards. It consumes only the `AuthorizationPort` (for checks and list filtering) and the registry (to declare its resource types at startup). Kanban never imports auth.
+
+The cross-feature `relationships` table is platform-owned (`src/platform/persistence/sqlmodel/authorization/`) because every feature's authz check reads it at request time. The authorization feature is its only writer.
 
 ### Layer stack (inner → outer)
 
@@ -63,30 +71,45 @@ Each layer can only import from layers to its left. `platform` is cross-cutting 
 | `src/platform/api/app_factory.py` | FastAPI factory: CORS, trusted hosts, docs, middleware, Problem Details handlers |
 | `src/platform/config/settings.py` | `AppSettings` — pydantic-settings with `APP_` prefix; validates that production keys are set |
 | `src/platform/shared/result.py` | `Result[T, E]` / `Ok` / `Err` — used by all use cases instead of exceptions |
+| `src/platform/persistence/sqlmodel/authorization/models.py` | `RelationshipTable` — cross-feature ReBAC tuples; platform-owned because every feature reads it at request time |
 | `src/features/kanban/` | Kanban board, column, and card CRUD |
-| `src/features/auth/` | JWT auth, refresh-token cookies, RBAC, rate limiting, admin API |
+| `src/features/authorization/` | ReBAC engine, `AuthorizationPort`, `AuthorizationRegistry`, `BootstrapSystemAdmin` |
+| `src/features/auth/` | JWT auth, refresh-token cookies, rate limiting, admin user/audit endpoints |
 
 ### Auth feature (`src/features/auth/`)
 
-Unlike kanban (which uses strict hexagonal ports), auth uses a flatter service model:
+Identity-only. Registration, login, refresh, password reset, email verify, principal resolution, and the admin endpoints that list auth's own state (`/admin/users`, `/admin/audit-log`). No authorization logic lives here.
 
-- `application/services.py` — `AuthService` (register, login, refresh, password reset, email verify) and `RBACService` (roles, permissions, assignments); both record audit events and bump `authz_version` on permission changes
+- `application/use_cases/auth/*` — `RegisterUser`, `LoginUser`, `RotateRefreshToken`, `LogoutUser`, `RequestPasswordReset`, `ConfirmPasswordReset`, `RequestEmailVerification`, `ConfirmEmailVerification`, `ResolvePrincipalFromAccessToken`
+- `application/use_cases/admin/*` — `ListUsers`, `ListAuditEvents` (the admin HTTP routes use the platform `require_authorization` dependency to gate on `system:main`)
 - `application/rate_limit.py` — `FixedWindowRateLimiter` (in-process, single instance) and `RedisRateLimiter` (sliding window via Lua script, distributed); selected at startup based on `APP_AUTH_REDIS_URL`
 - `application/jwt_tokens.py` — `AccessTokenService` (issue/decode JWT, cache principal by `authz_version`)
-- `adapters/inbound/http/auth.py` — public routes under `/auth` (register, login, refresh, logout, me, password reset, email verify)
-- `adapters/inbound/http/admin.py` — admin routes under `/admin` guarded by RBAC `require_permissions` dependency
-- `composition/container.py` — `AuthContainer` dataclass wiring all collaborators
+- `adapters/outbound/authz_version/` — `SQLModelUserAuthzVersionAdapter` (and its session-scoped variant): implements the authorization feature's `UserAuthzVersionPort`
+- `adapters/outbound/user_registrar/` — `SQLModelUserRegistrarAdapter`: implements `UserRegistrarPort`
+- `adapters/outbound/audit/` — `SQLModelAuditAdapter`: implements `AuditPort`
 - Refresh tokens travel as `httpOnly` cookies scoped to `/auth`; access tokens are JWTs in response bodies
-- Seeded RBAC roles: `super_admin`, `admin`, `manager`, `user` (see `application/seed.py`)
-- Bootstrap: set `APP_AUTH_SEED_ON_STARTUP=true` + `APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL/PASSWORD` to create an initial super-admin on startup
+- Bootstrap: set `APP_AUTH_SEED_ON_STARTUP=true` + `APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL/PASSWORD` to create an initial system-admin on startup (the bootstrap use case itself lives in the authorization feature)
+
+### Authorization feature (`src/features/authorization/`)
+
+Pure ReBAC concerns. Other features call into it through one port; it calls back through three small ports auth implements.
+
+- `application/ports/authorization_port.py` — `AuthorizationPort` Protocol (`check`, `lookup_resources`, `lookup_subjects`, `write_relationships`, `delete_relationships`)
+- `application/registry.py` — `AuthorizationRegistry`: features call `register_resource_type(...)` and `register_parent(...)` at startup; sealed by `main.py` before the app serves traffic
+- `application/use_cases/bootstrap_system_admin.py` — `BootstrapSystemAdmin` (composes `UserRegistrarPort` + `AuthorizationPort` + `AuditPort`)
+- `application/ports/outbound/` — `UserAuthzVersionPort` (cache invalidation), `UserRegistrarPort` (register-or-lookup for bootstrap), `AuditPort` (write `authz.*` events to auth's audit log)
+- `adapters/outbound/sqlmodel/` — `SQLModelAuthorizationAdapter` (engine-owning) and `SessionSQLModelAuthorizationAdapter` (session-scoped, used by kanban's UoW)
+- `adapters/outbound/spicedb/` — `SpiceDBAuthorizationAdapter` stub; one swap to drop in a real SpiceDB integration
+- `composition/wiring.py` — `register_authorization_error_handlers(app)` maps `NotAuthorizedError` → 403 and `UnknownActionError` → 500
 
 ### Kanban feature (`src/features/kanban/`)
 
 - `domain/` — pure Python: `Board` aggregate root owns ordered `Column` entities, each owning ordered `Card` entities; card movement/position logic lives here
 - `application/` — commands/queries, `UnitOfWorkPort` and `KanbanQueryRepositoryPort` protocols, use cases return `Result`
 - `adapters/outbound/persistence/sqlmodel/` — SQLModel tables (`boards`, `columns_`, `cards`); full aggregate snapshot writes; deferrable position-uniqueness constraints; optimistic concurrency via `boards.version`
-- `adapters/inbound/http/` — routers split into read and write; mounted in `main.py` behind `require_permissions("kanban:read")` / `require_permissions("kanban:write")` from the platform authorization helpers
-- `composition/` — `KanbanContainer` + wiring helpers
+- `adapters/inbound/http/` — routers split into read and write; mounted in `main.py` behind the platform-level `require_authorization` dependency
+- `composition/wiring.py` — `register_kanban_authorization(registry, lookup)` declares the three kanban resource types (`kanban`, `column`, `card`), the `owner ⊇ writer ⊇ reader` hierarchy, and the `card → column → board` parent walk
+- `composition/container.py` — `KanbanContainer` + `build_kanban_container(..., user_authz_version_factory=...)`; the factory closure lets `main.py` supply auth's session-scoped `UserAuthzVersionPort` without kanban importing auth
 
 ### Request flow
 
@@ -107,9 +130,21 @@ Contracts are defined in `pyproject.toml` under `[tool.importlinter]`. Key rules
 - `application` → no adapter, FastAPI, SQLModel, SQLAlchemy, or Alembic imports
 - `adapters.inbound` → no `adapters.outbound`, no `domain` directly, no SQL libraries
 - `adapters.outbound` → no `adapters.inbound`, no use cases, no inbound ports
-- Features must not import each other
+- `auth` ↛ `authorization` and `authorization` ↛ `auth` (production code; the two features communicate only through `authorization/application/ports/outbound`)
+- `kanban` ↛ `auth` (production code)
 
 Run boundary checks: `make lint-arch`
+
+## Adding a new feature
+
+A new feature that authorizes anything plugs into the authorization registry from its own composition root. Concrete steps:
+
+1. Mirror the `src/features/_template` directory layout under `src/features/<name>/`.
+2. Decide which resource types your feature owns. For each *leaf* type (one whose tuples will live in the `relationships` table), call `registry.register_resource_type("<type>", actions={...}, hierarchy={...})` from your feature's wiring module. For each *inherited* type (delegates to a parent via a lookup), call `registry.register_parent("<type>", parent_of=..., inherits_from="<parent>")`.
+3. Build your feature's container in `main.py` after the authorization container exists; pass `authorization.port` and `authorization.registry` in.
+4. Gate your HTTP routes with the platform-level `require_authorization("<action>", "<resource_type>", id_loader=...)` dependency.
+5. If the feature needs the authorization tuple write to commit atomically with its own DB writes, take a `user_authz_version_factory` parameter on its container the same way kanban does and pass it to the unit-of-work.
+6. No feature should import another feature's modules; cross-feature work goes through `authorization` ports.
 
 ## Testing strategy
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.features.auth.application.authorization.ports import (
+from src.features.authorization.application.ports.authorization_port import (
     LOOKUP_MAX_LIMIT,
     AuthorizationPort,
 )

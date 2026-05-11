@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from src.features.auth.application.authorization.types import Relationship
+from src.features.authorization.application.types import Relationship
 from src.features.kanban.application.commands import CreateBoardCommand
 from src.features.kanban.application.use_cases.board import CreateBoardUseCase
 from src.features.kanban.tests.fakes import (

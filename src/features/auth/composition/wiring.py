@@ -37,12 +37,10 @@ def mount_auth_routes(app: FastAPI) -> None:
 def attach_auth_container(app: FastAPI, container: AuthContainer) -> None:
     """Store the auth container on ``app.state`` so handlers can resolve it.
 
-    Also publishes the ``AuthorizationPort`` to ``app.state.authorization`` so
-    the platform-level ``require_authorization`` dependency can perform
-    resource-scoped checks without importing from the auth feature.
+    The authorization port is no longer attached here — that lives in
+    ``features/authorization/composition/wiring.attach_authorization_container``.
     """
     set_auth_container(app, container)
-    app.state.authorization = container.authorization
 
 
 def register_auth(app: FastAPI, container: AuthContainer) -> None:
