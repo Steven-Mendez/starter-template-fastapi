@@ -17,9 +17,13 @@ To wire up a real adapter:
 
 1. Copy this package to a new project or replace the contents of
    `adapter.py` with a SpiceDB-backed implementation.
-2. Translate `src/features/auth/application/authorization/actions.py`
-   into the `.zed` schema below (or load the schema from a checked-in
-   file at startup).
+2. Translate the live `AuthorizationRegistry` content into the `.zed`
+   schema below — or, equivalently, add a startup helper that walks the
+   sealed registry (`registry.registered_resource_types()` + the
+   per-type action/hierarchy maps) and uploads a `.zed` document to
+   SpiceDB before the server starts serving traffic. Because every
+   feature registers its types from its own composition root, no
+   schema authoring is centralized in auth.
 3. Update `AuthContainer` to construct `SpiceDBAuthorizationAdapter`
    instead of `SQLModelAuthorizationAdapter` (see
    `src/features/auth/composition/container.py`). The application layer
@@ -38,15 +42,14 @@ To wire up a real adapter:
 
 ## Example `.zed` schema
 
-The schema below mirrors the rules in `application/authorization/actions.py`
-and `application/authorization/hierarchy.py`. The `system` definition has
-a single `admin` relation; the `kanban` definition shows the
-`reader ⊆ writer ⊆ owner` hierarchy expressed as SpiceDB permissions.
-Card and column resources are not declared as their own definitions in
-this schema fragment because the in-repo engine resolves them via parent
-walk; for a SpiceDB deployment you would add `column` and `card`
-definitions with `permission read = board->read` (and similar for update
-and delete) so the engine performs the inheritance natively.
+The schema below mirrors the rules each feature contributes to the
+`AuthorizationRegistry` at composition time. The `system` definition has
+a single `admin` relation (registered by auth); the `kanban` definition
+shows the `reader ⊆ writer ⊆ owner` hierarchy registered by the kanban
+feature. For a SpiceDB deployment you would translate the registry's
+inherited types into native definitions (`permission read = board->read`
+and similar) so the engine resolves multi-level walks natively rather
+than through this template's check-time parent walker.
 
 ```zed
 definition user {}

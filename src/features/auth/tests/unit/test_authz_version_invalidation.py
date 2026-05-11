@@ -25,6 +25,7 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     utc_now,
 )
 from src.features.auth.application.authorization.types import Relationship
+from src.features.auth.tests.contracts.registry_helper import make_test_registry
 
 _SCHEMA: list[Any] = [UserTable, RelationshipTable]
 
@@ -46,7 +47,7 @@ def engine() -> Iterator[Engine]:
 
 @pytest.fixture
 def adapter(engine: Engine) -> SQLModelAuthorizationAdapter:
-    return SQLModelAuthorizationAdapter(engine)
+    return SQLModelAuthorizationAdapter(engine, make_test_registry())
 
 
 def _seed_user(engine: Engine) -> UUID:

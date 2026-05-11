@@ -18,6 +18,7 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
 from src.features.auth.tests.contracts.authorization_contract import (
     AuthorizationContract,
 )
+from src.features.auth.tests.contracts.registry_helper import make_test_registry
 
 pytestmark = pytest.mark.unit
 
@@ -33,4 +34,4 @@ class TestSqlmodelAuthorizationContract(AuthorizationContract):
         )
         for table in _SCHEMA:
             table.__table__.create(engine, checkfirst=True)
-        return SQLModelAuthorizationAdapter(engine)
+        return SQLModelAuthorizationAdapter(engine, make_test_registry())

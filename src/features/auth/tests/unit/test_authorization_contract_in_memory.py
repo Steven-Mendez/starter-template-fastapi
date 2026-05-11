@@ -12,6 +12,7 @@ import pytest
 from src.features.auth.tests.contracts.authorization_contract import (
     AuthorizationContract,
 )
+from src.features.auth.tests.contracts.registry_helper import make_test_registry
 from src.features.kanban.tests.e2e.conftest import FakeAuthorization
 
 pytestmark = pytest.mark.unit
@@ -19,4 +20,4 @@ pytestmark = pytest.mark.unit
 
 class TestInMemoryAuthorizationContract(AuthorizationContract):
     def _make_adapter(self) -> FakeAuthorization:
-        return FakeAuthorization()
+        return FakeAuthorization(registry=make_test_registry())

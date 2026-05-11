@@ -1,11 +1,11 @@
-"""Relation hierarchy expansion.
+"""Relation hierarchy expansion (registry-backed).
 
-Hierarchy is per-resource-type so we can evolve kanban relations
-independently of system relations. Expansion is the closure of
-"any superior relation also satisfies the inferior one" — e.g.,
-``owner`` satisfies a check that requires ``writer`` or ``reader``.
+The hierarchy itself lives in :class:`AuthorizationRegistry`; this module
+exists as a thin functional wrapper for callers that prefer a free
+function. The Zanzibar-style "userset rewrite" — superior relations
+satisfying inferior checks — is encoded as the per-resource-type
+``hierarchy`` map a feature passes to ``register_resource_type``.
 
-In Zanzibar terms this is a "userset rewrite" expressed in code.
 For SpiceDB this would be a schema fragment such as::
 
     definition kanban {
@@ -21,51 +21,15 @@ For SpiceDB this would be a schema fragment such as::
 
 from __future__ import annotations
 
-from src.features.auth.application.authorization.errors import UnknownActionError
-
-# Each entry maps a target relation to the set of relations that satisfy it.
-# ``reader`` is satisfied by anyone with reader, writer, or owner; ``owner``
-# is satisfied only by an explicit owner tuple.
-KANBAN_RELATION_HIERARCHY: dict[str, frozenset[str]] = {
-    "reader": frozenset({"reader", "writer", "owner"}),
-    "writer": frozenset({"writer", "owner"}),
-    "owner": frozenset({"owner"}),
-}
-
-SYSTEM_RELATION_HIERARCHY: dict[str, frozenset[str]] = {
-    "admin": frozenset({"admin"}),
-}
-
-_HIERARCHIES: dict[str, dict[str, frozenset[str]]] = {
-    "kanban": KANBAN_RELATION_HIERARCHY,
-    "column": KANBAN_RELATION_HIERARCHY,
-    "card": KANBAN_RELATION_HIERARCHY,
-    "system": SYSTEM_RELATION_HIERARCHY,
-}
+from src.features.auth.application.authorization.registry import (
+    AuthorizationRegistry,
+)
 
 
-def expand_relations(resource_type: str, relations: frozenset[str]) -> frozenset[str]:
-    """Return every relation that, if held, satisfies any of the given relations.
-
-    For kanban, ``expand_relations("kanban", {"reader"})`` returns
-    ``{reader, writer, owner}``.  ``expand_relations("kanban", {"owner"})``
-    returns ``{owner}``.
-
-    Raises:
-        UnknownActionError: If ``resource_type`` has no defined hierarchy or
-            if any input relation is not declared in the hierarchy.
-    """
-    hierarchy = _HIERARCHIES.get(resource_type)
-    if hierarchy is None:
-        raise UnknownActionError(
-            f"No relation hierarchy defined for resource_type {resource_type!r}"
-        )
-    expanded: set[str] = set()
-    for relation in relations:
-        members = hierarchy.get(relation)
-        if members is None:
-            raise UnknownActionError(
-                f"Unknown relation {relation!r} for resource_type {resource_type!r}"
-            )
-        expanded.update(members)
-    return frozenset(expanded)
+def expand_relations(
+    registry: AuthorizationRegistry,
+    resource_type: str,
+    relations: frozenset[str],
+) -> frozenset[str]:
+    """Return every relation that, if held, satisfies any input relation."""
+    return registry.expand_relations(resource_type, relations)

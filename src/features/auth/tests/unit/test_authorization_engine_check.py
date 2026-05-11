@@ -22,7 +22,9 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     RelationshipTable,
     UserTable,
 )
+from src.features.auth.application.authorization.errors import UnknownActionError
 from src.features.auth.application.authorization.types import Relationship
+from src.features.auth.tests.contracts.registry_helper import make_test_registry
 
 _SCHEMA: list[Any] = [UserTable, RelationshipTable]
 
@@ -38,7 +40,7 @@ def adapter() -> Iterator[SQLModelAuthorizationAdapter]:
     )
     for table in _SCHEMA:
         table.__table__.create(engine, checkfirst=True)
-    yield SQLModelAuthorizationAdapter(engine)
+    yield SQLModelAuthorizationAdapter(engine, make_test_registry())
     engine.dispose()
 
 
@@ -216,3 +218,16 @@ def test_delete_removes_the_grant(
     assert not adapter.check(
         user_id=user_id, action="read", resource_type="kanban", resource_id=board_id
     )
+
+
+def test_check_on_unregistered_resource_type_raises(
+    adapter: SQLModelAuthorizationAdapter, user_id: UUID
+) -> None:
+    """A check for a resource type no feature registered surfaces as a 500."""
+    with pytest.raises(UnknownActionError):
+        adapter.check(
+            user_id=user_id,
+            action="read",
+            resource_type="orgs",
+            resource_id=str(uuid4()),
+        )

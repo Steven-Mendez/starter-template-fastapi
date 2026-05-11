@@ -8,7 +8,10 @@ The container takes an ``AuthorizationPort`` from the auth feature so
 kanban use cases can write the initial owner tuple on board creation
 and filter listings to a user's accessible boards. The port is the only
 auth dependency exposed here — use cases never see relationship tuples
-for resources they don't own.
+for resources they don't own. The authorization registry is the second
+seam: kanban registers its resource types into it at composition time
+so the engine knows how to walk ``card → column → board`` without any
+auth-side knowledge of kanban.
 """
 
 from __future__ import annotations
@@ -20,7 +23,9 @@ from typing import Protocol
 from sqlalchemy.engine import Engine  # noqa: F401  (used in Protocol)
 
 from src.features.auth.application.authorization.ports import AuthorizationPort
-from src.features.auth.application.authorization.resource_graph import ParentResolver
+from src.features.auth.application.authorization.registry import (
+    AuthorizationRegistry,
+)
 from src.features.kanban.adapters.outbound.persistence import SQLModelKanbanRepository
 from src.features.kanban.adapters.outbound.persistence.sqlmodel.unit_of_work import (
     SqlModelUnitOfWork,
@@ -92,19 +97,6 @@ class _ManagedKanbanRepository(
     def close(self) -> None: ...
 
 
-class _LookupParentResolver:
-    """Adapt the kanban lookup repository to the ``ParentResolver`` Protocol."""
-
-    def __init__(self, lookup: KanbanLookupRepositoryPort) -> None:
-        self._lookup = lookup
-
-    def board_id_for_card(self, card_id: str) -> str | None:
-        return self._lookup.find_board_id_by_card(card_id)
-
-    def board_id_for_column(self, column_id: str) -> str | None:
-        return self._lookup.find_board_id_by_column(column_id)
-
-
 @dataclass(slots=True)
 class KanbanContainer:
     """Holds shared adapters and produces fresh use-case instances per request."""
@@ -112,7 +104,6 @@ class KanbanContainer:
     query_repository: KanbanQueryRepositoryPort
     uow_factory: UnitOfWorkFactory
     authorization: AuthorizationPort
-    parent_resolver: ParentResolver
     id_gen: IdGeneratorPort
     clock: ClockPort
     readiness_probe: ReadinessProbe
@@ -163,6 +154,7 @@ class KanbanContainer:
 def build_kanban_container(
     *,
     authorization: AuthorizationPort,
+    registry: AuthorizationRegistry,
     postgresql_dsn: str | None = None,
     repository: _ManagedKanbanRepository | None = None,
     pool_size: int = 5,
@@ -176,12 +168,12 @@ def build_kanban_container(
         authorization: The auth feature's ``AuthorizationPort``. Reused for
             list filtering; a session-scoped variant is constructed per
             unit-of-work for transactional writes (see ``SqlModelUnitOfWork``).
+        registry: The auth feature's ``AuthorizationRegistry``. Kanban
+            contributes its resource types, hierarchy, and parent-walk
+            callables here at construction time so card/column checks can
+            navigate to the owning board without a dedicated seam.
         postgresql_dsn: Production DSN for the kanban database.
         repository: Optional pre-built repository for tests.
-
-    The container resolves the parent walk for cross-resource authorization
-    via the kanban lookup repository, so card/column checks performed inside
-    a unit of work can navigate to the owning board without extra wiring.
     """
     if repository is None:
         if postgresql_dsn is None:
@@ -197,15 +189,20 @@ def build_kanban_container(
     else:
         repo = repository
 
+    # Local import: ``wiring`` imports ``KanbanContainer`` for HTTP-mount
+    # helpers, so the registration helper lives there. Importing it at
+    # module top-level would create a cycle.
+    from src.features.kanban.composition.wiring import (  # noqa: PLC0415
+        register_kanban_authorization,
+    )
+
+    register_kanban_authorization(registry, repo)
+
     query_repo = KanbanQueryRepositoryView(repo)
-    parent_resolver: ParentResolver = _LookupParentResolver(repo)
     return KanbanContainer(
         query_repository=query_repo,
-        uow_factory=lambda: SqlModelUnitOfWork(
-            repo.engine, parent_resolver=parent_resolver
-        ),
+        uow_factory=lambda: SqlModelUnitOfWork(repo.engine, registry=registry),
         authorization=authorization,
-        parent_resolver=parent_resolver,
         id_gen=UUIDIdGenerator(),
         clock=SystemClock(),
         readiness_probe=repo,

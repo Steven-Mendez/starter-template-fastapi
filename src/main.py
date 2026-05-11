@@ -90,20 +90,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         kanban = build_kanban_container(
             postgresql_dsn=app_settings.postgresql_dsn,
             authorization=auth.authorization,
+            registry=auth.registry,
             pool_size=app_settings.db_pool_size,
             max_overflow=app_settings.db_max_overflow,
             pool_recycle=app_settings.db_pool_recycle_seconds,
             pool_pre_ping=app_settings.db_pool_pre_ping,
         )
-        # Wire the kanban-aware parent resolver back into the auth feature's
-        # authorization adapter so HTTP-layer checks on column/card resources
-        # can walk to the parent board. The auth container builds before
-        # kanban exists, so this back-reference is the cleanest seam.
-        # SpiceDB and other adapters that resolve inheritance natively don't
-        # need this hook — duck-type to skip them.
-        set_parent = getattr(auth.authorization, "set_parent_resolver", None)
-        if callable(set_parent):
-            set_parent(kanban.parent_resolver)
+        # Every feature has now contributed to the registry; freeze it
+        # so a stray runtime ``register_…`` call surfaces as a clear error
+        # rather than a silent behaviour change.
+        auth.registry.seal()
         _run_auth_bootstrap(auth, app_settings)
         set_app_container(lifespan_app, _PlatformAppContainer(settings=app_settings))
         # Register the principal resolver so platform-level authorization

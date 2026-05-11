@@ -21,6 +21,9 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
 from src.features.auth.application.authorization.ports import AuthorizationPort
+from src.features.auth.application.authorization.registry import (
+    AuthorizationRegistry,
+)
 from src.features.auth.application.cache import (
     InProcessPrincipalCache,
     PrincipalCachePort,
@@ -79,6 +82,7 @@ class AuthContainer:
     rate_limiter: RateLimiter
     principal_cache: PrincipalCachePort
     authorization: AuthorizationPort
+    registry: AuthorizationRegistry
     shutdown: Callable[[], None]
     # Auth use cases
     register_user: RegisterUser
@@ -145,12 +149,24 @@ def build_auth_container(
                 "set APP_AUTH_REDIS_URL to enforce limits across replicas"
             )
 
+    # Auth pre-registers only the ``system`` resource type. Other
+    # features (kanban, etc.) populate the registry from their own
+    # composition wiring so no auth code references their vocabulary.
+    registry = AuthorizationRegistry()
+    registry.register_resource_type(
+        "system",
+        actions={
+            "manage_users": frozenset({"admin"}),
+            "read_audit": frozenset({"admin"}),
+        },
+        hierarchy={"admin": frozenset({"admin"})},
+    )
+
     # Authorization adapter shares the auth repository's engine so cache
     # invalidation (via authz_version bumps on the users table) and tuple
-    # writes hit the same database. Read paths do not need a parent resolver
-    # because card/column checks are performed by use cases that wire a
-    # session-scoped adapter with its own resolver via the kanban UoW.
-    authorization = SQLModelAuthorizationAdapter(repo.engine)
+    # writes hit the same database. The registry is the single seam other
+    # features use to teach the engine about their resource types.
+    authorization = SQLModelAuthorizationAdapter(repo.engine, registry)
 
     dummy_hash = password_service.hash_password("dummy-password")
 
@@ -171,6 +187,7 @@ def build_auth_container(
         rate_limiter=limiter,
         principal_cache=cache,
         authorization=authorization,
+        registry=registry,
         shutdown=_shutdown,
         register_user=register_user,
         login_user=LoginUser(

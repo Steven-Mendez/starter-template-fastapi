@@ -87,6 +87,13 @@ class InMemoryKanbanRepository(
                 return board.id
         return None
 
+    def find_column_id_by_card(self, card_id: str) -> str | None:
+        for board in self._boards.values():
+            for column in board.columns:
+                if any(card.id == card_id for card in column.cards):
+                    return column.id
+        return None
+
     def remove(
         self, board_id: str, *, actor_id: UUID | None = None
     ) -> Result[None, KanbanError]:

@@ -18,16 +18,18 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.features.auth.application.authorization.actions import relations_for
-from src.features.auth.application.authorization.hierarchy import expand_relations
 from src.features.auth.application.authorization.ports import (
     LOOKUP_DEFAULT_LIMIT,
+)
+from src.features.auth.application.authorization.registry import (
+    AuthorizationRegistry,
 )
 from src.features.auth.application.authorization.types import Relationship
 from src.features.kanban.composition import (
     attach_kanban_container,
     mount_kanban_routes,
 )
+from src.features.kanban.composition.wiring import register_kanban_authorization
 from src.features.kanban.tests.fakes import (
     FakeKanbanWiring,
     InMemoryKanbanRepository,
@@ -85,26 +87,29 @@ def _fake_resolver(token: str) -> object:
 class FakeAuthorization:
     """Minimal in-memory ``AuthorizationPort`` fake for kanban e2e tests.
 
-    Mirrors the real engine: card/column checks walk to the parent board
-    via an injected lookup callable so tests can grant a single board-level
-    tuple and exercise inheritance through the HTTP layer.
+    Mirrors the real engine: every check walks parents through the
+    registry until it hits a leaf (a resource type with stored tuples),
+    then evaluates the original action against the parent's hierarchy.
+    Tests grant a single leaf tuple and exercise inheritance through the
+    HTTP layer.
     """
 
+    registry: AuthorizationRegistry
     tuples: set[Relationship] = field(default_factory=set)
-    board_id_for_column: object = field(default=lambda _column_id: None)
-    board_id_for_card: object = field(default=lambda _card_id: None)
 
     def grant(self, relationship: Relationship) -> None:
         self.tuples.add(relationship)
 
-    def _resolve_board_id(self, resource_type: str, resource_id: str) -> str | None:
-        if resource_type == "kanban":
-            return resource_id
-        if resource_type == "column":
-            return self.board_id_for_column(resource_id)  # type: ignore[operator]
-        if resource_type == "card":
-            return self.board_id_for_card(resource_id)  # type: ignore[operator]
-        return None
+    def _walk_to_leaf(
+        self, resource_type: str, resource_id: str
+    ) -> tuple[str, str] | None:
+        walked_type, walked_id = resource_type, resource_id
+        while not self.registry.has_stored_relations(walked_type):
+            parent = self.registry.parent_of(walked_type, walked_id)
+            if parent is None:
+                return None
+            walked_type, walked_id = parent
+        return walked_type, walked_id
 
     def check(
         self,
@@ -114,28 +119,17 @@ class FakeAuthorization:
         resource_type: str,
         resource_id: str,
     ) -> bool:
-        if resource_type in {"kanban", "column", "card"}:
-            board_id = self._resolve_board_id(resource_type, resource_id)
-            if board_id is None:
-                return False
-            required = relations_for("kanban", action)
-            expanded = expand_relations("kanban", required)
-            return any(
-                t
-                for t in self.tuples
-                if t.resource_type == "kanban"
-                and t.resource_id == board_id
-                and t.subject_type == "user"
-                and t.subject_id == str(user_id)
-                and t.relation in expanded
-            )
-        required = relations_for(resource_type, action)
-        expanded = expand_relations(resource_type, required)
+        required = self.registry.relations_for(resource_type, action)
+        walked = self._walk_to_leaf(resource_type, resource_id)
+        if walked is None:
+            return False
+        walked_type, walked_id = walked
+        expanded = self.registry.expand_relations(walked_type, required)
         return any(
             t
             for t in self.tuples
-            if t.resource_type == resource_type
-            and t.resource_id == resource_id
+            if t.resource_type == walked_type
+            and t.resource_id == walked_id
             and t.subject_type == "user"
             and t.subject_id == str(user_id)
             and t.relation in expanded
@@ -149,9 +143,9 @@ class FakeAuthorization:
         resource_type: str,
         limit: int = LOOKUP_DEFAULT_LIMIT,
     ) -> list[str]:
-        target_type = "kanban" if resource_type in {"column", "card"} else resource_type
-        required = relations_for(target_type, action)
-        expanded = expand_relations(target_type, required)
+        required = self.registry.relations_for(resource_type, action)
+        target_type = self.registry.nearest_leaf_type(resource_type)
+        expanded = self.registry.expand_relations(target_type, required)
         ids = sorted(
             {
                 t.resource_id
@@ -171,7 +165,7 @@ class FakeAuthorization:
         resource_id: str,
         relation: str,
     ) -> list[UUID]:
-        expanded = expand_relations(resource_type, frozenset({relation}))
+        expanded = self.registry.expand_relations(resource_type, frozenset({relation}))
         out: list[UUID] = []
         for t in self.tuples:
             if (
@@ -225,11 +219,23 @@ def repository() -> InMemoryKanbanRepository:
 
 
 @pytest.fixture
-def authorization(repository: InMemoryKanbanRepository) -> FakeAuthorization:
-    auth = FakeAuthorization()
-    auth.board_id_for_column = repository.find_board_id_by_column
-    auth.board_id_for_card = repository.find_board_id_by_card
-    return auth
+def registry(repository: InMemoryKanbanRepository) -> AuthorizationRegistry:
+    reg = AuthorizationRegistry()
+    reg.register_resource_type(
+        "system",
+        actions={
+            "manage_users": frozenset({"admin"}),
+            "read_audit": frozenset({"admin"}),
+        },
+        hierarchy={"admin": frozenset({"admin"})},
+    )
+    register_kanban_authorization(reg, repository)
+    return reg
+
+
+@pytest.fixture
+def authorization(registry: AuthorizationRegistry) -> FakeAuthorization:
+    return FakeAuthorization(registry=registry)
 
 
 @pytest.fixture

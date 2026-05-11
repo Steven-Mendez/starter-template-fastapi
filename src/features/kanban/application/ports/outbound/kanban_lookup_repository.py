@@ -20,3 +20,13 @@ class KanbanLookupRepositoryPort(Protocol):
     def find_board_id_by_column(self, column_id: str) -> str | None:
         """Parent board id for ``column_id``, or ``None`` if the column is missing."""
         ...
+
+    def find_column_id_by_card(self, card_id: str) -> str | None:
+        """Parent column id for ``card_id``, or ``None`` if the card is missing.
+
+        Used by the authorization registry to walk ``card → column → board``
+        through inherited resource registrations rather than a hardcoded
+        ``card → board`` shortcut. The two-step walk composes cleanly when a
+        future feature inserts a level between card and column.
+        """
+        ...

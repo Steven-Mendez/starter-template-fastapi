@@ -19,7 +19,9 @@ from src.features.auth.adapters.outbound.authorization.sqlmodel import (
     SessionSQLModelAuthorizationAdapter,
 )
 from src.features.auth.application.authorization.ports import AuthorizationPort
-from src.features.auth.application.authorization.resource_graph import ParentResolver
+from src.features.auth.application.authorization.registry import (
+    AuthorizationRegistry,
+)
 from src.features.kanban.adapters.outbound.persistence.sqlmodel.repository import (
     SessionSQLModelKanbanRepository,
 )
@@ -39,20 +41,15 @@ class SqlModelUnitOfWork(UnitOfWorkPort):
     lookup: KanbanLookupRepositoryPort
     authorization: AuthorizationPort
 
-    def __init__(
-        self,
-        engine: Engine,
-        *,
-        parent_resolver: ParentResolver | None = None,
-    ) -> None:
-        """Capture the engine but defer session creation until ``__enter__``.
+    def __init__(self, engine: Engine, *, registry: AuthorizationRegistry) -> None:
+        """Capture the engine and registry; defer session creation until ``__enter__``.
 
-        ``parent_resolver`` is forwarded to the session-scoped authorization
-        adapter so card/column checks performed inside the unit of work can
-        still walk to the parent board.
+        ``registry`` is forwarded to the session-scoped authorization
+        adapter so card/column checks performed inside the unit of work
+        can walk to the parent board through registered parent callables.
         """
         self._engine = engine
-        self._parent_resolver = parent_resolver
+        self._registry = registry
         self._session: Session | None = None
 
     def __enter__(self) -> Self:
@@ -62,8 +59,7 @@ class SqlModelUnitOfWork(UnitOfWorkPort):
         self.commands = repository
         self.lookup = repository
         self.authorization = SessionSQLModelAuthorizationAdapter(
-            self._session,
-            parent_resolver=self._parent_resolver,
+            self._session, self._registry
         )
         return self
 

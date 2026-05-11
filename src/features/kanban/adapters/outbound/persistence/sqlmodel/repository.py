@@ -280,6 +280,19 @@ class _BaseSQLModelKanbanRepository(
                 return None
             return column.board_id
 
+    def find_column_id_by_card(self, card_id: str) -> str | None:
+        """Return the parent column id for an active card."""
+        self._ensure_open()
+        with self._session_scope() as session:
+            card = session.exec(
+                select(CardTable)
+                .where(CardTable.id == card_id)
+                .where(CardTable.deleted_at.is_(None))  # type: ignore[union-attr]
+            ).one_or_none()
+            if card is None:
+                return None
+            return card.column_id
+
     def save(self, board: Board) -> None:
         """Persist the entire board aggregate as a single snapshot.
 

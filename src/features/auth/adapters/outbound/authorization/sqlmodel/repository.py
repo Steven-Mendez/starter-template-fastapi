@@ -1,10 +1,11 @@
 """SQLModel-backed implementation of ``AuthorizationPort``.
 
 The default adapter resolves the relation hierarchy and cross-resource
-inheritance at *check time*. For card and column resources, the engine
-walks the parent chain (``card → column → board``) and evaluates the
-equivalent check on the parent board. No card or column tuples are
-materialized in the relationships table.
+inheritance at *check time* by consulting the
+:class:`AuthorizationRegistry`. Inherited resource types (such as a
+kanban ``card``) declare a ``parent_of`` callable at registration; the
+engine walks parents until it lands on a leaf type with stored tuples,
+then evaluates the original action against the parent's hierarchy.
 
 Scaling note
 ============
@@ -42,15 +43,12 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
 )
-from src.features.auth.application.authorization.actions import relations_for
-from src.features.auth.application.authorization.hierarchy import expand_relations
 from src.features.auth.application.authorization.ports import (
     LOOKUP_DEFAULT_LIMIT,
     LOOKUP_MAX_LIMIT,
 )
-from src.features.auth.application.authorization.resource_graph import (
-    ParentResolver,
-    resolve_board_id,
+from src.features.auth.application.authorization.registry import (
+    AuthorizationRegistry,
 )
 from src.features.auth.application.authorization.types import Relationship
 
@@ -92,18 +90,8 @@ def _user_subject_ids(tuples: list[Relationship]) -> set[UUID]:
 class _BaseAuthorizationAdapter:
     """Shared engine logic; subclasses provide the session strategy."""
 
-    def __init__(self, parent_resolver: ParentResolver | None = None) -> None:
-        self._parent_resolver = parent_resolver
-
-    def set_parent_resolver(self, parent_resolver: ParentResolver) -> None:
-        """Wire a kanban-aware parent resolver after construction.
-
-        The auth container builds the adapter before the kanban container
-        exists, so cross-resource inheritance (card → column → board) is
-        unavailable until the kanban container hands its lookup repository
-        back here. Composition root calls this once at startup.
-        """
-        self._parent_resolver = parent_resolver
+    def __init__(self, registry: AuthorizationRegistry) -> None:
+        self._registry = registry
 
     @contextmanager
     def _session_scope(self) -> Iterator[Session]:
@@ -123,28 +111,24 @@ class _BaseAuthorizationAdapter:
         resource_type: str,
         resource_id: str,
     ) -> bool:
-        """Resolve hierarchy + parent walk; return True iff the user qualifies."""
-        required = relations_for(resource_type, action)
+        """Walk parents to a stored type, then resolve hierarchy + match."""
+        # Surface unknown types before walking so the HTTP layer can return
+        # 500 (programmer error) instead of a silent denied check.
+        required = self._registry.relations_for(resource_type, action)
 
-        # Cards and columns inherit from the parent board; resolve to the
-        # owning kanban resource id and then check there. Missing parents
-        # produce a denied check.
-        if resource_type in {"card", "column"}:
-            board_id = self._resolve_to_board(resource_type, resource_id)
-            if board_id is None:
+        walked_type, walked_id = resource_type, resource_id
+        while not self._registry.has_stored_relations(walked_type):
+            parent = self._registry.parent_of(walked_type, walked_id)
+            if parent is None:
                 return False
-            return self._check_kanban(user_id, required, board_id)
+            walked_type, walked_id = parent
 
-        if resource_type == "kanban":
-            return self._check_kanban(user_id, required, resource_id)
-
-        # System and any future flat resource type: no parent walk.
-        expanded = expand_relations(resource_type, required)
+        expanded = self._registry.expand_relations(walked_type, required)
         with self._session_scope() as session:
             return self._exists_relation(
                 session,
-                resource_type=resource_type,
-                resource_id=resource_id,
+                resource_type=walked_type,
+                resource_id=walked_id,
                 relations=expanded,
                 user_id=user_id,
             )
@@ -157,17 +141,16 @@ class _BaseAuthorizationAdapter:
         resource_type: str,
         limit: int = LOOKUP_DEFAULT_LIMIT,
     ) -> list[str]:
-        """Return resource ids the user can ``action`` on, capped at the limit."""
+        """Return resource ids the user can ``action`` on, capped at the limit.
+
+        Inherited types redirect to their nearest leaf ancestor because only
+        the leaf has stored tuples; the access granted by a single leaf
+        tuple covers every inherited child anyway.
+        """
         capped_limit = max(1, min(limit, LOOKUP_MAX_LIMIT))
-        # Listing only resolves on the resource type whose tuples are stored.
-        # Card/column listing intentionally redirects to kanban: the only
-        # rows that exist are board-level, and inheritance grants identical
-        # access to every child anyway.
-        stored_type = (
-            "kanban" if resource_type in {"kanban", "column", "card"} else resource_type
-        )
-        required = relations_for(stored_type, action)
-        expanded = expand_relations(stored_type, required)
+        required = self._registry.relations_for(resource_type, action)
+        stored_type = self._registry.nearest_leaf_type(resource_type)
+        expanded = self._registry.expand_relations(stored_type, required)
 
         with self._session_scope() as session:
             rows = session.exec(
@@ -198,7 +181,7 @@ class _BaseAuthorizationAdapter:
         relation: str,
     ) -> list[UUID]:
         """Return user ids holding ``relation`` (or any superior) on the resource."""
-        expanded = expand_relations(resource_type, frozenset({relation}))
+        expanded = self._registry.expand_relations(resource_type, frozenset({relation}))
         with self._session_scope() as session:
             rows = session.exec(
                 select(RelationshipTable.subject_id)
@@ -291,24 +274,6 @@ class _BaseAuthorizationAdapter:
 
     # ── Internals ─────────────────────────────────────────────────────────────
 
-    def _check_kanban(
-        self, user_id: UUID, required: frozenset[str], board_id: str
-    ) -> bool:
-        expanded = expand_relations("kanban", required)
-        with self._session_scope() as session:
-            return self._exists_relation(
-                session,
-                resource_type="kanban",
-                resource_id=board_id,
-                relations=expanded,
-                user_id=user_id,
-            )
-
-    def _resolve_to_board(self, resource_type: str, resource_id: str) -> str | None:
-        if self._parent_resolver is None:
-            return None
-        return resolve_board_id(self._parent_resolver, resource_type, resource_id)
-
     @staticmethod
     def _exists_relation(
         session: Session,
@@ -338,10 +303,8 @@ class SQLModelAuthorizationAdapter(_BaseAuthorizationAdapter):
     standalone writes (e.g., bootstrap, admin grants).
     """
 
-    def __init__(
-        self, engine: Engine, *, parent_resolver: ParentResolver | None = None
-    ) -> None:
-        super().__init__(parent_resolver=parent_resolver)
+    def __init__(self, engine: Engine, registry: AuthorizationRegistry) -> None:
+        super().__init__(registry=registry)
         self._engine = engine
 
     @contextmanager
@@ -368,13 +331,8 @@ class SessionSQLModelAuthorizationAdapter(_BaseAuthorizationAdapter):
     operations need to share the same Session.
     """
 
-    def __init__(
-        self,
-        session: Session,
-        *,
-        parent_resolver: ParentResolver | None = None,
-    ) -> None:
-        super().__init__(parent_resolver=parent_resolver)
+    def __init__(self, session: Session, registry: AuthorizationRegistry) -> None:
+        super().__init__(registry=registry)
         self._session = session
 
     @contextmanager

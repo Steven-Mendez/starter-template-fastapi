@@ -1,4 +1,11 @@
-"""Unit tests for cross-resource inheritance (card → column → board)."""
+"""Unit tests for cross-resource inheritance (card → column → board).
+
+Registers the inherited resource types (``card``, ``column``) on an
+:class:`AuthorizationRegistry` whose ``parent_of`` callables read from a
+pre-seeded fake. The walk uses ``card → column`` then ``column → kanban``
+so the engine exercises multi-level resolution rather than a hardcoded
+shortcut.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +25,11 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     RelationshipTable,
     UserTable,
 )
+from src.features.auth.application.authorization.registry import (
+    AuthorizationRegistry,
+)
 from src.features.auth.application.authorization.types import Relationship
+from src.features.auth.tests.contracts.registry_helper import make_test_registry
 
 _SCHEMA: list[Any] = [UserTable, RelationshipTable]
 
@@ -26,27 +37,42 @@ pytestmark = pytest.mark.unit
 
 
 @dataclass(slots=True)
-class FakeParentResolver:
-    """Minimal ``ParentResolver`` for unit tests; pre-seeded with parent maps."""
+class FakeChildIndex:
+    """Pre-seeded parent lookup maps for the registry's ``parent_of``."""
 
     columns_to_boards: dict[str, str] = field(default_factory=dict)
-    cards_to_boards: dict[str, str] = field(default_factory=dict)
-
-    def board_id_for_card(self, card_id: str) -> str | None:
-        return self.cards_to_boards.get(card_id)
-
-    def board_id_for_column(self, column_id: str) -> str | None:
-        return self.columns_to_boards.get(column_id)
+    cards_to_columns: dict[str, str] = field(default_factory=dict)
 
 
 @pytest.fixture
-def parent_resolver() -> FakeParentResolver:
-    return FakeParentResolver()
+def child_index() -> FakeChildIndex:
+    return FakeChildIndex()
+
+
+@pytest.fixture
+def registry(child_index: FakeChildIndex) -> AuthorizationRegistry:
+    reg = make_test_registry()
+
+    def _column_parent(column_id: str) -> tuple[str, str] | None:
+        board_id = child_index.columns_to_boards.get(column_id)
+        if board_id is None:
+            return None
+        return ("kanban", board_id)
+
+    def _card_parent(card_id: str) -> tuple[str, str] | None:
+        column_id = child_index.cards_to_columns.get(card_id)
+        if column_id is None:
+            return None
+        return ("column", column_id)
+
+    reg.register_parent("column", parent_of=_column_parent, inherits_from="kanban")
+    reg.register_parent("card", parent_of=_card_parent, inherits_from="column")
+    return reg
 
 
 @pytest.fixture
 def adapter(
-    parent_resolver: FakeParentResolver,
+    registry: AuthorizationRegistry,
 ) -> Iterator[SQLModelAuthorizationAdapter]:
     engine = create_engine(
         "sqlite://",
@@ -55,7 +81,7 @@ def adapter(
     )
     for table in _SCHEMA:
         table.__table__.create(engine, checkfirst=True)
-    yield SQLModelAuthorizationAdapter(engine, parent_resolver=parent_resolver)
+    yield SQLModelAuthorizationAdapter(engine, registry)
     engine.dispose()
 
 
@@ -81,14 +107,14 @@ def _grant(
 
 def test_board_reader_can_read_cards_under_the_board(
     adapter: SQLModelAuthorizationAdapter,
-    parent_resolver: FakeParentResolver,
+    child_index: FakeChildIndex,
 ) -> None:
     user_id = uuid4()
     board_id = str(uuid4())
     column_id = str(uuid4())
     card_id = str(uuid4())
-    parent_resolver.columns_to_boards[column_id] = board_id
-    parent_resolver.cards_to_boards[card_id] = board_id
+    child_index.columns_to_boards[column_id] = board_id
+    child_index.cards_to_columns[card_id] = column_id
     _grant(adapter, user_id=user_id, board_id=board_id, relation="reader")
 
     assert adapter.check(
@@ -101,12 +127,14 @@ def test_board_reader_can_read_cards_under_the_board(
 
 def test_board_owner_can_update_and_delete_cards_under_the_board(
     adapter: SQLModelAuthorizationAdapter,
-    parent_resolver: FakeParentResolver,
+    child_index: FakeChildIndex,
 ) -> None:
     user_id = uuid4()
     board_id = str(uuid4())
+    column_id = str(uuid4())
     card_id = str(uuid4())
-    parent_resolver.cards_to_boards[card_id] = board_id
+    child_index.columns_to_boards[column_id] = board_id
+    child_index.cards_to_columns[card_id] = column_id
     _grant(adapter, user_id=user_id, board_id=board_id, relation="owner")
 
     assert adapter.check(
@@ -119,12 +147,14 @@ def test_board_owner_can_update_and_delete_cards_under_the_board(
 
 def test_reader_cannot_update_via_card(
     adapter: SQLModelAuthorizationAdapter,
-    parent_resolver: FakeParentResolver,
+    child_index: FakeChildIndex,
 ) -> None:
     user_id = uuid4()
     board_id = str(uuid4())
+    column_id = str(uuid4())
     card_id = str(uuid4())
-    parent_resolver.cards_to_boards[card_id] = board_id
+    child_index.columns_to_boards[column_id] = board_id
+    child_index.cards_to_columns[card_id] = column_id
     _grant(adapter, user_id=user_id, board_id=board_id, relation="reader")
 
     assert not adapter.check(
@@ -158,7 +188,7 @@ def test_unknown_card_returns_false_without_raising(
 
 def test_no_tuples_are_written_for_card_or_column_inheritance(
     adapter: SQLModelAuthorizationAdapter,
-    parent_resolver: FakeParentResolver,
+    child_index: FakeChildIndex,
 ) -> None:
     """Granting board access SHALL NOT materialize per-card or per-column rows."""
     from sqlalchemy import text  # noqa: PLC0415
@@ -166,10 +196,12 @@ def test_no_tuples_are_written_for_card_or_column_inheritance(
 
     user_id = uuid4()
     board_id = str(uuid4())
-    parent_resolver.cards_to_boards[str(uuid4())] = board_id
+    column_id = str(uuid4())
+    card_id = str(uuid4())
+    child_index.columns_to_boards[column_id] = board_id
+    child_index.cards_to_columns[card_id] = column_id
     _grant(adapter, user_id=user_id, board_id=board_id, relation="writer")
 
-    # Direct DB inspection to confirm no inferred tuples leaked into storage.
     engine = adapter._engine  # type: ignore[attr-defined]
     with Session(engine) as session:
         rows = list(

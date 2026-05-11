@@ -25,6 +25,7 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import 
     SQLModelAuthRepository,
 )
 from src.features.auth.application.authorization.types import Relationship
+from src.features.auth.tests.contracts.registry_helper import make_test_registry
 
 pytestmark = pytest.mark.integration
 
@@ -33,7 +34,9 @@ pytestmark = pytest.mark.integration
 def adapter(
     postgres_auth_repository: SQLModelAuthRepository,
 ) -> Iterator[SQLModelAuthorizationAdapter]:
-    yield SQLModelAuthorizationAdapter(postgres_auth_repository.engine)
+    yield SQLModelAuthorizationAdapter(
+        postgres_auth_repository.engine, make_test_registry()
+    )
 
 
 def _seed_user(repo: SQLModelAuthRepository) -> UUID:

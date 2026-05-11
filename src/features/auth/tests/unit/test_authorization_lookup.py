@@ -18,6 +18,7 @@ from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
 )
 from src.features.auth.application.authorization.types import Relationship
+from src.features.auth.tests.contracts.registry_helper import make_test_registry
 
 _SCHEMA: list[Any] = [UserTable, RelationshipTable]
 
@@ -33,7 +34,7 @@ def adapter() -> Iterator[SQLModelAuthorizationAdapter]:
     )
     for table in _SCHEMA:
         table.__table__.create(engine, checkfirst=True)
-    yield SQLModelAuthorizationAdapter(engine)
+    yield SQLModelAuthorizationAdapter(engine, make_test_registry())
     engine.dispose()
 
 

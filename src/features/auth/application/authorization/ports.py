@@ -32,9 +32,10 @@ class AuthorizationPort(Protocol):
     """Bidirectional authorization API.
 
     Implementations are responsible for resolving the relation hierarchy
-    (e.g., ``owner ⊇ writer ⊇ reader`` for kanban) and any cross-resource
-    inheritance (e.g., a card check walks to its parent board) without
-    exposing those mechanics to callers.
+    (e.g., ``owner ⊇ writer ⊇ reader``) and any cross-resource
+    inheritance (an inherited child resource walks to its parent through
+    a registry-supplied callable) without exposing those mechanics to
+    callers.
     """
 
     def check(
@@ -51,10 +52,11 @@ class AuthorizationPort(Protocol):
             user_id: Subject performing the action.
             action: An action declared in ``application/authorization/actions.py``
                 for the given ``resource_type``.
-            resource_type: The type of resource (e.g., ``"kanban"``,
-                ``"system"``, ``"column"``, ``"card"``).
-            resource_id: The instance id (a UUID string for kanban resources;
-                ``"main"`` for the system singleton).
+            resource_type: A resource type registered on the
+                ``AuthorizationRegistry`` (e.g., ``"system"``, plus
+                whatever a feature has contributed at composition time).
+            resource_id: The instance id; opaque to the port. For
+                ``"system"`` resources the convention is ``"main"``.
         """
         ...
 
