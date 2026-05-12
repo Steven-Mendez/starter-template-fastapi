@@ -7,8 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic~=1.18",
     "argon2-cffi~=25.1",
+    "arq~=0.26",
     "cachetools~=5.3",
     "fastapi~=0.135",
+    "jinja2~=3.1",
     "opentelemetry-exporter-otlp-proto-http>=1.33.0",
     "opentelemetry-instrumentation-fastapi>=0.54b0",
     "opentelemetry-instrumentation-redis>=0.54b0",
@@ -18,13 +20,15 @@ dependencies = [
     "pydantic~=2.10",
     "pydantic-settings~=2.13",
     "pyjwt~=2.12",
-    "redis~=7.4",
+    "python-multipart~=0.0.20",
+    "redis>=5.0,<6",
     "sqlmodel~=0.0.38",
     "uvicorn[standard]~=0.44",
 ]
 
 [dependency-groups]
 dev = [
+    "aiosmtpd>=1.4.6",
     "fakeredis>=2.35.1",
     "freezegun>=1.5.5",
     "httpx>=0.28.1",
@@ -82,7 +86,7 @@ omit = [
 data_file = ".coverage"
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 80
 show_missing = true
 skip_covered = false
 precision = 2
@@ -133,11 +137,25 @@ root_packages = ["src"]
 include_external_packages = true
 
 # Platform must never depend on a feature.
+#
+# The one tolerated exception is the configuration composition root:
+# :mod:`src.platform.config.settings` aggregates per-feature settings
+# classes so each feature can own its config and production validation
+# alongside its other code. Every *other* platform module remains
+# feature-agnostic.
 [[tool.importlinter.contracts]]
 name = "Platform isolation: no feature imports"
 type = "forbidden"
 source_modules = ["src.platform"]
 forbidden_modules = ["src.features"]
+ignore_imports = [
+    "src.platform.config.settings -> src.features.authentication.composition.settings",
+    "src.platform.config.settings -> src.features.authorization.composition.settings",
+    "src.platform.config.settings -> src.features.background_jobs.composition.settings",
+    "src.platform.config.settings -> src.features.email.composition.settings",
+    "src.platform.config.settings -> src.features.file_storage.composition.settings",
+    "src.platform.config.settings -> src.features.users.composition.settings",
+]
 
 # === Auth ↔ Authorization split ===
 #
@@ -157,6 +175,14 @@ source_modules = [
     "src.features.authentication.domain",
 ]
 forbidden_modules = ["src.features.authorization"]
+# The configuration composition root aggregates per-feature settings
+# classes (see the matching ignore in "Platform isolation" above). The
+# transitive ``platform.config.settings -> authorization.composition.settings``
+# edge is not a feature-to-feature dependency, so it does not violate
+# the spirit of this contract.
+ignore_imports = [
+    "src.platform.config.settings -> src.features.authorization.composition.settings",
+]
 
 [[tool.importlinter.contracts]]
 name = "Authorization does not import authentication"
@@ -277,4 +303,136 @@ type = "layers"
 layers = [
     "src.features.authorization.adapters",
     "src.features.authorization.application",
+]
+
+# === Users feature boundaries ===
+#
+# After the ``starter-template-foundation`` extraction, ``users`` owns the
+# ``User`` table and its lifecycle. It must not import from ``authentication``
+# (the dependency goes the other way: authentication consumes ``UserPort``).
+[[tool.importlinter.contracts]]
+name = "Users does not import from authentication"
+type = "forbidden"
+source_modules = [
+    "src.features.users.application",
+    "src.features.users.adapters",
+    "src.features.users.domain",
+]
+forbidden_modules = ["src.features.authentication"]
+
+# Authentication production code uses ``users`` only through its application
+# ports (``UserPort``, ``PasswordHasherPort``). Reaching into users' adapters
+# would bypass the contract.
+[[tool.importlinter.contracts]]
+name = "Authentication uses users only via application ports"
+type = "forbidden"
+source_modules = [
+    "src.features.authentication.application",
+    "src.features.authentication.adapters",
+    "src.features.authentication.domain",
+]
+forbidden_modules = ["src.features.users.adapters"]
+
+# Users implements outbound ports defined by authorization; the implementations
+# live in adapters and may not reach back into authorization's adapter package.
+[[tool.importlinter.contracts]]
+name = "Users does not import authorization adapters"
+type = "forbidden"
+source_modules = [
+    "src.features.users.application",
+    "src.features.users.adapters",
+    "src.features.users.domain",
+]
+forbidden_modules = ["src.features.authorization.adapters"]
+
+# === Email feature boundaries ===
+#
+# The email feature owns its port, adapters, and template registry. It must
+# never import from another feature — features deliver mail by registering
+# their templates with the email registry and calling ``EmailPort.send``.
+[[tool.importlinter.contracts]]
+name = "Email does not import from other features"
+type = "forbidden"
+source_modules = [
+    "src.features.email.application",
+    "src.features.email.adapters",
+    "src.features.email.domain",
+    "src.features.email.composition",
+]
+forbidden_modules = [
+    "src.features.authentication",
+    "src.features.authorization",
+    "src.features.users",
+    "src.features._template",
+]
+
+# Authentication consumes the email feature only through ``EmailPort``;
+# direct imports of an email adapter would bypass the contract.
+[[tool.importlinter.contracts]]
+name = "Authentication uses email only via the port"
+type = "forbidden"
+source_modules = [
+    "src.features.authentication.application",
+    "src.features.authentication.adapters",
+    "src.features.authentication.domain",
+]
+forbidden_modules = ["src.features.email.adapters"]
+
+# === Background-jobs feature boundaries ===
+#
+# The background-jobs feature owns its port, adapters, and handler registry.
+# It must never import from another feature — features contribute their job
+# handlers by registering them with the registry at composition time and
+# call ``JobQueuePort.enqueue`` to dispatch work.
+[[tool.importlinter.contracts]]
+name = "Background-jobs does not import from other features"
+type = "forbidden"
+source_modules = [
+    "src.features.background_jobs.application",
+    "src.features.background_jobs.adapters",
+    "src.features.background_jobs.domain",
+    "src.features.background_jobs.composition",
+]
+forbidden_modules = [
+    "src.features.authentication",
+    "src.features.authorization",
+    "src.features.users",
+    "src.features.email",
+    "src.features._template",
+]
+
+# Authentication consumes the background-jobs feature only through
+# ``JobQueuePort``; direct imports of a job-queue adapter would bypass
+# the contract.
+[[tool.importlinter.contracts]]
+name = "Authentication uses background-jobs only via the port"
+type = "forbidden"
+source_modules = [
+    "src.features.authentication.application",
+    "src.features.authentication.adapters",
+    "src.features.authentication.domain",
+]
+forbidden_modules = ["src.features.background_jobs.adapters"]
+
+# === File-storage feature boundaries ===
+#
+# The file-storage feature owns its port and adapters. It must never
+# import from another feature — features that need persistent blobs
+# call ``FileStoragePort`` instead of importing an adapter directly.
+[[tool.importlinter.contracts]]
+name = "File-storage does not import from other features"
+type = "forbidden"
+source_modules = [
+    "src.features.file_storage.application",
+    "src.features.file_storage.adapters",
+    "src.features.file_storage.domain",
+    "src.features.file_storage.composition",
+]
+forbidden_modules = [
+    "src.features.authentication",
+    "src.features.authorization",
+    "src.features.users",
+    "src.features.email",
+    "src.features.background_jobs",
+    "src.features._template",
 ]

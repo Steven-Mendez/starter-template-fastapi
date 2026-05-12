@@ -300,6 +300,28 @@ and restore tooling for the configured PostgreSQL deployment.
 
 No application-level backup job is implemented in this repository.
 
+## Credentials Migration Rollout
+
+The credentials table extraction (`starter-template-foundation` change) ships
+as a two-phase migration:
+
+- **Phase 1** (`20260512_0009`) creates the `credentials` table and copies
+  every existing `users.password_hash` value into it. The `users.password_hash`
+  column is retained, and the login path reads from `credentials` first with
+  a documented fallback to `users.password_hash` so deploys can finish without
+  locking out in-flight users.
+- **Phase 2** (`20260513_0010`) drops `users.password_hash` and removes the
+  login fallback. This is the point of no return — after the column is gone
+  there is no way to roll back to a phase-0 build without restoring from
+  backup.
+
+Deploy phase 2 **only after phase 1 has been live in production for at least
+one full release cycle**. The phase-1 backfill copies every active row in a
+single transaction, but newly-registered users between phase 0 and phase 1
+have no entry to copy; the fallback path covers them on their next login.
+Waiting one release cycle gives that fallback time to populate the
+`credentials` table for every still-active account.
+
 ## Rollback Notes
 
 - Roll back the application image or deployment artifact through your deployment
@@ -310,8 +332,192 @@ No application-level backup job is implemented in this repository.
 - If a migration command fails during deployment, inspect the database migration
   state before retrying.
 
+## Background Jobs
+
+Transactional email and other deferred work are dispatched through the
+`background_jobs` feature. The backend is selected at startup via
+`APP_JOBS_BACKEND`:
+
+| `APP_JOBS_BACKEND` | Behaviour | Allowed in production |
+|---|---|---|
+| `in_process` | Runs handlers synchronously inline at enqueue time | **No** — startup fails |
+| `arq` | Enqueues onto Redis; a separate worker process consumes the queue | Yes |
+
+In production you **must** run at least one worker process alongside the
+API processes; without it, enqueued jobs accumulate in Redis and are
+never executed. The worker uses the same composition root as the web
+app, so every feature that registers a job handler at startup
+(currently just `send_email` from the email feature) sees the same set
+of handlers in both processes.
+
+### Configuration
+
+```bash
+export APP_JOBS_BACKEND=arq
+# Falls back to APP_AUTH_REDIS_URL when this is unset, so single-Redis
+# deployments can leave it unset.
+export APP_JOBS_REDIS_URL=redis://redis:6379/0
+# Optional; defaults to ``arq:queue``.
+export APP_JOBS_QUEUE_NAME=arq:queue
+```
+
+The settings validator refuses to start in production when:
+
+- `APP_JOBS_BACKEND=in_process`
+- `APP_JOBS_BACKEND=arq` and neither `APP_JOBS_REDIS_URL` nor
+  `APP_AUTH_REDIS_URL` is set.
+
+### Running the worker
+
+Locally:
+
+```bash
+APP_JOBS_BACKEND=arq APP_JOBS_REDIS_URL=redis://localhost:6379/0 \
+  make worker
+```
+
+In production, run `python -m src.worker` as a separate process (a
+sidecar container, a Kubernetes Deployment, a systemd unit, etc.). The
+worker logs the names of every registered job handler at startup so
+operators can confirm what it will consume before the first job
+arrives.
+
+### Adding a job handler in a feature
+
+1. Write a sync callable `handler(payload: dict[str, Any]) -> None`.
+2. In your feature's composition module, expose a
+   `register_<name>_handler(registry, ...)` helper that calls
+   `registry.register_handler("<name>", handler)`.
+3. Call that helper from both `src/main.py` (so the web app can
+   enqueue the job) and `src/worker.py` (so the worker can run it)
+   before the registry is sealed.
+
+The same handler must be registered in both processes; the
+`JobHandlerRegistry` raises `UnknownJobError` if the web app tries to
+enqueue a name the worker does not know about.
+
 ## Operational Limitations
 
 - The runtime Docker image starts only the API server. Migrations are separate.
-- There is no built-in background worker.
+- A background worker (`make worker` / `python -m src.worker`) is required in
+  production but is **not** started by the API image; run it as its own process.
 - There is no built-in backup or restore automation.
+
+## Environment Variable Reference
+
+Every runtime knob is exposed as an `APP_`-prefixed environment variable. The
+groupings below mirror the per-feature settings classes in each feature's
+`composition/settings.py` (and `src/platform/config/sub_settings.py` for the
+cross-cutting platform sections). Production-only requirements are noted on
+the right; the settings validator refuses to start when any of them are
+violated and `APP_ENVIRONMENT=production`.
+
+### Platform — API surface (`ApiSettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_ENVIRONMENT` | `development` | One of `development`, `test`, `production`. |
+| `APP_ENABLE_DOCS` | `true` | **Must be `false` in production.** |
+| `APP_APP_PUBLIC_URL` | `http://localhost:8000` | Base URL embedded in transactional email links. |
+| `APP_APP_DISPLAY_NAME` | `Starter` | Product name used in email subjects/signatures. |
+| `APP_CORS_ORIGINS` | `["*"]` | JSON list. **Must not contain `*` in production.** |
+| `APP_TRUSTED_HOSTS` | `["*"]` | JSON list of accepted `Host` headers. |
+| `APP_MAX_REQUEST_BYTES` | `4194304` | Body-size limit for `ContentSizeLimitMiddleware`. |
+
+### Platform — Database (`DatabaseSettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_POSTGRESQL_DSN` | `postgresql+psycopg://postgres:postgres@localhost:5432/starter` | Connection string. |
+| `APP_DB_POOL_SIZE` | `5` | Steady-state pool size. |
+| `APP_DB_MAX_OVERFLOW` | `10` | Burst capacity above pool size. |
+| `APP_DB_POOL_RECYCLE_SECONDS` | `1800` | Connection recycle window (defends against idle-cutting load balancers). |
+| `APP_DB_POOL_PRE_PING` | `true` | Validate connections before use. |
+
+### Platform — Observability (`ObservabilitySettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_LOG_LEVEL` | `INFO` | Root logging level. |
+| `APP_OTEL_EXPORTER_ENDPOINT` | unset | OTLP/HTTP traces endpoint, e.g. `http://localhost:4318/v1/traces`. |
+| `APP_OTEL_SERVICE_NAME` | `starter-template-fastapi` | Resource attribute on emitted spans. |
+| `APP_OTEL_SERVICE_VERSION` | `0.1.0` | Resource attribute on emitted spans. |
+| `APP_METRICS_ENABLED` | `true` | Toggles the Prometheus `/metrics` endpoint. |
+
+### Authentication (`AuthenticationSettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_AUTH_JWT_SECRET_KEY` | unset | **Required in production.** Signs all access tokens. |
+| `APP_AUTH_JWT_ALGORITHM` | `HS256` | One of `HS256`, `RS256`. |
+| `APP_AUTH_JWT_ISSUER` | unset | **Required in production.** |
+| `APP_AUTH_JWT_AUDIENCE` | unset | **Required in production.** |
+| `APP_AUTH_JWT_LEEWAY_SECONDS` | `10` | Clock-skew tolerance (`0`–`60`). |
+| `APP_AUTH_ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | JWT lifetime. |
+| `APP_AUTH_REFRESH_TOKEN_EXPIRE_DAYS` | `30` | Refresh-cookie lifetime. |
+| `APP_AUTH_COOKIE_SECURE` | `false` | **Must be `true` in production.** |
+| `APP_AUTH_COOKIE_SAMESITE` | `strict` | One of `lax`, `strict`, `none`. |
+| `APP_AUTH_PASSWORD_RESET_TOKEN_EXPIRE_MINUTES` | `30` | TTL for password-reset tokens. |
+| `APP_AUTH_EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES` | `1440` | TTL for verify-email tokens. |
+| `APP_AUTH_RATE_LIMIT_ENABLED` | `true` | Toggles auth-route rate limiting. |
+| `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT` | `false` | Forces Redis-backed rate limiter; **requires `APP_AUTH_REDIS_URL` in production**. |
+| `APP_AUTH_REDIS_URL` | unset | Enables distributed rate limiter and principal cache. |
+| `APP_AUTH_PRINCIPAL_CACHE_TTL_SECONDS` | `5` | Bounds revocation lag for the principal cache. |
+| `APP_AUTH_REQUIRE_EMAIL_VERIFICATION` | `false` | Block login until email is verified. |
+| `APP_AUTH_SEED_ON_STARTUP` | `false` | Bootstrap RBAC and (optionally) a super admin. |
+| `APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL` | unset | Together with `..._PASSWORD`, seeds the first admin. |
+| `APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD` | unset | Set with `..._EMAIL` to bootstrap. |
+| `APP_AUTH_DEFAULT_USER_ROLE` | `user` | Role assigned on registration. |
+| `APP_AUTH_SUPER_ADMIN_ROLE` | `super_admin` | Marker role for system-admin bootstrap. |
+| `APP_AUTH_OAUTH_ENABLED` | `false` | Reserved for future OAuth wiring. |
+| `APP_AUTH_OAUTH_GOOGLE_CLIENT_ID` | unset | Reserved for future OAuth wiring. |
+| `APP_AUTH_OAUTH_GOOGLE_CLIENT_SECRET` | unset | Reserved for future OAuth wiring. |
+| `APP_AUTH_OAUTH_GOOGLE_REDIRECT_URI` | unset | Reserved for future OAuth wiring. |
+| `APP_AUTH_RETURN_INTERNAL_TOKENS` | `false` | Exposes single-use reset/verify tokens in API responses. **Must be `false` in production.** |
+
+### Authorization (`AuthorizationSettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_AUTH_RBAC_ENABLED` | `true` | **Must stay `true` in production.** Disabling skips authorization checks. |
+| `APP_AUTH_PRINCIPAL_CACHE_TTL_SECONDS` | `5` | Shared with authentication — see above. |
+
+### Users (`UsersSettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_AUTH_DEFAULT_USER_ROLE` | `user` | Shared with authentication — see above. |
+| `APP_AUTH_SUPER_ADMIN_ROLE` | `super_admin` | Shared with authentication — see above. |
+| `APP_AUTH_REQUIRE_EMAIL_VERIFICATION` | `false` | Shared with authentication — see above. |
+
+### Email (`EmailSettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_EMAIL_BACKEND` | `console` | One of `console`, `smtp`. **Must be `smtp` in production.** |
+| `APP_EMAIL_FROM` | unset | Required when `APP_EMAIL_BACKEND=smtp`. |
+| `APP_EMAIL_SMTP_HOST` | unset | Required when `APP_EMAIL_BACKEND=smtp`. |
+| `APP_EMAIL_SMTP_PORT` | `587` | Submission port. |
+| `APP_EMAIL_SMTP_USERNAME` | unset | Optional SMTP auth username. |
+| `APP_EMAIL_SMTP_PASSWORD` | unset | Optional SMTP auth password. |
+| `APP_EMAIL_SMTP_USE_STARTTLS` | `true` | STARTTLS upgrade on the submission port. |
+| `APP_EMAIL_SMTP_USE_SSL` | `false` | Implicit TLS (port 465). Mutually exclusive with STARTTLS. |
+| `APP_EMAIL_SMTP_TIMEOUT_SECONDS` | `10.0` | Socket timeout for SMTP operations. |
+
+### Background jobs (`JobsSettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_JOBS_BACKEND` | `in_process` | One of `in_process`, `arq`. **Must be `arq` in production.** |
+| `APP_JOBS_REDIS_URL` | unset | Required when `APP_JOBS_BACKEND=arq`; falls back to `APP_AUTH_REDIS_URL`. |
+| `APP_JOBS_QUEUE_NAME` | `arq:queue` | `arq` queue name. |
+
+### File storage (`StorageSettings`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_STORAGE_ENABLED` | `false` | Set `true` when a consumer feature wires `FileStoragePort`. |
+| `APP_STORAGE_BACKEND` | `local` | One of `local`, `s3`. **Must be `s3` in production when `APP_STORAGE_ENABLED=true`.** |
+| `APP_STORAGE_LOCAL_PATH` | unset | Required when `APP_STORAGE_BACKEND=local`. |
+| `APP_STORAGE_S3_BUCKET` | unset | Required when `APP_STORAGE_BACKEND=s3`. |
+| `APP_STORAGE_S3_REGION` | `us-east-1` | AWS region for the bucket. |

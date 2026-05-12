@@ -14,10 +14,6 @@ import pytest
 from sqlalchemy import text
 from sqlmodel import Session
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
-    UserTable,
-    utc_now,
-)
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
@@ -27,6 +23,10 @@ from src.features.authorization.adapters.outbound.sqlmodel import (
 from src.features.authorization.application.types import Relationship
 from src.features.authorization.tests.contracts.registry_helper import (
     make_test_registry,
+)
+from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+    UserTable,
+    utc_now,
 )
 
 pytestmark = pytest.mark.integration
@@ -52,7 +52,6 @@ def _seed_user(repo: SQLModelAuthRepository) -> UUID:
         user = UserTable(
             id=uuid4(),
             email=f"user-{uuid4()}@example.com",
-            password_hash="x",
             is_active=True,
             is_verified=True,
             authz_version=1,
@@ -171,8 +170,13 @@ def test_authz_version_bumps_on_write_against_postgres(
     postgres_auth_repository: SQLModelAuthRepository,
     adapter: SQLModelAuthorizationAdapter,
 ) -> None:
+    from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+        SQLModelUserRepository,
+    )
+
     user_id = _seed_user(postgres_auth_repository)
-    before = postgres_auth_repository.get_user_by_id(user_id)
+    users = SQLModelUserRepository(engine=postgres_auth_repository.engine)
+    before = users.get_by_id(user_id)
     assert before is not None
     before_version = before.authz_version
 
@@ -188,6 +192,6 @@ def test_authz_version_bumps_on_write_against_postgres(
         ]
     )
 
-    after = postgres_auth_repository.get_user_by_id(user_id)
+    after = users.get_by_id(user_id)
     assert after is not None
     assert after.authz_version == before_version + 1

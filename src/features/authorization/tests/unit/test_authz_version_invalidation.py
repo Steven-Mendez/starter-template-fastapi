@@ -16,10 +16,6 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
-    UserTable,
-    utc_now,
-)
 from src.features.authorization.adapters.outbound.sqlmodel import (
     SQLModelAuthorizationAdapter,
 )
@@ -29,6 +25,10 @@ from src.features.authorization.tests.contracts.registry_helper import (
 )
 from src.features.users.adapters.outbound.authz_version import (
     SQLModelUserAuthzVersionAdapter,
+)
+from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+    UserTable,
+    utc_now,
 )
 from src.platform.persistence.sqlmodel.authorization.models import RelationshipTable
 
@@ -63,7 +63,6 @@ def _seed_user(engine: Engine) -> UUID:
     user = UserTable(
         id=uuid4(),
         email=f"user-{uuid4()}@example.com",
-        password_hash="x",
         is_active=True,
         is_verified=True,
         authz_version=1,

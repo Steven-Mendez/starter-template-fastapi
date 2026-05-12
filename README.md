@@ -1,56 +1,62 @@
 # starter-template-fastapi
 
-`starter-template-fastapi` is a FastAPI service that exposes a Kanban board API.
-It is intended for developers who want a working example of a feature-first,
-hexagonal FastAPI application with PostgreSQL persistence, Alembic migrations,
-API-key-protected write routes, Problem Details error responses, and layered test
-coverage.
+`starter-template-fastapi` is a production-shaped starter for FastAPI
+services. It bundles the four pieces of infrastructure every real backend
+needs — authentication, users, authorization, transactional email — plus
+ports for background jobs and file storage, all sitting on a feature-first
+hexagonal layout enforced by Import Linter.
 
-The current implementation contains one active feature, `kanban`. The
-`src/features/_template` package is an inert scaffold for adding more features.
+The intended first move on a new project is **clone, rename `_template`,
+run**. `_template` ships as a working single-resource CRUD over a `things`
+table; copy it to `src/features/<your-feature>/`, rename the entity, and
+the routes, persistence, and authorization wiring come along.
+
+## What's New
+
+The `starter-template-foundation` change reshaped the repository: the
+domain-specific `kanban` demo moved to an `examples/kanban` branch, the
+`auth` feature split into `authentication` + `users`, and four
+infrastructure features (`email`, `background_jobs`, `file_storage`,
+plus the executable `_template`) were added. See
+[`openspec/changes/starter-template-foundation/`](openspec/changes/starter-template-foundation/)
+for the full proposal.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) explains the high-level design, module
-  boundaries, data flow, and tradeoffs.
-- [API Reference](docs/api.md) documents routes, schemas, authentication, status
-  codes, and examples.
-- [Developer Guide](docs/development.md) explains local workflow, testing,
-  debugging, conventions, and where to add code.
-- [User Guide](docs/user-guide.md) shows how to use the Kanban API workflows.
-- [Operations Guide](docs/operations.md) covers deployment, migrations, logs,
-  health checks, backups, and rollback notes.
-- [Observability Guide](docs/observability.md) covers Prometheus metrics,
-  OpenTelemetry tracing, and structured logs.
-- [Feature Template Guide](docs/feature-template.md) explains how to copy and
-  adapt `src/features/_template`.
+- [Architecture](docs/architecture.md) — module boundaries, the feature
+  inventory, and the dependency graph.
+- [API Reference](docs/api.md) — routes, schemas, authentication, status
+  codes.
+- [Developer Guide](docs/development.md) — local workflow, testing,
+  conventions.
+- [Operations Guide](docs/operations.md) — deployment, migrations,
+  health checks, **the env-var reference table**, rollback notes.
+- [Observability Guide](docs/observability.md) — Prometheus, OTel
+  tracing, structured logs.
+- [Email](docs/email.md) — `EmailPort`, console/SMTP adapters,
+  templates.
+- [Background Jobs](docs/background-jobs.md) — `JobQueuePort`,
+  in-process/`arq` adapters, the worker process.
+- [File Storage](docs/file-storage.md) — `FileStoragePort`, local/S3
+  adapters.
+- [Feature Template Guide](docs/feature-template.md) — the "copy and
+  rename" workflow for new features.
 
-## What It Does
+## Feature Inventory
 
-The service manages Kanban boards, columns, and cards over HTTP. Clients can
-create boards, add columns to boards, create cards inside columns, move cards,
-patch card metadata, delete columns, and delete boards.
+| Feature | Role |
+| --- | --- |
+| `authentication` | JWT issuance, login/logout, refresh, password reset, email verify, rate limiting, principal resolution, credential storage. |
+| `users` | The `User` entity, registration, profile read/update, deactivation, admin user listing. Owns the `UserPort` consumed by `authentication`. |
+| `authorization` | ReBAC engine. Owns `AuthorizationPort`, the runtime registry, the SQLModel adapter, and the SpiceDB stub. |
+| `email` | `EmailPort` plus `console` and `smtp` adapters. Owns the template registry features contribute to. |
+| `background_jobs` | `JobQueuePort` plus `in_process` and `arq` adapters. Worker entrypoint at `python -m src.worker`. |
+| `file_storage` | `FileStoragePort` plus `local` adapter and `s3` stub. |
+| `_template` | Executable single-resource CRUD over `things` — the starting point a new project copies. |
 
-## Who It Is For
-
-- Backend developers building or studying FastAPI services.
-- Teams that want a feature-first layout with explicit domain, application,
-  adapter, and composition boundaries.
-- Developers who need a small but complete API service with PostgreSQL,
-  migrations, tests, Docker, and CI wiring.
-
-## Core Features
-
-- FastAPI application factory with request ID middleware and structured logs.
-- Kanban board, column, and card HTTP API under `/api`.
-- Liveness/readiness endpoints at `/health/live`, `/health/ready`, and `/health`.
-- Prometheus metrics at `/metrics` and opt-in OpenTelemetry tracing.
-- Optional single API key requirement for write endpoints.
-- RFC 9457-style `application/problem+json` error responses.
-- SQLModel persistence backed by PostgreSQL.
-- Alembic migrations for the database schema.
-- Feature-first hexagonal architecture enforced by Import Linter contracts.
-- Unit, end-to-end, contract, and Docker-backed integration tests.
+Cross-feature communication goes through ports only; Import Linter
+contracts forbid direct imports (e.g. `authentication ↛ authorization`,
+`users ↛ authentication`, `file_storage ↛ other features`).
 
 ## Tech Stack
 
@@ -60,8 +66,9 @@ patch card metadata, delete columns, and delete boards.
 | Data validation | Pydantic 2, pydantic-settings |
 | Persistence | PostgreSQL, SQLModel, SQLAlchemy, psycopg |
 | Migrations | Alembic |
+| Background jobs | arq (Redis-backed) |
 | Dependency management | uv |
-| Testing | pytest, pytest-cov, pytest-html, testcontainers |
+| Testing | pytest, pytest-cov, pytest-html, testcontainers, aiosmtpd |
 | Quality gates | Ruff, mypy, Import Linter, pre-commit |
 | Containers | Docker, Docker Compose |
 | Observability | Prometheus metrics, OpenTelemetry tracing, JSON logs |
@@ -70,23 +77,25 @@ patch card metadata, delete columns, and delete boards.
 
 ```text
 .
-├── alembic/                         # Alembic environment and migrations
-├── docs/                            # Project documentation
+├── alembic/                            # Alembic environment and migrations
+├── docs/                               # Project documentation
+├── openspec/                           # Active and archived change proposals
 ├── src/
-│   ├── main.py                      # Application composition entrypoint
-│   ├── platform/                    # Shared platform code, no feature imports
-│   │   ├── api/                     # App factory, middleware, errors, DI helpers
-│   │   ├── config/                  # pydantic-settings configuration
-│   │   ├── persistence/             # Shared persistence protocols/helpers
-│   │   └── shared/                  # Cross-feature ports and Result helpers
+│   ├── main.py                         # API composition entrypoint
+│   ├── worker.py                       # Background-jobs worker entrypoint
+│   ├── platform/                       # Feature-agnostic platform code
+│   │   ├── api/                        # App factory, middleware, error handlers
+│   │   ├── config/                     # AppSettings + per-feature sub-settings
+│   │   ├── persistence/                # Shared engine + relationships table
+│   │   └── shared/                     # Result helper, cross-feature ports
 │   └── features/
-│       ├── _template/               # Inert scaffold for new features
-│       └── kanban/                  # Active Kanban feature
-│           ├── domain/              # Pure business model and specifications
-│           ├── application/         # Commands, queries, ports, use cases
-│           ├── adapters/            # HTTP and persistence adapters
-│           ├── composition/         # Feature container and route wiring
-│           └── tests/               # Feature-local tests and fakes
+│       ├── _template/                  # Executable single-resource CRUD ('things')
+│       ├── authentication/             # Tokens, login, refresh, password reset, credentials
+│       ├── users/                      # User entity + lifecycle, UserPort
+│       ├── authorization/              # ReBAC engine, AuthorizationPort, registry
+│       ├── email/                      # EmailPort, console/SMTP adapters, templates
+│       ├── background_jobs/            # JobQueuePort, in-process/arq adapters
+│       └── file_storage/               # FileStoragePort, local/S3 adapters
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
@@ -100,7 +109,7 @@ Prerequisites:
 
 - Python 3.14.
 - `uv` for dependency management.
-- Docker if you want the bundled PostgreSQL database or integration tests.
+- Docker if you want the bundled PostgreSQL/Redis or integration tests.
 
 Start the API with a local PostgreSQL container:
 
@@ -114,19 +123,33 @@ make dev
 
 Then open:
 
-- `http://localhost:8000/` for the root service response.
 - `http://localhost:8000/health/live` for liveness.
 - `http://localhost:8000/health/ready` for readiness.
 - `http://localhost:8000/metrics` for Prometheus metrics.
 - `http://localhost:8000/docs` for Swagger UI when `APP_ENABLE_DOCS=true`.
 
-Create a board:
+Register a user against the bundled `_template` feature:
 
 ```bash
-curl -s -X POST http://localhost:8000/api/boards \
+curl -s -X POST http://localhost:8000/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Roadmap"}'
+  -d '{"email":"you@example.com","password":"a-secure-password"}'
 ```
+
+## Starting A New Project
+
+1. Clone this repository and rename the remote/origin to your project.
+2. `cp -r src/features/_template src/features/<your-feature>`.
+3. Rename the `Thing` entity, the `things` table, the routes, and the
+   tests inside the copy — the `_template`'s README walks through it.
+4. Register the new feature with the authorization registry in
+   `src/main.py` (one `registry.register_resource_type(...)` call).
+5. Generate an Alembic revision for your new table:
+   `uv run alembic revision --autogenerate -m "add <your-feature>"`.
+
+You now have authentication, users, authorization, email, background
+jobs, and file storage wired in — your first PR should be your domain
+code, not the infrastructure it sits on.
 
 ## Installation
 
@@ -145,26 +168,23 @@ make precommit-install
 ## Environment Variables
 
 Settings use the `APP_` prefix and are loaded from `.env` by
-`src.platform.config.settings.AppSettings`.
+`src.platform.config.settings.AppSettings`. Every flat field is also
+exposed through a typed per-feature view (`settings.authentication`,
+`settings.email`, …) so consumers can ask for the structured shape.
 
-| Variable | Default | Purpose |
+See the **[Environment Variable Reference](docs/operations.md#environment-variable-reference)**
+in `docs/operations.md` for the full, per-feature table including
+defaults, allowed values, and the production-only constraints. The most
+common ones to know up front:
+
+| Variable | Default | Notes |
 | --- | --- | --- |
-| `APP_ENVIRONMENT` | `development` | Must be `development`, `test`, or `production`. Trusted host middleware is enabled outside development. |
-| `APP_ENABLE_DOCS` | `true` | Enables `/docs`, `/redoc`, and `/openapi.json`. Set `false` to disable all three. |
-| `APP_CORS_ORIGINS` | `["*"]` | JSON list of allowed CORS origins. `["*"]` is treated as any origin. |
-| `APP_TRUSTED_HOSTS` | `["*"]` | Hosts allowed by `TrustedHostMiddleware` outside development. |
-| `APP_LOG_LEVEL` | `INFO` | Root Python log level. |
-| `APP_POSTGRESQL_DSN` | `postgresql+psycopg://postgres:postgres@localhost:5432/kanban` | PostgreSQL DSN used by the app and Alembic. |
-| `APP_HEALTH_PERSISTENCE_BACKEND` | `postgresql` | Label returned in `/health` under `persistence.backend`. |
-| `APP_METRICS_ENABLED` | `true` | Exposes Prometheus metrics at `/metrics`. |
-| `APP_OTEL_EXPORTER_ENDPOINT` | unset | Enables OpenTelemetry tracing over OTLP/HTTP. |
-| `APP_OTEL_SERVICE_NAME` | `starter-template-fastapi` | Service name attached to traces and JSON logs. |
-| `APP_OTEL_SERVICE_VERSION` | `0.1.0` | Service version attached to traces and JSON logs. |
-| `APP_WRITE_API_KEY` | unset | Optional API key for write endpoints. When set, clients must send `X-API-Key`. |
-| `POSTGRES_USER` | `postgres` | Docker Compose database user. |
-| `POSTGRES_PASSWORD` | `postgres` | Docker Compose database password. |
-| `POSTGRES_DB` | `kanban` | Docker Compose database name. |
-| `APP_POSTGRESQL_DSN_DOCKER` | `postgresql+psycopg://postgres:postgres@db:5432/kanban` | Docker Compose DSN used by the app and migrate services. |
+| `APP_ENVIRONMENT` | `development` | One of `development`, `test`, `production`. |
+| `APP_POSTGRESQL_DSN` | `postgresql+psycopg://postgres:postgres@localhost:5432/starter` | Database DSN. |
+| `APP_AUTH_JWT_SECRET_KEY` | unset | **Required in production.** |
+| `APP_AUTH_REDIS_URL` | unset | Redis URL for distributed rate limiting and the principal cache. |
+| `APP_EMAIL_BACKEND` | `console` | `smtp` in production. |
+| `APP_JOBS_BACKEND` | `in_process` | `arq` in production. |
 
 ## Running Locally
 
@@ -181,15 +201,17 @@ uv run alembic upgrade head
 uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
+Run the background-jobs worker against Redis:
+
+```bash
+APP_JOBS_BACKEND=arq APP_JOBS_REDIS_URL=redis://localhost:6379/0 make worker
+```
+
 Run the app and database through Docker Compose:
 
 ```bash
 docker compose up --build
 ```
-
-Compose builds the Dockerfile `dev` target, runs a one-shot `migrate` service
-with `alembic upgrade head`, then starts the app service with Uvicorn reload and
-bind-mounted `src/` and `alembic/` directories.
 
 ## Running Tests
 
@@ -238,21 +260,28 @@ Run the service:
 docker run --env-file .env -p 8000:8000 starter-template-fastapi:prod
 ```
 
-The runtime image default command starts Uvicorn and does not run migrations.
+Run the worker alongside it:
+
+```bash
+docker run --env-file .env starter-template-fastapi:prod python -m src.worker
+```
+
+The runtime image default command starts Uvicorn and does not run
+migrations or the worker.
 
 ## Deployment Notes
 
-- Provision PostgreSQL before starting the app.
-- Set `APP_POSTGRESQL_DSN` to the production database DSN.
+- Provision PostgreSQL and Redis before starting the app.
+- Set `APP_POSTGRESQL_DSN` and `APP_AUTH_REDIS_URL` (or `APP_JOBS_REDIS_URL`).
 - Run `alembic upgrade head` before starting the production app container.
-- Set `APP_ENVIRONMENT=production` outside local development.
-- Set `APP_ENABLE_DOCS=false` if Swagger UI and ReDoc should not be public.
-- Set `APP_TRUSTED_HOSTS` to the public hostnames accepted by the service.
-- Set `APP_CORS_ORIGINS` to explicit browser origins instead of `["*"]` for
-  production browser clients.
-- Set `APP_WRITE_API_KEY` if write endpoints should require `X-API-Key`.
-- Use `/health/live` for liveness checks and `/health/ready` for readiness
-  checks.
+- Set `APP_ENVIRONMENT=production` — the settings validator refuses to start
+  with `console` email, `in_process` jobs, `*` CORS, insecure cookies,
+  `auth_return_internal_tokens`, or RBAC disabled. See
+  [Operations Guide](docs/operations.md#environment-variable-reference) for the
+  full list.
+- Run at least one worker (`python -m src.worker`) per Redis-backed deployment;
+  the API does not consume the job queue itself.
+- Use `/health/live` for liveness and `/health/ready` for readiness checks.
 
 ## Common Commands
 
@@ -260,6 +289,7 @@ The runtime image default command starts Uvicorn and does not run migrations.
 | --- | --- |
 | `make sync` | Install dependencies with `uv sync`. |
 | `make dev` | Run the API with FastAPI auto-reload. |
+| `make worker` | Run the background-jobs worker. |
 | `make format` | Format code with Ruff. |
 | `make lint` | Run Ruff lint checks. |
 | `make lint-arch` | Run Import Linter architecture contracts. |
@@ -268,7 +298,7 @@ The runtime image default command starts Uvicorn and does not run migrations.
 | `make test` | Run non-integration tests. |
 | `make test-integration` | Run Docker-backed integration tests. |
 | `make test-e2e` | Run end-to-end HTTP tests. |
-| `make test-feature FEATURE=kanban` | Run tests for one feature. |
+| `make test-feature FEATURE=authentication` | Run tests for one feature. |
 | `make cov` | Run tests with terminal coverage. |
 | `make report` | Generate HTML test and coverage reports under `reports/`. |
 | `make clean-reports` | Remove generated report artifacts. |
@@ -279,25 +309,25 @@ The runtime image default command starts Uvicorn and does not run migrations.
 | Symptom | Check |
 | --- | --- |
 | `make dev` cannot connect to PostgreSQL | Start `docker compose up -d db` or set `APP_POSTGRESQL_DSN` to a reachable database. |
-| `docker compose up --build` exits before the app starts | Check the `migrate` service logs; the app waits for migrations to complete successfully. |
+| `docker compose up --build` exits before the app starts | Check the `migrate` service logs; the app waits for migrations to complete. |
 | `uv run alembic upgrade head` uses the wrong database | Check `APP_POSTGRESQL_DSN`; Alembic reads it before the default in `AppSettings`. |
-| Write requests return `401` | Send `X-API-Key: <APP_WRITE_API_KEY>` or unset `APP_WRITE_API_KEY` for local development. |
-| Requests return `422` for path IDs | Path IDs are parsed as UUIDs by FastAPI. Use valid UUID strings. |
+| Auth requests return `401` after working before | The principal cache evicted; the access token may have been revoked or expired. |
 | `/health/ready` returns `503` | A readiness dependency failed. Check database, Redis, and auth configuration. |
+| Background jobs accumulate without running | The worker process is not running; start `python -m src.worker`. |
 | Integration tests are skipped | Docker is unavailable or `KANBAN_SKIP_TESTCONTAINERS=1` is set. |
 | Architecture lint fails | Check imports against the layer contracts in `pyproject.toml`. |
 
 ## Contribution Notes
 
-There is no separate `CONTRIBUTING.md` in this repository. Follow these rules for
-changes:
+There is no separate `CONTRIBUTING.md`. Follow these rules for changes:
 
 - Keep platform code independent from feature packages.
 - Keep domain code free of FastAPI, Pydantic, SQLModel, SQLAlchemy, Alembic, and
   other adapter concerns.
 - Keep application code free of FastAPI, SQLModel, SQLAlchemy, Alembic, and
   adapter concerns.
-- Add new feature code under `src/features/<feature_name>/`.
-- Put feature tests next to the feature under `src/features/<feature_name>/tests/`.
+- Cross-feature work goes through ports — Import Linter forbids direct imports.
+- Add new feature code under `src/features/<feature_name>/` and put its tests
+  next to it under `src/features/<feature_name>/tests/`.
 - Run `make quality` and `make test` before opening a pull request.
 - Run `make test-integration` when persistence behavior changes.

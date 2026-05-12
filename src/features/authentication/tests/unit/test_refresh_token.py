@@ -18,6 +18,7 @@ from src.features.authentication.application.use_cases.auth.register_user import
     RegisterUser,
 )
 from src.features.authentication.tests.fakes import FakeAuthRepository
+from src.features.users.tests.fakes.fake_user_port import FakeUserPort
 from src.platform.config.settings import AppSettings
 from src.platform.shared.result import Err, Ok
 
@@ -36,6 +37,11 @@ def settings() -> AppSettings:
 
 
 @pytest.fixture
+def users() -> FakeUserPort:
+    return FakeUserPort()
+
+
+@pytest.fixture
 def repository() -> FakeAuthRepository:
     return FakeAuthRepository()
 
@@ -47,19 +53,23 @@ def password_service() -> PasswordService:
 
 @pytest.fixture
 def issued_refresh_token(
+    users: FakeUserPort,
     repository: FakeAuthRepository,
     password_service: PasswordService,
     settings: AppSettings,
 ) -> str:
     """Register and log in a user; return the raw refresh token."""
     register = RegisterUser(
-        _repository=repository,
+        _users=users,
+        _credentials=repository,
+        _audit=repository,
         _password_service=password_service,
         _settings=settings,
     )
     register.execute(email=EMAIL, password=PASSWORD)
 
     login = LoginUser(
+        _users=users,
         _repository=repository,
         _password_service=password_service,
         _token_service=AccessTokenService(settings),
@@ -72,8 +82,13 @@ def issued_refresh_token(
 
 
 @pytest.fixture
-def rotate(repository: FakeAuthRepository, settings: AppSettings) -> RotateRefreshToken:
+def rotate(
+    users: FakeUserPort,
+    repository: FakeAuthRepository,
+    settings: AppSettings,
+) -> RotateRefreshToken:
     return RotateRefreshToken(
+        _users=users,
         _repository=repository,
         _token_service=AccessTokenService(settings),
         _settings=settings,
@@ -124,12 +139,12 @@ def test_reusing_revoked_token_revokes_entire_family(
 
 def test_expired_refresh_token_returns_invalid_token_error(
     rotate: RotateRefreshToken,
+    users: FakeUserPort,
     repository: FakeAuthRepository,
 ) -> None:
-    # Create a user and a hand-rolled expired token to avoid waiting for
-    # real expiry.  The hash is what the use case looks up.
-    user = repository.create_user(email="exp@example.com", password_hash="x")
-    assert user is not None
+    user_result = users.create(email="exp@example.com")
+    assert isinstance(user_result, Ok)
+    user = user_result.value
     raw = "expired-refresh-token"
     repository.create_refresh_token(
         user_id=user.id,

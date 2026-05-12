@@ -13,7 +13,6 @@ from sqlmodel import create_engine
 from src.features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
-    UserTable,
 )
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
@@ -27,6 +26,9 @@ from src.features.authorization.tests.contracts.outbound_port_contract import (
 )
 from src.features.users.adapters.outbound.authz_version import (
     SQLModelUserAuthzVersionAdapter,
+)
+from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+    UserTable,
 )
 
 pytestmark = pytest.mark.unit

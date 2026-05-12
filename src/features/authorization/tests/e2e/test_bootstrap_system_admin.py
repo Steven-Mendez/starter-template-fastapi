@@ -26,7 +26,7 @@ def test_bootstrap_creates_user_and_writes_system_admin_tuple(
     from sqlmodel import Session  # noqa: PLC0415
 
     repo = auth_context.repository
-    user = repo.get_user_by_email("admin@example.com")
+    user = auth_context.user_repository.get_by_email("admin@example.com")
     assert user is not None
 
     with Session(repo.engine) as session:
@@ -62,7 +62,7 @@ def test_bootstrap_is_idempotent_on_relationship_writes(
         password="AdminPassword123!",
     )
 
-    user = repo.get_user_by_email("admin@example.com")
+    user = auth_context.user_repository.get_by_email("admin@example.com")
     assert user is not None
     with Session(repo.engine) as session:
         rows = list(

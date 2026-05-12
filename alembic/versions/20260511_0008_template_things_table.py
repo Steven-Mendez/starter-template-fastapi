@@ -32,9 +32,7 @@ def upgrade() -> None:
             "id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False
         ),
         sa.Column("name", sa.String(length=200), nullable=False),
-        sa.Column(
-            "owner_id", postgresql.UUID(as_uuid=True), nullable=False, index=True
-        ),
+        sa.Column("owner_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint("char_length(trim(name)) > 0", name="things_name_not_blank"),

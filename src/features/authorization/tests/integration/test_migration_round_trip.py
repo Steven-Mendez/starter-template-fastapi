@@ -69,37 +69,39 @@ def test_relationships_table_move_revision_is_a_no_op(
     postgres_auth_repository: SQLModelAuthRepository,
     alembic_config: Config,
 ) -> None:
-    """The head revision that moved table ownership SHALL change no DDL.
+    """The revision that moved table ownership SHALL change no DDL.
 
     The ``split-authentication-and-authorization`` change relocated
     ``RelationshipTable`` from the auth feature to the platform layer.
     Because Alembic operates on a shared ``MetaData`` instance, the SQL
-    output of ``upgrade head`` is identical before and after the move;
-    the new revision exists only to anchor the move in migration history.
+    output of upgrading to the move revision is identical to the
+    revision that precedes it; this test pins that invariant against
+    revision ``20260510_0007`` directly so it survives later additions
+    to the migration chain.
     """
     engine = postgres_auth_repository.engine
     with engine.begin() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
 
-    command.upgrade(alembic_config, "head")
-    head_tables = _table_names(engine)
-    head_indexes = _index_names(engine, "relationships")
+    command.upgrade(alembic_config, "20260510_0007")
+    after_move_tables = _table_names(engine)
+    after_move_indexes = _index_names(engine, "relationships")
 
     command.downgrade(alembic_config, "-1")
 
-    assert _table_names(engine) == head_tables
-    assert _index_names(engine, "relationships") == head_indexes
+    assert _table_names(engine) == after_move_tables
+    assert _index_names(engine, "relationships") == after_move_indexes
 
 
-def test_downgrade_two_recreates_rbac_tables(
+def test_downgrade_to_rbac_restores_legacy_tables(
     postgres_auth_repository: SQLModelAuthRepository,
     alembic_config: Config,
 ) -> None:
     """Downgrading past the rebac revision restores empty RBAC tables.
 
-    With the no-op table-move revision now sitting on top, two
-    downgrade steps are needed to reach the RBAC schema.
+    Pinned to the absolute revision id so the test stays correct as new
+    migrations are appended above it.
     """
     engine = postgres_auth_repository.engine
     with engine.begin() as conn:
@@ -107,7 +109,7 @@ def test_downgrade_two_recreates_rbac_tables(
         conn.execute(text("CREATE SCHEMA public"))
 
     command.upgrade(alembic_config, "head")
-    command.downgrade(alembic_config, "-2")
+    command.downgrade(alembic_config, "20260505_0003")
 
     tables = _table_names(engine)
     assert "relationships" not in tables
@@ -119,7 +121,9 @@ def test_round_trip_converges_on_the_same_schema(
     postgres_auth_repository: SQLModelAuthRepository,
     alembic_config: Config,
 ) -> None:
-    """upgrade -> downgrade -2 -> upgrade SHALL leave the schema unchanged."""
+    """upgrade -> downgrade past the rebac revision -> upgrade SHALL leave
+    the schema unchanged.
+    """
     engine = postgres_auth_repository.engine
     with engine.begin() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE"))
@@ -129,7 +133,7 @@ def test_round_trip_converges_on_the_same_schema(
     initial_tables = _table_names(engine)
     initial_indexes = _index_names(engine, "relationships")
 
-    command.downgrade(alembic_config, "-2")
+    command.downgrade(alembic_config, "20260505_0003")
     command.upgrade(alembic_config, "head")
 
     assert _table_names(engine) == initial_tables

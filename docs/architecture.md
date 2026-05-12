@@ -1,55 +1,91 @@
 # Architecture
 
-This document explains how the service is structured and how requests move
-through the system.
+This document describes how the repository is structured, which features ship
+out of the box, and how requests move through the system.
 
 ## Overview
 
-The repository uses a feature-first hexagonal architecture.
-
-The `platform` package owns cross-cutting application concerns such as the
-FastAPI app factory, middleware, settings, error handling, and shared ports. The
-`features` package owns business capabilities. The active business capability is
-`kanban`.
+The repository uses a feature-first hexagonal architecture. The `platform`
+package owns cross-cutting concerns (FastAPI factory, middleware, settings,
+error handling, the shared engine, the cross-feature `relationships` table).
+The `features` package owns business capabilities. Every feature follows the
+same layout — `domain/`, `application/`, `adapters/`, `composition/`, `tests/`
+— so adding a new feature is a copy-and-rename of `_template`.
 
 ```text
 HTTP client
-  -> FastAPI platform app
-  -> Kanban inbound HTTP adapter
-  -> Kanban application use case
-  -> Kanban domain model
-  -> outbound port
-  -> SQLModel/PostgreSQL adapter
+  -> FastAPI platform app (CORS, trusted hosts, request ID, Problem Details)
+  -> Feature inbound HTTP adapter (Pydantic → command/query)
+  -> Feature application use case (returns Result[T, ApplicationError])
+  -> Feature domain model
+  -> Outbound port (e.g. SQLModel repository, EmailPort, JobQueuePort)
+  -> Adapter implementation
 ```
+
+## Feature Inventory
+
+| Feature | Owns | Consumes |
+| --- | --- | --- |
+| `authentication` | JWT tokens, login/logout/refresh, password reset, email verify, rate limiting, the `credentials` table, principal resolution. | `UserPort` (from `users`), `EmailPort`, `JobQueuePort`, `AuthorizationPort`. |
+| `users` | The `User` entity, the `users` table, registration, profile read/update, deactivation, admin user listing. | Authorization's outbound ports (`UserRegistrarPort`, `UserAuthzVersionPort`). |
+| `authorization` | `AuthorizationPort`, the runtime `AuthorizationRegistry`, the SQLModel adapter, the SpiceDB stub, `BootstrapSystemAdmin`. | `UserRegistrarPort`, `UserAuthzVersionPort` (implemented by `users`), `AuditPort` (implemented by `authentication`). |
+| `email` | `EmailPort`, console + SMTP adapters, the `EmailTemplateRegistry`. | Nothing. |
+| `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, the `JobHandlerRegistry`, the worker entrypoint. | Nothing. |
+| `file_storage` | `FileStoragePort`, local adapter, S3 stub. | Nothing. |
+| `_template` | Executable single-resource CRUD over `things`. Demonstrates a feature wired into authorization with `owner ⊇ writer ⊇ reader`. | `AuthorizationPort`, `UserPort`. |
+
+### Dependency Graph
+
+```text
+authentication ──▶ users  ──▶ authorization
+       │            ▲              │
+       │            └──── outbound ports ────┐
+       ├──▶ email                            │
+       ├──▶ background_jobs                  │
+       └──▶ authorization                    │
+                                             │
+_template ──▶ authorization                  │
+_template ──▶ users (read-only via UserPort) │
+
+email, background_jobs, file_storage: have no inbound feature deps.
+```
+
+The edges above are runtime calls; Import Linter contracts forbid the
+*compile-time* equivalents (e.g. `authentication ↛ authorization` source
+imports). Every cross-feature call goes through an application port.
 
 ## Main Modules
 
 | Module | Responsibility |
 | --- | --- |
-| `src/main.py` | Builds the FastAPI app, mounts Kanban routes, creates the Kanban container during lifespan startup, and shuts it down during lifespan teardown. |
-| `src/platform/api/app_factory.py` | Creates the FastAPI app, configures docs URLs, CORS, trusted hosts, request context middleware, root route, and Problem Details handlers. |
-| `src/platform/config/settings.py` | Defines runtime settings loaded from `.env` and environment variables. |
+| `src/main.py` | Builds the FastAPI app, mounts every feature's routes, and wires the per-feature containers inside the lifespan event. |
+| `src/worker.py` | Background-jobs worker entrypoint — loads the same composition root, registers handlers, runs `arq`. |
+| `src/platform/api/app_factory.py` | Creates the FastAPI app, configures docs URLs, CORS, trusted hosts, request context middleware, content-size limits, and Problem Details handlers. |
+| `src/platform/config/settings.py` | `AppSettings` — the env-loading boundary. Exposes typed per-feature views via `settings.authentication`, `settings.email`, etc. |
+| `src/platform/config/sub_settings.py` | `DatabaseSettings`, `ApiSettings`, `ObservabilitySettings` — cross-cutting platform configuration projections. |
+| `src/platform/persistence/sqlmodel/authorization/` | The cross-feature `relationships` table. Platform-owned because every feature's authz check reads it; the authorization feature is its only writer. |
 | `src/platform/api/middleware/request_context.py` | Adds or propagates `X-Request-ID` and emits one JSON access log per request. |
 | `src/platform/api/error_handlers.py` | Converts framework, validation, dependency, application, and unhandled exceptions into `application/problem+json` responses. |
-| `src/features/kanban/domain/` | Contains the pure Kanban model, domain errors, and card movement specifications. |
-| `src/features/kanban/application/` | Contains commands, queries, application contracts, ports, and use cases. |
-| `src/features/kanban/adapters/inbound/http/` | Contains FastAPI routers, schemas, dependency aliases, mappers, and HTTP error mapping. |
-| `src/features/kanban/adapters/outbound/persistence/sqlmodel/` | Contains SQLModel tables, mapping functions, repositories, and unit of work implementation. |
-| `src/features/kanban/composition/` | Creates the feature container and wires feature routes and dependencies into the FastAPI app. |
-| `alembic/` | Contains migration environment and versioned schema migrations. |
+| `alembic/` | Migration environment and versioned schema migrations. |
 
 ## Layer Boundaries
 
-The architecture is enforced by Import Linter contracts in `pyproject.toml`.
+Boundaries are enforced by Import Linter contracts in `pyproject.toml`.
 
 | Boundary | Rule |
 | --- | --- |
-| Platform isolation | `src.platform` must not import `src.features`. |
-| Domain purity | `src.features.kanban.domain` must not import application, adapters, composition, FastAPI, SQLModel, SQLAlchemy, Alembic, Pydantic, or other framework packages. |
-| Application isolation | `src.features.kanban.application` must not import adapters, composition, platform API, persistence, FastAPI, SQLModel, SQLAlchemy, Alembic, or other adapter packages. |
-| Inbound adapter isolation | `src.features.kanban.adapters.inbound` must not bypass application ports to import outbound adapters or domain directly. |
-| Outbound adapter isolation | `src.features.kanban.adapters.outbound` must not import inbound adapters, use cases, or inbound ports. |
-| Feature isolation | Feature packages are intended not to import each other. |
+| Platform isolation | `src.platform` must not import `src.features` (the configuration composition root in `src.platform.config.settings` is the sole tolerated exception, ignored explicitly). |
+| Domain purity | Each feature's `domain/` package must not import application, adapters, composition, FastAPI, SQLModel, SQLAlchemy, Alembic, Pydantic, or other framework packages. |
+| Application isolation | Each feature's `application/` package must not import adapters, composition, platform API, persistence, FastAPI, SQLModel, SQLAlchemy, Alembic, or other adapter packages. |
+| Inbound adapter isolation | Inbound adapters must not bypass application ports to import outbound adapters or domain directly. |
+| Outbound adapter isolation | Outbound adapters must not import inbound adapters, use cases, or inbound ports. |
+| `authentication ↛ authorization` | Cross-feature dependency goes the other way (authorization defines outbound ports). |
+| `authentication ↛ users.adapters` | Authentication uses `UserPort`, not the users adapters directly. |
+| `users ↛ authentication` | Users is the upstream owner of the user record; authentication consumes `UserPort`. |
+| `users ↛ authorization.adapters` | Users implements authorization's outbound ports but never reaches into its adapter package. |
+| `email ↛ other features` | Email is feature-agnostic; features register templates with `EmailTemplateRegistry` instead. |
+| `background_jobs ↛ other features` | Same pattern as email: features register handlers, never imported directly. |
+| `file_storage ↛ other features` | Same pattern again. |
 
 Run the boundary checks with:
 
@@ -62,54 +98,33 @@ make lint-arch
 1. A request enters the FastAPI app created by `build_fastapi_app()`.
 2. `RequestContextMiddleware` stores a request ID on `request.state` and writes
    the same ID to the response header.
-3. The platform app dispatches to a route under `/api`, `/auth`, `/admin`, or a
-   health endpoint.
-4. Inbound dependencies resolve the Kanban container from `app.state`.
-5. The route maps Pydantic request schemas into application commands or queries.
-6. The route calls a use case through an inbound `Protocol` type alias.
-7. The use case coordinates domain objects and outbound ports.
-8. Write use cases use `UnitOfWorkPort`; read use cases use `KanbanQueryRepositoryPort`.
-9. The SQLModel repository maps SQL rows to domain objects and back.
-10. Use cases return `Ok(value)` or `Err(ApplicationError)`.
-11. The route maps successful application contracts to Pydantic response schemas.
-12. The route raises a feature HTTP exception for application errors.
+3. `ContentSizeLimitMiddleware` rejects bodies larger than `APP_MAX_REQUEST_BYTES`.
+4. The platform app dispatches to a route under `/auth`, `/users`, `/admin`,
+   `/things`, or a health endpoint.
+5. The route's `require_authorization(...)` platform dependency resolves the
+   principal from the bearer token (via the authentication feature's
+   principal resolver), then asks `AuthorizationPort.check(...)` whether the
+   action is allowed.
+6. Inbound dependencies resolve the feature's container from `app.state`.
+7. The route maps Pydantic request schemas into application commands or queries.
+8. The route calls a use case through an inbound `Protocol` type alias.
+9. The use case coordinates domain objects and outbound ports.
+10. Write use cases use `UnitOfWorkPort`; read use cases use query repository ports.
+11. Use cases return `Ok(value)` or `Err(ApplicationError)`.
+12. The route maps successful contracts to Pydantic response schemas, or raises
+    a feature HTTP exception for application errors.
 13. Platform error handlers render Problem Details JSON.
 
-## Domain Model
+## Cross-feature Communication Patterns
 
-The Kanban aggregate root is `Board`. A board owns ordered `Column` entities. A
-column owns ordered `Card` entities.
-
-Important domain behavior:
-
-- Deleting a column recalculates remaining column positions from zero.
-- Inserting, moving, or extracting cards recalculates card positions from zero.
-- Moving a card is valid only when the target column exists and belongs to the
-  same board.
-- Card patching treats omitted fields as unchanged. The `clear_due_at` flag is
-  used to distinguish an explicit `null` due date from an omitted due date.
-
-## Persistence Model
-
-PostgreSQL tables are defined with SQLModel:
-
-| Table | Model | Notes |
-| --- | --- | --- |
-| `boards` | `BoardTable` | Stores `id`, `title`, `version`, and `created_at`. |
-| `columns_` | `ColumnTable` | Stores ordered columns. The table name avoids using `columns` as an identifier. |
-| `cards` | `CardTable` | Stores ordered cards, priority, optional description, and optional due date. |
-
-The repository saves an entire board aggregate snapshot. Existing columns and
-cards that are absent from the current aggregate are deleted. Current columns and
-cards are inserted or updated.
-
-`boards.version` is used for optimistic concurrency. A stale aggregate write
-raises `PersistenceConflictError`.
-
-Column and card position uniqueness constraints are deferrable and initially
-deferred. This allows a reorder operation to make several position updates in one
-transaction without failing on temporary duplicate positions before the final
-state is committed.
+| Concern | Pattern |
+| --- | --- |
+| Authorization checks | Every feature gates its HTTP routes with the platform `require_authorization(action, resource_type, id_loader=...)` dependency, which calls `AuthorizationPort.check`. |
+| Authorization tuples | `CreateThing`-style writes commit the resource row and the `owner` relationship tuple in the same Unit of Work via a session-scoped `AuthorizationPort`. |
+| User lookup from authentication | Authentication takes `UserPort` as a constructor dependency; it never imports `UserTable` or the users repository directly. |
+| Sending email | Features call `EmailPort.send(to, template_name, context)`. Authentication's password-reset and email-verify use cases enqueue a `send_email` background job rather than blocking on SMTP. |
+| Background work | Features register handlers with `JobHandlerRegistry` and enqueue work through `JobQueuePort`. The web app and the worker share a composition root so the same handler set is visible to both. |
+| File uploads | Features call `FileStoragePort.put` / `.signed_url`; no feature consumes it in the current source tree, but the port is ready to wire. |
 
 ## Application Composition
 
@@ -117,48 +132,87 @@ state is committed.
 
 - Routes are mounted when the app object is built so OpenAPI generation and
   routing work before lifespan startup completes.
-- The PostgreSQL-backed Kanban container is built during lifespan startup.
-- The container is stored on `app.state` and removed during teardown.
-- The Kanban repository engine is disposed during shutdown.
+- Per-feature containers are built during lifespan startup. The construction
+  order is: `users` → `email` → `background_jobs` → `authentication` →
+  `authorization` (which receives `users.user_authz_version_adapter`,
+  `users.user_registrar_adapter`, and `authentication.audit_adapter` as
+  outbound implementations) → `_template`.
+- Every container is stored on `app.state` and removed during teardown.
+- The shared SQLModel engine is owned by the authentication container today
+  (historical; it lives there because it predates the users split) and is
+  reused by users and `_template`. The engine is disposed during shutdown.
+- The `AuthorizationRegistry` and `EmailTemplateRegistry` are sealed after
+  every feature has had a chance to contribute; subsequent runtime
+  registration attempts surface as clear errors.
+
+## Settings Composition
+
+`AppSettings` is the env-loading boundary (pydantic-settings, `APP_` prefix).
+Every flat field continues to be the authoritative knob for backwards
+compatibility, but the class also constructs typed per-feature views on demand:
+
+```python
+settings = get_settings()
+settings.email.backend            # EmailSettings projection
+settings.authentication.jwt_secret_key
+settings.database.dsn
+```
+
+The same per-feature classes own their own production-validation methods.
+`AppSettings._validate_production_settings` constructs each projection,
+calls `validate_production(errors)`, and surfaces every problem as a single
+`ValueError`. See `docs/operations.md` for the full env-var reference.
 
 ## Error Handling
 
-Feature use cases return application errors rather than HTTP exceptions.
-`src/features/kanban/adapters/inbound/http/errors.py` maps those application
-errors to HTTP status codes and problem type URIs. The platform handler renders
-the final response as `application/problem+json`.
+Feature use cases return application errors rather than raising HTTP exceptions.
+Each feature's `adapters/inbound/http/errors.py` maps those application errors
+to HTTP status codes and problem-type URIs. The platform handler renders the
+final response as `application/problem+json`.
+
+Authorization errors take a slightly different route: `NotAuthorizedError`
+raised from `AuthorizationPort.check` is caught by the platform error handler
+registered by `register_authorization_error_handlers(app)` and converted to a
+403 Problem Details response.
 
 Unhandled exceptions are logged through `api.error` with request ID, method,
-path, status code, and error type. The client receives a generic `500` Problem
-Details response.
+path, status code, and error type. The client receives a generic `500`
+Problem Details response.
 
 ## External Services And Dependencies
 
-The application depends on PostgreSQL for runtime persistence. Docker Compose
-provides a local `postgres:16-alpine` database. Integration tests use
-testcontainers with PostgreSQL when Docker is available.
-
-There are no verified external SaaS integrations in the current source code.
+| Service | Where | Required when |
+| --- | --- | --- |
+| PostgreSQL | Every persisting feature | Always. |
+| Redis | Auth rate limiter, principal cache, `arq` jobs queue | `APP_AUTH_REDIS_URL` set, multi-replica auth, `APP_JOBS_BACKEND=arq`. |
+| SMTP server | Email feature | `APP_EMAIL_BACKEND=smtp` (required in production). |
+| Object storage | File-storage feature | A consumer feature wires `FileStoragePort` and `APP_STORAGE_BACKEND=s3` (production). |
+| OTLP collector | Observability | `APP_OTEL_EXPORTER_ENDPOINT` set. |
+| SpiceDB | Authorization | Not used today; the adapter is a stub mirroring the S3 pattern. |
 
 ## Design Decisions
 
 | Decision | Reason |
 | --- | --- |
-| Feature-first layout | Keeps business code, adapters, composition, and tests for a feature close together. |
-| Hexagonal boundaries | Keeps domain and application logic independent from FastAPI and SQLModel. |
+| Feature-first hexagonal layout | Keeps business code, adapters, composition, and tests for a feature close together; cross-feature dependencies become deliberate port contracts. |
 | Protocol-based ports | Allows tests and adapters to swap implementations without changing use cases. |
-| Result type for use cases | Keeps expected business failures explicit without throwing exceptions through application logic. |
-| Platform-level Problem Details | Gives all API errors a consistent shape. |
-| Read and write routers | Applies API-key protection only to write routes while read routes remain public. |
-| Full aggregate save | Keeps column and card ordering logic in the domain model and persists the aggregate snapshot. |
-| Deferrable position constraints | Protects final ordering uniqueness while allowing multi-row reorder operations in one transaction. |
-| Separate runtime image and migration command | The production image starts only Uvicorn. Docker Compose runs migrations through a one-shot `migrate` service, and production deployments should run migrations as a release step. |
+| Result type for use cases | Keeps expected business failures explicit without throwing through application logic. |
+| Platform-level Problem Details | Gives every error a consistent RFC 9457 shape. |
+| Per-feature settings classes | Each feature ships its config and production validation alongside its other code; `AppSettings` aggregates them. |
+| Separate credentials table | A `User` can have multiple credentials (password today, passkey tomorrow). Coupling the hash to the user row would force a schema migration when adding new credential types. |
+| Background-jobs worker | Email sends are slow; doing them inline turns `POST /auth/password-reset` into a 2 s endpoint. The queue keeps the API responsive and lets the worker absorb retry policy. |
+| Email template registry | Templates live with the feature that sends them; the email feature provides the registry rather than owning the templates itself. Mirrors the authorization-registry pattern. |
+| S3 and SpiceDB stubs | Both adapters raise `NotImplementedError` from their methods. Real implementations need provider-specific choices (boto3 IAM, SpiceDB hosting) the consumer must make. |
+| Kanban moved to `examples/kanban` branch | The kanban demo was a worked reference for parent-walk ReBAC. Deleting it from `main` keeps the core small; preserving it on a CI-rebased branch keeps the example available. |
 
 ## Tradeoffs And Limitations
 
-- Write protection is a single optional API key, not user authentication or
-  authorization.
-- Board listing has no pagination.
-- There is no endpoint to delete a single card.
-- There is no endpoint to rename a column.
-- The documented persistence backend is PostgreSQL only.
+- No OAuth/SSO yet — the `credentials` table is shaped to support it, the
+  endpoints are not implemented.
+- The S3 file-storage adapter is a stub. Filling it in requires `boto3` and
+  IAM configuration outside the scope of a starter.
+- The SpiceDB authorization adapter is a stub. The SQLModel adapter is the
+  default; switching is a one-feature swap when needed.
+- No admin web UI; the API surface is the entire admin surface.
+- No multi-tenancy primitives (organizations, workspaces). They belong on top
+  of `users` in consumer projects.

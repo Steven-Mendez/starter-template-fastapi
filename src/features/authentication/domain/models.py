@@ -1,9 +1,10 @@
-"""Pure domain models for the auth feature.
+"""Pure domain models for the authentication feature.
 
-These dataclasses carry no framework dependencies — no SQLModel, no FastAPI,
-no Pydantic. They are the canonical in-memory representation that the
-application layer works with; the persistence adapter maps to and from
-these types at the boundary.
+These dataclasses carry no framework dependencies. They are the
+canonical in-memory representation that the application layer works
+with; the persistence adapter maps to and from these types at the
+boundary. The ``User`` entity lives in the users feature
+(``src.features.users.domain.user``).
 """
 
 from __future__ import annotations
@@ -15,33 +16,26 @@ from uuid import UUID
 
 
 def _require_aware(value: datetime | None, *, field: str) -> None:
-    """Raise ``ValueError`` if ``value`` is a naive (tzinfo-less) datetime.
-
-    Domain construction is the canonical entry point for new aggregates;
-    enforcing tz-awareness here surfaces accidental ``datetime.utcnow()``
-    or string-parsing bugs before they reach the persistence boundary
-    where comparisons against aware values would silently fail.
-    """
     if value is not None and value.tzinfo is None:
         raise ValueError(f"{field} must be a timezone-aware datetime")
 
 
 @dataclass(frozen=True, slots=True)
-class User:
+class Credential:
+    """A persisted credential — today only password hashes; passkey or
+    OAuth-link rows can join later by carrying a different ``algorithm``.
+    """
+
     id: UUID
-    email: str
-    password_hash: str
-    is_active: bool
-    is_verified: bool
-    authz_version: int
+    user_id: UUID
+    algorithm: str
+    hash: str
+    last_changed_at: datetime
     created_at: datetime
-    updated_at: datetime
-    last_login_at: datetime | None
 
     def __post_init__(self) -> None:
-        _require_aware(self.created_at, field="User.created_at")
-        _require_aware(self.updated_at, field="User.updated_at")
-        _require_aware(self.last_login_at, field="User.last_login_at")
+        _require_aware(self.last_changed_at, field="Credential.last_changed_at")
+        _require_aware(self.created_at, field="Credential.created_at")
 
 
 @dataclass(frozen=True, slots=True)
