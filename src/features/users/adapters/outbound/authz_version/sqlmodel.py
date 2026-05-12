@@ -16,7 +16,7 @@ from uuid import UUID
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
+from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
 )

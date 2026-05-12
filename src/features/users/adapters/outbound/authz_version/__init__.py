@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.features.authentication.adapters.outbound.authz_version.sqlmodel import (
+from src.features.users.adapters.outbound.authz_version.sqlmodel import (
     SessionSQLModelUserAuthzVersionAdapter,
     SQLModelUserAuthzVersionAdapter,
 )

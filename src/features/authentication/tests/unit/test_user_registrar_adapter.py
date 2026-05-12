@@ -19,12 +19,12 @@ from src.features.authentication.adapters.outbound.persistence.sqlmodel.models i
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
-from src.features.authentication.adapters.outbound.user_registrar import (
-    SQLModelUserRegistrarAdapter,
-)
 from src.features.authentication.application.crypto import PasswordService
 from src.features.authentication.application.use_cases.auth.register_user import (
     RegisterUser,
+)
+from src.features.users.adapters.outbound.user_registrar import (
+    SQLModelUserRegistrarAdapter,
 )
 from src.platform.config.settings import AppSettings
 

@@ -36,7 +36,7 @@ pytestmark = pytest.mark.integration
 def adapter(
     postgres_auth_repository: SQLModelAuthRepository,
 ) -> Iterator[SQLModelAuthorizationAdapter]:
-    from src.features.authentication.adapters.outbound.authz_version import (  # noqa: PLC0415
+    from src.features.users.adapters.outbound.authz_version import (  # noqa: PLC0415
         SQLModelUserAuthzVersionAdapter,
     )
 

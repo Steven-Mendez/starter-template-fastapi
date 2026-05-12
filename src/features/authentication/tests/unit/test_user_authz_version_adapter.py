@@ -11,13 +11,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine
 
-from src.features.authentication.adapters.outbound.authz_version import (
-    SessionSQLModelUserAuthzVersionAdapter,
-    SQLModelUserAuthzVersionAdapter,
-)
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
+)
+from src.features.users.adapters.outbound.authz_version import (
+    SessionSQLModelUserAuthzVersionAdapter,
+    SQLModelUserAuthzVersionAdapter,
 )
 
 pytestmark = pytest.mark.unit

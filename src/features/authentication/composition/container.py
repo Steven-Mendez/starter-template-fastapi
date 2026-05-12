@@ -20,14 +20,8 @@ from dataclasses import dataclass
 from typing import Union
 
 from src.features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
-from src.features.authentication.adapters.outbound.authz_version import (
-    SQLModelUserAuthzVersionAdapter,
-)
 from src.features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
-)
-from src.features.authentication.adapters.outbound.user_registrar import (
-    SQLModelUserRegistrarAdapter,
 )
 from src.features.authentication.application.cache import (
     InProcessPrincipalCache,
@@ -69,6 +63,12 @@ from src.features.authentication.application.use_cases.auth.request_password_res
 )
 from src.features.authentication.application.use_cases.auth.resolve_principal import (
     ResolvePrincipalFromAccessToken,
+)
+from src.features.users.adapters.outbound.authz_version import (
+    SQLModelUserAuthzVersionAdapter,
+)
+from src.features.users.adapters.outbound.user_registrar import (
+    SQLModelUserRegistrarAdapter,
 )
 from src.platform.config.settings import AppSettings
 

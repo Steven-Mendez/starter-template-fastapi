@@ -1,20 +1,21 @@
-"""SQLModel table definitions for the auth feature.
+"""SQLModel table definitions for the authentication feature.
 
-These mappings own the database schema for users, refresh tokens,
-internal (single-use) tokens, and the auth audit log. The
-``relationships`` table that drives the ReBAC authorization engine is
-*not* declared here — it lives in
-``src/platform/persistence/sqlmodel/authorization/`` because every
-feature reads it at request time.
+These mappings own the database schema for refresh tokens, internal
+(single-use) tokens, and the auth audit log. The ``users`` table is
+owned by the users feature (``src.features.users``); we re-export
+:class:`UserTable` here for backwards compatibility during the
+``starter-template-foundation`` migration. Once the credentials split
+is complete, authentication will no longer reference :class:`UserTable`
+directly and the re-export will be removed.
 
-Every timestamp is timezone-aware UTC and ID columns are UUIDs so the
-schema is portable across PostgreSQL replicas without relying on a
-sequence.
+The ``relationships`` table that drives the ReBAC authorization engine
+lives in ``src/platform/persistence/sqlmodel/authorization/`` because
+every feature reads it at request time.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -22,54 +23,10 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from sqlmodel import Field, SQLModel
 
-
-def utc_now() -> datetime:
-    """Return the current UTC time as a timezone-aware datetime.
-
-    Centralising this helper guarantees every persisted timestamp uses the
-    same convention, avoiding mismatches between naive and aware values
-    that would surface as confusing comparison failures later.
-    """
-    return datetime.now(timezone.utc)
-
-
-class UserTable(SQLModel, table=True):
-    """User account row.
-
-    Holds the password hash, activity flags, and the ``authz_version``
-    counter used to invalidate already-issued JWTs whenever a user's
-    relationships change.
-    """
-
-    __tablename__ = "users"
-    __table_args__ = (
-        sa.UniqueConstraint("email", name="uq_users_email"),
-        # authz_version only ever increases, so a DB-level CHECK constraint
-        # prevents accidental resets to 0 that would silently re-validate
-        # tokens which the application had already invalidated.
-        sa.CheckConstraint(
-            "authz_version >= 1", name="ck_users_authz_version_positive"
-        ),
-    )
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    email: str = Field(index=True, nullable=False)
-    password_hash: str = Field(nullable=False)
-    is_active: bool = Field(default=True, nullable=False)
-    is_verified: bool = Field(default=False, nullable=False)
-    authz_version: int = Field(default=1, nullable=False)
-    created_at: datetime = Field(
-        default_factory=utc_now,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
-    )
-    updated_at: datetime = Field(
-        default_factory=utc_now,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
-    )
-    last_login_at: datetime | None = Field(
-        default=None,
-        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True),
-    )
+from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+    UserTable,  # re-exported for transitional compatibility
+    utc_now,
+)
 
 
 class RefreshTokenTable(SQLModel, table=True):

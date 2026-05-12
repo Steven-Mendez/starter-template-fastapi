@@ -21,9 +21,6 @@ from src.features._template.composition.wiring import (
     mount_template_routes,
     register_template_authorization,
 )
-from src.features.authentication.adapters.outbound.authz_version import (
-    SessionSQLModelUserAuthzVersionAdapter,
-)
 from src.features.authentication.composition.container import build_auth_container
 from src.features.authentication.composition.wiring import (
     attach_auth_container,
@@ -34,6 +31,9 @@ from src.features.authorization.composition import (
     attach_authorization_container,
     build_authorization_container,
     register_authorization_error_handlers,
+)
+from src.features.users.adapters.outbound.authz_version import (
+    SessionSQLModelUserAuthzVersionAdapter,
 )
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import set_app_container
