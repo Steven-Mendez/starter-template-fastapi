@@ -14,11 +14,11 @@ import pytest
 from sqlalchemy import text
 from sqlmodel import Session
 
-from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
+from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
 )
-from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
+from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
 from src.features.authorization.adapters.outbound.sqlmodel import (
@@ -36,7 +36,7 @@ pytestmark = pytest.mark.integration
 def adapter(
     postgres_auth_repository: SQLModelAuthRepository,
 ) -> Iterator[SQLModelAuthorizationAdapter]:
-    from src.features.auth.adapters.outbound.authz_version import (  # noqa: PLC0415
+    from src.features.authentication.adapters.outbound.authz_version import (  # noqa: PLC0415
         SQLModelUserAuthzVersionAdapter,
     )
 

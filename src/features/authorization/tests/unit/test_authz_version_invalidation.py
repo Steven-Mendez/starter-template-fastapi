@@ -16,10 +16,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine
 
-from src.features.auth.adapters.outbound.authz_version import (
+from src.features.authentication.adapters.outbound.authz_version import (
     SQLModelUserAuthzVersionAdapter,
 )
-from src.features.auth.adapters.outbound.persistence.sqlmodel.models import (
+from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
 )

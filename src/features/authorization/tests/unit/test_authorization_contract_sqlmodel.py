@@ -8,7 +8,9 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import create_engine
 
-from src.features.auth.adapters.outbound.persistence.sqlmodel.models import UserTable
+from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
+    UserTable,
+)
 from src.features.authorization.adapters.outbound.sqlmodel import (
     SQLModelAuthorizationAdapter,
 )

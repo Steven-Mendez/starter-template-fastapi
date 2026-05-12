@@ -8,7 +8,7 @@ should construct their own application.
 
 from __future__ import annotations
 
-from src.features.auth.tests.e2e.conftest import (  # noqa: F401
+from src.features.authentication.tests.e2e.conftest import (  # noqa: F401
     AuthTestContext,
     auth_context,
     auth_repository,

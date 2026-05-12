@@ -21,11 +21,11 @@ from src.features._template.composition.wiring import (
     mount_template_routes,
     register_template_authorization,
 )
-from src.features.auth.adapters.outbound.authz_version import (
+from src.features.authentication.adapters.outbound.authz_version import (
     SessionSQLModelUserAuthzVersionAdapter,
 )
-from src.features.auth.composition.container import build_auth_container
-from src.features.auth.composition.wiring import (
+from src.features.authentication.composition.container import build_auth_container
+from src.features.authentication.composition.wiring import (
     attach_auth_container,
     mount_auth_routes,
 )

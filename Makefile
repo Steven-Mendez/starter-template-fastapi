@@ -42,7 +42,7 @@ audit: ## Audit dependencies for known vulnerabilities
 
 sast: ## Run Bandit static security scan
 	uv run --with bandit bandit -r src \
-		--exclude src/features/auth/tests,src/features/kanban/tests,src/platform/tests \
+		--exclude src/features/authentication/tests,src/features/_template/tests,src/features/authorization/tests,src/platform/tests \
 		--severity-level medium
 
 migration-check: ## Verify Alembic upgrade/check/downgrade against ephemeral PostgreSQL
@@ -60,9 +60,14 @@ test-integration: ## Run integration tests (requires Docker)
 test-e2e: ## Run only end-to-end tests
 	uv run pytest -m e2e
 
-test-feature: ## Run tests for a single feature: make test-feature FEATURE=kanban
+test-feature: ## Run tests for a single feature: make test-feature FEATURE=authentication
 	@if [ -z "$(FEATURE)" ]; then echo "Usage: make test-feature FEATURE=<name>"; exit 2; fi
-	uv run pytest src/features/$(FEATURE)/tests
+	@feature="$(FEATURE)"; \
+	if [ "$$feature" = "auth" ]; then \
+		echo "warning: FEATURE=auth is deprecated; use FEATURE=authentication"; \
+		feature=authentication; \
+	fi; \
+	uv run pytest src/features/$$feature/tests
 
 cov: ## Run tests with terminal coverage report
 	uv run pytest -m "not integration" --cov --cov-report=term-missing --cov-fail-under=70

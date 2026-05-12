@@ -16,7 +16,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 from alembic import command
-from src.features.auth.adapters.outbound.persistence.sqlmodel.repository import (
+from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
 

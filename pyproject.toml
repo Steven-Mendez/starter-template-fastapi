@@ -148,37 +148,37 @@ forbidden_modules = ["src.features"]
 # because they construct integration-style fixtures that legitimately
 # wire both halves; the contract guards production code.
 [[tool.importlinter.contracts]]
-name = "Auth does not import authorization"
+name = "Authentication does not import authorization"
 type = "forbidden"
 source_modules = [
-    "src.features.auth.application",
-    "src.features.auth.adapters",
-    "src.features.auth.composition",
-    "src.features.auth.domain",
+    "src.features.authentication.application",
+    "src.features.authentication.adapters",
+    "src.features.authentication.composition",
+    "src.features.authentication.domain",
 ]
 forbidden_modules = ["src.features.authorization"]
 
 [[tool.importlinter.contracts]]
-name = "Authorization does not import auth"
+name = "Authorization does not import authentication"
 type = "forbidden"
 source_modules = [
     "src.features.authorization.application",
     "src.features.authorization.adapters",
     "src.features.authorization.composition",
 ]
-forbidden_modules = ["src.features.auth"]
+forbidden_modules = ["src.features.authentication"]
 
 # === Auth feature contracts ===
 
 # Domain purity: no application, adapters, framework, or other feature imports.
 [[tool.importlinter.contracts]]
-name = "Auth domain: pure"
+name = "Authentication domain: pure"
 type = "forbidden"
-source_modules = ["src.features.auth.domain"]
+source_modules = ["src.features.authentication.domain"]
 forbidden_modules = [
-    "src.features.auth.application",
-    "src.features.auth.adapters",
-    "src.features.auth.composition",
+    "src.features.authentication.application",
+    "src.features.authentication.adapters",
+    "src.features.authentication.composition",
     "src.platform.api",
     "src.platform.persistence",
     "src.platform.config",
@@ -198,13 +198,13 @@ forbidden_modules = [
 # allow_indirect_imports=true because jwt_tokens.py depends on platform.config.settings
 # which pulls in pydantic_settings transitively — that transitive dependency is acceptable.
 [[tool.importlinter.contracts]]
-name = "Auth application: framework-free"
+name = "Authentication application: framework-free"
 type = "forbidden"
-source_modules = ["src.features.auth.application"]
+source_modules = ["src.features.authentication.application"]
 allow_indirect_imports = true
 forbidden_modules = [
-    "src.features.auth.adapters",
-    "src.features.auth.composition",
+    "src.features.authentication.adapters",
+    "src.features.authentication.composition",
     "src.platform.api",
     "src.platform.persistence",
     "fastapi",
@@ -220,13 +220,13 @@ forbidden_modules = [
 
 # Inbound adapters do not reach into outbound adapters or domain directly.
 [[tool.importlinter.contracts]]
-name = "Auth inbound adapter: no outbound bypass"
+name = "Authentication inbound adapter: no outbound bypass"
 type = "forbidden"
-source_modules = ["src.features.auth.adapters.inbound"]
+source_modules = ["src.features.authentication.adapters.inbound"]
 allow_indirect_imports = true
 forbidden_modules = [
-    "src.features.auth.adapters.outbound",
-    "src.features.auth.domain",
+    "src.features.authentication.adapters.outbound",
+    "src.features.authentication.domain",
     "sqlmodel",
     "sqlalchemy",
     "alembic",
@@ -236,12 +236,12 @@ forbidden_modules = [
 
 # Inward dependency direction inside Auth.
 [[tool.importlinter.contracts]]
-name = "Auth inward dependency direction"
+name = "Authentication inward dependency direction"
 type = "layers"
 layers = [
-    "src.features.auth.adapters",
-    "src.features.auth.application",
-    "src.features.auth.domain",
+    "src.features.authentication.adapters",
+    "src.features.authentication.application",
+    "src.features.authentication.domain",
 ]
 
 # === Authorization feature contracts ===

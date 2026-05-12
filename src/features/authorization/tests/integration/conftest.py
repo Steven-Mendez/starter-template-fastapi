@@ -8,7 +8,7 @@ manages every shared SQLModel table at once).
 
 from __future__ import annotations
 
-from src.features.auth.tests.integration.conftest import (  # noqa: F401
+from src.features.authentication.tests.integration.conftest import (  # noqa: F401
     _auth_postgres_url,
     postgres_auth_repository,
     sqlite_auth_repository,
