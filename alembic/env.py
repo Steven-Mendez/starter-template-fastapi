@@ -14,6 +14,7 @@ from sqlmodel import SQLModel
 # the side-effect is intentional.
 import src.features._template.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
 import src.features.authentication.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
+import src.features.users.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
 import src.platform.persistence.sqlmodel.authorization.models  # noqa: F401
 from alembic import context
 from src.platform.config.settings import AppSettings
