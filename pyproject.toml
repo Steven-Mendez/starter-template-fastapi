@@ -363,7 +363,6 @@ forbidden_modules = [
     "src.features.authentication",
     "src.features.authorization",
     "src.features.users",
-    "src.features._template",
 ]
 
 # Authentication consumes the email feature only through ``EmailPort``;
@@ -398,7 +397,6 @@ forbidden_modules = [
     "src.features.authorization",
     "src.features.users",
     "src.features.email",
-    "src.features._template",
 ]
 
 # Authentication consumes the background-jobs feature only through
@@ -434,5 +432,4 @@ forbidden_modules = [
     "src.features.users",
     "src.features.email",
     "src.features.background_jobs",
-    "src.features._template",
 ]

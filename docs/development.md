@@ -122,7 +122,7 @@ KANBAN_SKIP_TESTCONTAINERS=1 make test-integration
 | New persistence behavior | `src/features/kanban/adapters/outbound/persistence/sqlmodel/` and repository contract or integration tests. |
 | New database schema change | SQLModel models plus a new Alembic migration under `alembic/versions/`. |
 | New cross-cutting platform behavior | `src/platform/` with platform tests under `src/platform/tests/`. |
-| New feature | Copy `src/features/_template/` and follow [Feature Template Guide](feature-template.md). |
+| New feature | Recover the scaffold from git history or the `examples/kanban` branch and follow [Feature Template Guide](feature-template.md). |
 
 ## Adding A Migration
 

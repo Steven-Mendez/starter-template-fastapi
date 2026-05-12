@@ -1,198 +1,51 @@
 # Feature Template Guide
 
-This guide explains how to use `src/features/_template` to add a feature that
-matches the current architecture.
+The in-tree `_template` feature was removed (see the OpenSpec change
+`remove-template-feature`). The scaffold now lives only in git history and on
+the long-lived examples branch.
 
-The template package is intentionally inert. It is not imported or registered by
-`src/main.py`.
+## Where to find the scaffold
 
-## When To Use The Template
+Pick whichever is easier:
 
-Use the template when adding a new bounded feature under `src/features/`.
+- **Git history**: the last commit before deletion contains the full
+  directory under `src/features/_template/`. Recover it with:
 
-Do not modify `_template` directly for product behavior. Copy it first.
+  ```bash
+  git log --diff-filter=D --summary -- src/features/_template | head -20
+  # find the SHA where _template was deleted, then:
+  git show <sha>^:src/features/_template > /tmp/_template-tree.txt
+  # or check out the directory at that revision:
+  git checkout <sha>^ -- src/features/_template
+  ```
 
-## Copy The Template
+- **`examples/kanban` branch**: a worked multi-resource feature built on top
+  of the same scaffold, rebased weekly onto `main`. Use it when you want a
+  more substantial reference than a single-resource CRUD.
 
-```bash
-cp -R src/features/_template src/features/<feature_name>
-```
+## Adding a new feature
 
-After copying, replace package names and template type names inside the copied
-feature. Search for placeholders:
+Once you have the scaffold copied into `src/features/<feature_name>/`,
+follow the steps under "Adding a new feature" in `CLAUDE.md`. The short
+version:
 
-```bash
-grep -R -E 'src\.features\._template|TemplateContainer|register_template|ExampleAggregate|ExampleRepositoryPort|GetExampleUseCase' src/features/<feature_name>
-```
+1. Rename the entity, table, routes, and tests inside the copy.
+2. Register your resource types with the authorization registry from your
+   feature's wiring module.
+3. Build your feature's container in `src/main.py` after the authorization
+   container exists.
+4. Gate HTTP routes with `require_authorization(...)`.
+5. If you need atomic authorization writes, take a
+   `user_authz_version_factory` parameter on the container.
+6. If the feature sends email or does deferred work, register templates and
+   handlers through the corresponding registries at composition.
+7. No feature imports another feature directly — cross-feature work goes
+   through application ports.
 
-Replace any matches for:
-
-- `src.features._template`
-- `TemplateContainer`
-- `register_template`
-- `ExampleAggregate`
-- `ExampleRepositoryPort`
-- `GetExampleUseCase`
-
-Then run Ruff against the copied feature:
-
-```bash
-uv run ruff check src/features/<feature_name>
-```
-
-## Build The Domain Layer
-
-Put pure business types under:
-
-```text
-src/features/<feature_name>/domain/
-```
-
-Rules:
-
-- Do not import FastAPI, Pydantic, SQLModel, SQLAlchemy, Alembic, or platform API
-  modules.
-- Put business invariants on aggregates and entities.
-- Return `Result[T, E]` for expected domain failures when the existing code style
-  calls for explicit failure handling.
-
-Use `src/features/kanban/domain/` as the reference implementation.
-
-## Build The Application Layer
-
-Put orchestration code under:
-
-```text
-src/features/<feature_name>/application/
-```
-
-Use this structure:
-
-| Directory | Purpose |
-| --- | --- |
-| `commands/` | Input DTOs for state-changing use cases. |
-| `queries/` | Input DTOs for read use cases. |
-| `contracts/` | Output DTOs returned by use cases. |
-| `ports/inbound/` | Protocols used by inbound adapters. |
-| `ports/outbound/` | Protocols implemented by outbound adapters. |
-| `use_cases/` | Application services that coordinate domain and ports. |
-| `errors.py` | Application error enum and domain error mapping. |
-
-Use cases should depend on ports through constructor injection and return
-`Result[T, ApplicationError]` for expected failures.
-
-## Build Inbound HTTP Adapters
-
-Put FastAPI-facing code under:
-
-```text
-src/features/<feature_name>/adapters/inbound/http/
-```
-
-Use this structure:
-
-| File or directory | Purpose |
-| --- | --- |
-| `schemas/` | Pydantic request and response models. |
-| `mappers/` | Conversion between transport schemas and application DTOs. |
-| `dependencies.py` | FastAPI dependency aliases resolving use case ports from the feature container. |
-| `errors.py` | Application error to HTTP Problem Details mapping. |
-| resource router files | One or more `APIRouter` instances grouped by resource. |
-| `router.py` | Feature router composition. |
-
-For write endpoints that need the shared API key behavior, put routes on a router
-with:
-
-```python
-APIRouter(dependencies=[RequireWriteApiKey])
-```
-
-Read routes should stay on routers without that dependency unless the feature
-requires different behavior.
-
-## Build Outbound Adapters
-
-Put infrastructure adapters under:
-
-```text
-src/features/<feature_name>/adapters/outbound/
-```
-
-For SQLModel persistence, follow the Kanban pattern:
-
-- SQLModel table classes under `persistence/sqlmodel/models/`.
-- Domain/table mappers in `persistence/sqlmodel/mappers.py`.
-- Repository implementations in `persistence/sqlmodel/repository.py`.
-- Unit of work implementation in `persistence/sqlmodel/unit_of_work.py`.
-
-If the feature needs database schema, add Alembic migrations under
-`alembic/versions/`.
-
-## Build The Composition Root
-
-Put feature wiring under:
-
-```text
-src/features/<feature_name>/composition/
-```
-
-The current Kanban feature uses this pattern:
-
-- A feature container class exposes factory methods returning inbound port
-  protocols.
-- `mount_<feature>_routes(app)` mounts routes when the app is built.
-- `attach_<feature>_container(app, container)` stores the container during
-  lifespan startup.
-- `register_<feature>(app, container)` can exist as a convenience helper, but
-  `src/main.py` currently mounts routes before lifespan and attaches containers
-  during lifespan.
-
-## Register The Feature
-
-Update `src/main.py` after the new feature has real routes and a real container.
-
-Follow the current separation:
-
-1. Mount routes immediately after building the FastAPI app.
-2. Build and attach containers inside the lifespan context.
-3. Shut down feature resources in the lifespan `finally` block.
-
-## Add Tests
-
-Place tests under:
-
-```text
-src/features/<feature_name>/tests/
-```
-
-Recommended structure:
-
-| Directory | Purpose |
-| --- | --- |
-| `fakes/` | In-memory adapters, fake containers, clocks, ID generators, and UoW fakes. |
-| `unit/domain/` | Pure domain tests. |
-| `unit/application/` | Use case tests with fakes. |
-| `contracts/` | Reusable adapter contract suites. |
-| `integration/` | Tests against real infrastructure through testcontainers. |
-| `e2e/` | FastAPI `TestClient` flows. |
-
-Run feature tests:
+## Verify before merging
 
 ```bash
+make lint-arch     # architecture contracts
+make quality       # lint + arch + typecheck
 make test-feature FEATURE=<feature_name>
 ```
-
-Run architecture contracts:
-
-```bash
-make lint-arch
-```
-
-## Before Registering A New Feature
-
-- All template placeholders in the copied feature have been replaced.
-- The copied feature imports its own package, not `src.features._template`.
-- The feature does not import another feature.
-- Domain and application layers pass import-linter contracts.
-- Unit and e2e tests pass.
-- Integration tests pass if persistence was added.

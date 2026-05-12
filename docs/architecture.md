@@ -10,7 +10,9 @@ package owns cross-cutting concerns (FastAPI factory, middleware, settings,
 error handling, the shared engine, the cross-feature `relationships` table).
 The `features` package owns business capabilities. Every feature follows the
 same layout — `domain/`, `application/`, `adapters/`, `composition/`, `tests/`
-— so adding a new feature is a copy-and-rename of `_template`.
+— so adding a new feature is a copy-and-rename of the scaffold recovered
+from git history or the `examples/kanban` branch (see
+[Feature Template Guide](feature-template.md)).
 
 ```text
 HTTP client
@@ -32,7 +34,6 @@ HTTP client
 | `email` | `EmailPort`, console + SMTP adapters, the `EmailTemplateRegistry`. | Nothing. |
 | `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, the `JobHandlerRegistry`, the worker entrypoint. | Nothing. |
 | `file_storage` | `FileStoragePort`, local adapter, S3 stub. | Nothing. |
-| `_template` | Executable single-resource CRUD over `things`. Demonstrates a feature wired into authorization with `owner ⊇ writer ⊇ reader`. | `AuthorizationPort`, `UserPort`. |
 
 ### Dependency Graph
 
@@ -43,9 +44,6 @@ authentication ──▶ users  ──▶ authorization
        ├──▶ email                            │
        ├──▶ background_jobs                  │
        └──▶ authorization                    │
-                                             │
-_template ──▶ authorization                  │
-_template ──▶ users (read-only via UserPort) │
 
 email, background_jobs, file_storage: have no inbound feature deps.
 ```
@@ -99,8 +97,8 @@ make lint-arch
 2. `RequestContextMiddleware` stores a request ID on `request.state` and writes
    the same ID to the response header.
 3. `ContentSizeLimitMiddleware` rejects bodies larger than `APP_MAX_REQUEST_BYTES`.
-4. The platform app dispatches to a route under `/auth`, `/users`, `/admin`,
-   `/things`, or a health endpoint.
+4. The platform app dispatches to a route under `/auth`, `/me`, `/admin`,
+   or a health endpoint.
 5. The route's `require_authorization(...)` platform dependency resolves the
    principal from the bearer token (via the authentication feature's
    principal resolver), then asks `AuthorizationPort.check(...)` whether the
@@ -120,7 +118,7 @@ make lint-arch
 | Concern | Pattern |
 | --- | --- |
 | Authorization checks | Every feature gates its HTTP routes with the platform `require_authorization(action, resource_type, id_loader=...)` dependency, which calls `AuthorizationPort.check`. |
-| Authorization tuples | `CreateThing`-style writes commit the resource row and the `owner` relationship tuple in the same Unit of Work via a session-scoped `AuthorizationPort`. |
+| Authorization tuples | Resource-creating writes commit the resource row and the `owner` relationship tuple in the same Unit of Work via a session-scoped `AuthorizationPort`. |
 | User lookup from authentication | Authentication takes `UserPort` as a constructor dependency; it never imports `UserTable` or the users repository directly. |
 | Sending email | Features call `EmailPort.send(to, template_name, context)`. Authentication's password-reset and email-verify use cases enqueue a `send_email` background job rather than blocking on SMTP. |
 | Background work | Features register handlers with `JobHandlerRegistry` and enqueue work through `JobQueuePort`. The web app and the worker share a composition root so the same handler set is visible to both. |
@@ -136,11 +134,11 @@ make lint-arch
   order is: `users` → `email` → `background_jobs` → `authentication` →
   `authorization` (which receives `users.user_authz_version_adapter`,
   `users.user_registrar_adapter`, and `authentication.audit_adapter` as
-  outbound implementations) → `_template`.
+  outbound implementations) → `file_storage`.
 - Every container is stored on `app.state` and removed during teardown.
 - The shared SQLModel engine is owned by the authentication container today
   (historical; it lives there because it predates the users split) and is
-  reused by users and `_template`. The engine is disposed during shutdown.
+  reused by users. The engine is disposed during shutdown.
 - The `AuthorizationRegistry` and `EmailTemplateRegistry` are sealed after
   every feature has had a chance to contribute; subsequent runtime
   registration attempts surface as clear errors.

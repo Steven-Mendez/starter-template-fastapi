@@ -15,12 +15,6 @@ from typing import AsyncIterator
 import redis as redis_lib
 from fastapi import FastAPI
 
-from src.features._template.composition.container import build_template_container
-from src.features._template.composition.wiring import (
-    attach_template_container,
-    mount_template_routes,
-    register_template_authorization,
-)
 from src.features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
@@ -50,9 +44,6 @@ from src.features.file_storage.composition.container import (
 )
 from src.features.file_storage.composition.settings import StorageSettings
 from src.features.file_storage.composition.wiring import attach_file_storage_container
-from src.features.users.adapters.outbound.authz_version import (
-    SessionSQLModelUserAuthzVersionAdapter,
-)
 from src.features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
@@ -120,7 +111,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     # because they require DB connections that should not outlive the process.
     mount_auth_routes(app)
     mount_users_routes(app)
-    mount_template_routes(app)
     register_authorization_error_handlers(app)
     instrument_fastapi_app(app, app_settings)
 
@@ -187,18 +177,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         file_storage = build_file_storage_container(
             StorageSettings.from_app_settings(app_settings)
         )
-        template = build_template_container(
-            postgresql_dsn=app_settings.postgresql_dsn,
-            authorization=authorization.port,
-            registry=authorization.registry,
-            user_authz_version_factory=SessionSQLModelUserAuthzVersionAdapter,
-            file_storage=file_storage.port,
-            pool_size=app_settings.db_pool_size,
-            max_overflow=app_settings.db_max_overflow,
-            pool_recycle=app_settings.db_pool_recycle_seconds,
-            pool_pre_ping=app_settings.db_pool_pre_ping,
-        )
-        register_template_authorization(authorization.registry)
         # Every feature has now contributed to the registry; freeze it
         # so a stray runtime ``register_…`` call surfaces as a clear error
         # rather than a silent behaviour change.
@@ -215,7 +193,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         attach_email_container(lifespan_app, email)
         attach_jobs_container(lifespan_app, jobs)
         attach_file_storage_container(lifespan_app, file_storage)
-        attach_template_container(lifespan_app, template)
 
         # Shared Redis client used by health probes and other platform consumers.
         # Stored on app.state so it can be injected without coupling features.
@@ -236,7 +213,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         finally:
             # Shutdown order is reverse of startup so dependent resources
             # (e.g. connection pools) are closed after the services that use them.
-            template.shutdown()
             jobs.shutdown()
             users.shutdown()
             authorization.shutdown()

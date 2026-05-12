@@ -6,20 +6,24 @@ needs — authentication, users, authorization, transactional email — plus
 ports for background jobs and file storage, all sitting on a feature-first
 hexagonal layout enforced by Import Linter.
 
-The intended first move on a new project is **clone, rename `_template`,
-run**. `_template` ships as a working single-resource CRUD over a `things`
-table; copy it to `src/features/<your-feature>/`, rename the entity, and
-the routes, persistence, and authorization wiring come along.
+The intended first move on a new project is **clone, recover the scaffold
+from git history, run**. The starter previously shipped an in-tree
+`_template` feature; it was removed (see the `remove-template-feature`
+OpenSpec change). Restore it from the pre-removal commit or copy from the
+`examples/kanban` branch — both keep the same architecture so the routes,
+persistence, and authorization wiring come along.
 
 ## What's New
 
 The `starter-template-foundation` change reshaped the repository: the
 domain-specific `kanban` demo moved to an `examples/kanban` branch, the
-`auth` feature split into `authentication` + `users`, and four
-infrastructure features (`email`, `background_jobs`, `file_storage`,
-plus the executable `_template`) were added. See
+`auth` feature split into `authentication` + `users`, and three
+infrastructure features (`email`, `background_jobs`, `file_storage`) were
+added. See
 [`openspec/changes/starter-template-foundation/`](openspec/changes/starter-template-foundation/)
-for the full proposal.
+for the full proposal. The `remove-template-feature` change then removed
+the in-tree `_template` scaffold; see its directory under
+[`openspec/changes/`](openspec/changes/) for the rationale.
 
 ## Documentation
 
@@ -39,8 +43,9 @@ for the full proposal.
   in-process/`arq` adapters, the worker process.
 - [File Storage](docs/file-storage.md) — `FileStoragePort`, local/S3
   adapters.
-- [Feature Template Guide](docs/feature-template.md) — the "copy and
-  rename" workflow for new features.
+- [Feature Template Guide](docs/feature-template.md) — recovering the
+  scaffold from git history and the "copy and rename" workflow for new
+  features.
 
 ## Feature Inventory
 
@@ -52,7 +57,6 @@ for the full proposal.
 | `email` | `EmailPort` plus `console` and `smtp` adapters. Owns the template registry features contribute to. |
 | `background_jobs` | `JobQueuePort` plus `in_process` and `arq` adapters. Worker entrypoint at `python -m src.worker`. |
 | `file_storage` | `FileStoragePort` plus `local` adapter and `s3` stub. |
-| `_template` | Executable single-resource CRUD over `things` — the starting point a new project copies. |
 
 Cross-feature communication goes through ports only; Import Linter
 contracts forbid direct imports (e.g. `authentication ↛ authorization`,
@@ -89,7 +93,6 @@ contracts forbid direct imports (e.g. `authentication ↛ authorization`,
 │   │   ├── persistence/                # Shared engine + relationships table
 │   │   └── shared/                     # Result helper, cross-feature ports
 │   └── features/
-│       ├── _template/                  # Executable single-resource CRUD ('things')
 │       ├── authentication/             # Tokens, login, refresh, password reset, credentials
 │       ├── users/                      # User entity + lifecycle, UserPort
 │       ├── authorization/              # ReBAC engine, AuthorizationPort, registry
@@ -128,7 +131,7 @@ Then open:
 - `http://localhost:8000/metrics` for Prometheus metrics.
 - `http://localhost:8000/docs` for Swagger UI when `APP_ENABLE_DOCS=true`.
 
-Register a user against the bundled `_template` feature:
+Register a user against the bundled `authentication` feature:
 
 ```bash
 curl -s -X POST http://localhost:8000/auth/register \
@@ -139,9 +142,12 @@ curl -s -X POST http://localhost:8000/auth/register \
 ## Starting A New Project
 
 1. Clone this repository and rename the remote/origin to your project.
-2. `cp -r src/features/_template src/features/<your-feature>`.
-3. Rename the `Thing` entity, the `things` table, the routes, and the
-   tests inside the copy — the `_template`'s README walks through it.
+2. Recover the feature scaffold from git history
+   (`git checkout <pre-removal-sha>^ -- src/features/_template`) or the
+   `examples/kanban` branch, then move it to `src/features/<your-feature>/`.
+3. Rename the entity, the table, the routes, and the tests inside the copy
+   — see [`docs/feature-template.md`](docs/feature-template.md) for the
+   walk-through.
 4. Register the new feature with the authorization registry in
    `src/main.py` (one `registry.register_resource_type(...)` call).
 5. Generate an Alembic revision for your new table:
