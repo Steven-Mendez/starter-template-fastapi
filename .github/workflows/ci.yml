@@ -70,6 +70,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # gitleaks-action scans the commit range pushed; with a shallow
+          # clone the "before" SHA is not present and git log fails.
+          fetch-depth: 0
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
@@ -175,6 +179,7 @@ jobs:
           docker run -d --name ci-smoke \
             -e APP_AUTH_JWT_SECRET_KEY=ci-test-secret-key-min-32-chars \
             -e APP_ENVIRONMENT=development \
+            -e APP_STORAGE_LOCAL_PATH=/tmp/storage \
             -p 8000:8000 \
             starter-template-fastapi:ci
           # Wait for the process to start before probing.
