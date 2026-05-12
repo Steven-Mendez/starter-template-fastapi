@@ -2,11 +2,8 @@
 
 These mappings own the database schema for refresh tokens, internal
 (single-use) tokens, and the auth audit log. The ``users`` table is
-owned by the users feature (``src.features.users``); we re-export
-:class:`UserTable` here for backwards compatibility during the
-``starter-template-foundation`` migration. Once the credentials split
-is complete, authentication will no longer reference :class:`UserTable`
-directly and the re-export will be removed.
+owned by the users feature (``src.features.users``); authentication
+references it only through the ``user_id`` foreign key.
 
 The ``relationships`` table that drives the ReBAC authorization engine
 lives in ``src/platform/persistence/sqlmodel/authorization/`` because
@@ -15,7 +12,7 @@ every feature reads it at request time.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -23,10 +20,44 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from sqlmodel import Field, SQLModel
 
-from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
-    UserTable,  # re-exported for transitional compatibility
-    utc_now,
-)
+
+def utc_now() -> datetime:
+    """Return the current UTC time as a timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
+
+class CredentialTable(SQLModel, table=True):
+    """Password credential row owned by the authentication feature.
+
+    A user can hold at most one credential per algorithm — the unique
+    constraint on ``(user_id, algorithm)`` is what permits passkey or
+    OAuth credentials to be added later as new rows without reshaping
+    the schema. This table is the sole source of truth for password
+    hashes; the ``users`` table no longer carries a ``password_hash``
+    column.
+    """
+
+    __tablename__ = "credentials"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "user_id", "algorithm", name="uq_credentials_user_id_algorithm"
+        ),
+    )
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(
+        foreign_key="users.id", index=True, nullable=False, ondelete="CASCADE"
+    )
+    algorithm: str = Field(nullable=False)
+    hash: str = Field(nullable=False)
+    last_changed_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False),
+    )
 
 
 class RefreshTokenTable(SQLModel, table=True):
@@ -130,7 +161,7 @@ class AuthInternalTokenTable(SQLModel, table=True):
 __all__ = [
     "AuthAuditEventTable",
     "AuthInternalTokenTable",
+    "CredentialTable",
     "RefreshTokenTable",
-    "UserTable",
     "utc_now",
 ]

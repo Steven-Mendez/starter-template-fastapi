@@ -1,16 +1,9 @@
-"""Outbound port protocols for auth persistence.
+"""Outbound port protocols for authentication persistence.
 
-The application layer depends on these protocols, never on the concrete
-SQLModel adapter, keeping domain and application layers free of
-framework-specific types.
-
-Sub-protocols follow the Interface Segregation Principle — each service
-declares only the slice of persistence it actually uses:
-
-  Auth use cases  → UserRepositoryPort + TokenRepositoryPort + AuditRepositoryPort
-
-``AuthRepositoryPort`` is the full composite used by the concrete adapter and
-the container; it inherits all sub-protocols so the existing wiring is unchanged.
+After the users feature extraction, the authentication feature owns
+only credentials- and session-shaped state: refresh tokens, single-use
+internal tokens, and the audit log. The ``User`` entity lives in the
+users feature and is reached through :class:`UserPort`.
 """
 
 from __future__ import annotations
@@ -21,20 +14,16 @@ from uuid import UUID
 
 from src.features.authentication.domain.models import (
     AuditEvent,
+    Credential,
     InternalToken,
     RefreshToken,
-    User,
 )
-from src.platform.shared.principal import Principal
-
-# ── Transaction protocols ─────────────────────────────────────────────────────
 
 
 class AuthRefreshTokenTransactionPort(Protocol):
     """Transactional operations used to rotate refresh tokens atomically."""
 
     def get_refresh_token_for_update(self, token_hash: str) -> RefreshToken | None: ...
-    def get_principal(self, user_id: UUID) -> Principal | None: ...
     def create_refresh_token(
         self,
         *,
@@ -66,7 +55,6 @@ class AuthInternalTokenTransactionPort(Protocol):
     def get_internal_token_for_update(
         self, *, token_hash: str, purpose: str
     ) -> InternalToken | None: ...
-    def update_user_password(self, user_id: UUID, password_hash: str) -> None: ...
     def mark_internal_token_used(self, token_id: UUID) -> None: ...
     def revoke_user_refresh_tokens(self, user_id: UUID) -> None: ...
     def record_audit_event(
@@ -78,24 +66,6 @@ class AuthInternalTokenTransactionPort(Protocol):
         user_agent: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None: ...
-
-
-# ── Sub-protocols (ISP slices) ────────────────────────────────────────────────
-
-
-class UserRepositoryPort(Protocol):
-    """Persistence operations scoped to the User aggregate."""
-
-    def get_user_by_email(self, email: str) -> User | None: ...
-    def get_user_by_id(self, user_id: UUID) -> User | None: ...
-    def list_users(self, *, limit: int = 100, offset: int = 0) -> list[User]: ...
-    def create_user(self, *, email: str, password_hash: str) -> User | None: ...
-    def update_user_login(self, user_id: UUID, when: datetime) -> None: ...
-    def set_user_active(self, user_id: UUID, is_active: bool) -> None: ...
-    def set_user_verified(self, user_id: UUID) -> None: ...
-    def update_user_password(self, user_id: UUID, password_hash: str) -> None: ...
-    def increment_user_authz_version(self, user_id: UUID) -> None: ...
-    def get_principal(self, user_id: UUID) -> Principal | None: ...
 
 
 class TokenRepositoryPort(Protocol):
@@ -160,16 +130,24 @@ class AuditRepositoryPort(Protocol):
     ) -> list[AuditEvent]: ...
 
 
-# ── Composite port (used by the concrete adapter and AuthContainer) ────────────
+class CredentialRepositoryPort(Protocol):
+    """Persistence operations for password credentials."""
+
+    def get_credential_for_user(
+        self, user_id: UUID, *, algorithm: str = "argon2"
+    ) -> Credential | None: ...
+    def upsert_credential(
+        self, *, user_id: UUID, algorithm: str, hash: str
+    ) -> Credential: ...
 
 
 class AuthRepositoryPort(
-    UserRepositoryPort,
     TokenRepositoryPort,
     AuditRepositoryPort,
+    CredentialRepositoryPort,
     Protocol,
 ):
-    """Full persistence surface for the auth feature.
+    """Full persistence surface for the authentication feature.
 
     Inherits all sub-protocols. The concrete ``SQLModelAuthRepository``
     implements this combined interface; services may accept narrower

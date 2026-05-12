@@ -20,15 +20,27 @@ from src.features.authentication.application.ports.outbound.auth_repository impo
     AuthRepositoryPort,
 )
 from src.features.authentication.application.types import IssuedTokens
+from src.features.users.application.ports.user_port import UserPort
 from src.platform.config.settings import AppSettings
 from src.platform.shared.principal import Principal
 from src.platform.shared.result import Err, Ok, Result
+
+
+def _principal_from_user(user: object) -> Principal:
+    return Principal(
+        user_id=user.id,  # type: ignore[attr-defined]
+        email=user.email,  # type: ignore[attr-defined]
+        is_active=user.is_active,  # type: ignore[attr-defined]
+        is_verified=user.is_verified,  # type: ignore[attr-defined]
+        authz_version=user.authz_version,  # type: ignore[attr-defined]
+    )
 
 
 @dataclass(slots=True)
 class LoginUser:
     """Authenticate credentials and issue a token pair."""
 
+    _users: UserPort
     _repository: AuthRepositoryPort
     _password_service: PasswordService
     _token_service: AccessTokenService
@@ -47,7 +59,7 @@ class LoginUser:
         InvalidCredentialsError | InactiveUserError | EmailNotVerifiedError,
     ]:
         normalized_email = normalize_email(email)
-        user = self._repository.get_user_by_email(normalized_email)
+        user = self._users.get_by_email(normalized_email)
         if user is None:
             self._password_service.verify_password(self._dummy_hash, password)
             self._repository.record_audit_event(
@@ -57,7 +69,9 @@ class LoginUser:
                 metadata={"reason": "invalid_credentials"},
             )
             return Err(InvalidCredentialsError("Invalid credentials"))
-        if not self._password_service.verify_password(user.password_hash, password):
+        credential = self._repository.get_credential_for_user(user.id)
+        password_hash = credential.hash if credential is not None else self._dummy_hash
+        if not self._password_service.verify_password(password_hash, password):
             self._repository.record_audit_event(
                 event_type="auth.login_failed",
                 user_id=user.id,
@@ -84,10 +98,8 @@ class LoginUser:
                 metadata={"reason": "email_not_verified"},
             )
             return Err(EmailNotVerifiedError("Email not verified"))
-        self._repository.update_user_login(user.id, datetime.now(timezone.utc))
-        principal = self._repository.get_principal(user.id)
-        if principal is None:
-            return Err(InvalidCredentialsError("Invalid credentials"))
+        self._users.update_last_login(user.id, datetime.now(timezone.utc))
+        principal = _principal_from_user(user)
         access_token, expires_in = self._token_service.issue(
             subject=user.id,
             authz_version=principal.authz_version,

@@ -14,6 +14,7 @@ from src.features.authentication.application.errors import (
 from src.features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
+from src.features.users.application.ports.user_port import UserPort
 from src.platform.shared.result import Err, Ok, Result
 
 PASSWORD_RESET_PURPOSE = "password_reset"
@@ -21,8 +22,18 @@ PASSWORD_RESET_PURPOSE = "password_reset"
 
 @dataclass(slots=True)
 class ConfirmPasswordReset:
-    """Apply a new password and invalidate all existing sessions."""
+    """Apply a new password and invalidate all existing sessions.
 
+    Atomicity story: token consumption + refresh-token revocation share a
+    single transaction guarded by ``SELECT FOR UPDATE`` on the token row,
+    so concurrent confirmations serialize. The password update itself
+    runs in a separate users-feature transaction *before* the token is
+    marked used; a crash between those two commits is benign because the
+    new password is idempotent and the token row's ``FOR UPDATE`` lock
+    still excludes other consumers until the request finishes.
+    """
+
+    _users: UserPort
     _repository: AuthRepositoryPort
     _password_service: PasswordService
     _cache: PrincipalCachePort | None = None
@@ -48,9 +59,18 @@ class ConfirmPasswordReset:
                 error = InvalidTokenError("Invalid token")
             else:
                 user_id = record.user_id
-                tx.update_user_password(
-                    user_id, self._password_service.hash_password(new_password)
+                # Credential write goes to authentication's own table.
+                # Cache invalidation still flows through users via
+                # ``bump_authz_version``. The FOR UPDATE lock on the
+                # token row keeps concurrent confirmations from
+                # interleaving even though both writes commit in their
+                # own transactions.
+                self._repository.upsert_credential(
+                    user_id=user_id,
+                    algorithm="argon2",
+                    hash=self._password_service.hash_password(new_password),
                 )
+                self._users.bump_authz_version(user_id)
                 tx.mark_internal_token_used(record.id)
                 tx.revoke_user_refresh_tokens(user_id)
                 tx.record_audit_event(

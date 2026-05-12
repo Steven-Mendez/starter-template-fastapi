@@ -15,6 +15,7 @@ from src.features.authentication.application.use_cases.auth.register_user import
     RegisterUser,
 )
 from src.features.authentication.tests.fakes import FakeAuthRepository
+from src.features.users.tests.fakes.fake_user_port import FakeUserPort
 from src.platform.config.settings import AppSettings
 from src.platform.shared.result import Err, Ok
 
@@ -37,17 +38,24 @@ def repository() -> FakeAuthRepository:
 
 
 @pytest.fixture
+def users() -> FakeUserPort:
+    return FakeUserPort()
+
+
+@pytest.fixture
 def password_service() -> PasswordService:
     return PasswordService()
 
 
 @pytest.fixture
 def login_use_case(
+    users: FakeUserPort,
     repository: FakeAuthRepository,
     password_service: PasswordService,
     settings: AppSettings,
 ) -> LoginUser:
     return LoginUser(
+        _users=users,
         _repository=repository,
         _password_service=password_service,
         _token_service=AccessTokenService(settings),
@@ -58,12 +66,15 @@ def login_use_case(
 
 @pytest.fixture
 def register_use_case(
+    users: FakeUserPort,
     repository: FakeAuthRepository,
     password_service: PasswordService,
     settings: AppSettings,
 ) -> RegisterUser:
     return RegisterUser(
-        _repository=repository,
+        _users=users,
+        _credentials=repository,
+        _audit=repository,
         _password_service=password_service,
         _settings=settings,
     )
@@ -121,11 +132,11 @@ def test_login_with_unknown_email_returns_invalid_credentials_and_runs_dummy_ver
 def test_login_for_inactive_user_returns_inactive_user_error(
     login_use_case: LoginUser,
     register_use_case: RegisterUser,
-    repository: FakeAuthRepository,
+    users: FakeUserPort,
 ) -> None:
     reg = register_use_case.execute(email="inactive@example.com", password=PASSWORD)
     assert isinstance(reg, Ok)
-    repository.set_user_active(reg.value.id, is_active=False)
+    users.set_active(reg.value.id, is_active=False)
 
     result = login_use_case.execute(email="inactive@example.com", password=PASSWORD)
 

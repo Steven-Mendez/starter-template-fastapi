@@ -20,6 +20,9 @@ from dataclasses import dataclass
 from typing import Union
 
 from src.features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
+from src.features.authentication.adapters.outbound.credential_writer import (
+    SQLModelCredentialWriterAdapter,
+)
 from src.features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
@@ -37,7 +40,6 @@ from src.features.authentication.application.rate_limit import (
 from src.features.authentication.application.use_cases.admin.list_audit_events import (
     ListAuditEvents,
 )
-from src.features.authentication.application.use_cases.admin.list_users import ListUsers
 from src.features.authentication.application.use_cases.auth.confirm_email_verification import (  # noqa: E501
     ConfirmEmailVerification,
 )
@@ -64,12 +66,8 @@ from src.features.authentication.application.use_cases.auth.request_password_res
 from src.features.authentication.application.use_cases.auth.resolve_principal import (
     ResolvePrincipalFromAccessToken,
 )
-from src.features.users.adapters.outbound.authz_version import (
-    SQLModelUserAuthzVersionAdapter,
-)
-from src.features.users.adapters.outbound.user_registrar import (
-    SQLModelUserRegistrarAdapter,
-)
+from src.features.background_jobs.application.ports.job_queue_port import JobQueuePort
+from src.features.users.application.ports.user_port import UserPort
 from src.platform.config.settings import AppSettings
 
 _logger = logging.getLogger(__name__)
@@ -85,10 +83,11 @@ class AuthContainer:
     repository: SQLModelAuthRepository
     rate_limiter: RateLimiter
     principal_cache: PrincipalCachePort
-    # Adapters auth provides to the authorization feature.
-    user_authz_version_adapter: SQLModelUserAuthzVersionAdapter
-    user_registrar_adapter: SQLModelUserRegistrarAdapter
+    # Audit-log adapter the authorization feature uses to record authz.* events.
     audit_adapter: SQLModelAuditAdapter
+    # Credential-writer adapter the users-feature registrar uses to write the
+    # initial password for the bootstrap admin.
+    credential_writer_adapter: SQLModelCredentialWriterAdapter
     shutdown: Callable[[], None]
     # Auth use cases
     register_user: RegisterUser
@@ -102,13 +101,14 @@ class AuthContainer:
     confirm_email_verification: ConfirmEmailVerification
     resolve_principal: ResolvePrincipalFromAccessToken
     # Admin use cases (gated by system:main checks at the HTTP layer)
-    list_users: ListUsers
     list_audit_events: ListAuditEvents
 
 
 def build_auth_container(
     *,
     settings: AppSettings,
+    users: UserPort,
+    jobs: JobQueuePort,
     repository: SQLModelAuthRepository | None = None,
 ) -> AuthContainer:
     """Wire all auth dependencies and return a ready-to-use container."""
@@ -156,17 +156,18 @@ def build_auth_container(
 
     dummy_hash = password_service.hash_password("dummy-password")
 
+    audit_adapter = SQLModelAuditAdapter(repo)
+    credential_writer_adapter = SQLModelCredentialWriterAdapter(
+        credentials=repo, password_service=password_service
+    )
+
     register_user = RegisterUser(
-        _repository=repo,
+        _users=users,
+        _credentials=repo,
+        _audit=repo,
         _password_service=password_service,
         _settings=settings,
     )
-
-    user_authz_version_adapter = SQLModelUserAuthzVersionAdapter(repo.engine)
-    user_registrar_adapter = SQLModelUserRegistrarAdapter(
-        repository=repo, register_user=register_user
-    )
-    audit_adapter = SQLModelAuditAdapter(repo)
 
     def _shutdown() -> None:
         repo.close()
@@ -178,12 +179,12 @@ def build_auth_container(
         repository=repo,
         rate_limiter=limiter,
         principal_cache=cache,
-        user_authz_version_adapter=user_authz_version_adapter,
-        user_registrar_adapter=user_registrar_adapter,
         audit_adapter=audit_adapter,
+        credential_writer_adapter=credential_writer_adapter,
         shutdown=_shutdown,
         register_user=register_user,
         login_user=LoginUser(
+            _users=users,
             _repository=repo,
             _password_service=password_service,
             _token_service=token_service,
@@ -191,6 +192,7 @@ def build_auth_container(
             _dummy_hash=dummy_hash,
         ),
         rotate_refresh_token=RotateRefreshToken(
+            _users=users,
             _repository=repo,
             _token_service=token_service,
             _settings=settings,
@@ -198,29 +200,34 @@ def build_auth_container(
         logout_user=LogoutUser(_repository=repo, _cache=cache),
         logout_all_sessions=LogoutAllSessions(_repository=repo, _cache=cache),
         request_password_reset=RequestPasswordReset(
+            _users=users,
             _repository=repo,
+            _jobs=jobs,
             _settings=settings,
         ),
         confirm_password_reset=ConfirmPasswordReset(
+            _users=users,
             _repository=repo,
             _password_service=password_service,
             _cache=cache,
         ),
         request_email_verification=RequestEmailVerification(
+            _users=users,
             _repository=repo,
+            _jobs=jobs,
             _settings=settings,
         ),
         confirm_email_verification=ConfirmEmailVerification(
+            _users=users,
             _repository=repo,
             _cache=cache,
         ),
         resolve_principal=ResolvePrincipalFromAccessToken.create(
-            repository=repo,
+            users=users,
             token_service=token_service,
             settings=settings,
             cache=cache,
         ),
-        list_users=ListUsers(_repository=repo),
         list_audit_events=ListAuditEvents(_repository=repo),
     )
 

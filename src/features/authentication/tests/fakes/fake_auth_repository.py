@@ -10,11 +10,10 @@ from uuid import UUID, uuid4
 
 from src.features.authentication.domain.models import (
     AuditEvent,
+    Credential,
     InternalToken,
     RefreshToken,
-    User,
 )
-from src.platform.shared.principal import Principal
 
 
 def _aware_now() -> datetime:
@@ -23,13 +22,12 @@ def _aware_now() -> datetime:
 
 @dataclass(slots=True)
 class _Stores:
-    users: dict[UUID, User] = field(default_factory=dict)
-    users_by_email: dict[str, UUID] = field(default_factory=dict)
     refresh_tokens: dict[UUID, RefreshToken] = field(default_factory=dict)
     refresh_token_by_hash: dict[str, UUID] = field(default_factory=dict)
     internal_tokens: dict[UUID, InternalToken] = field(default_factory=dict)
     internal_token_by_hash: dict[tuple[str, str], UUID] = field(default_factory=dict)
     audit_events: list[AuditEvent] = field(default_factory=list)
+    credentials: dict[tuple[UUID, str], Credential] = field(default_factory=dict)
 
 
 class FakeAuthRepository:
@@ -43,90 +41,6 @@ class FakeAuthRepository:
 
     def close(self) -> None:
         pass
-
-    # ── User operations ──────────────────────────────────────────────────────
-
-    def get_user_by_email(self, email: str) -> User | None:
-        user_id = self._s.users_by_email.get(email)
-        return self._s.users.get(user_id) if user_id else None
-
-    def get_user_by_id(self, user_id: UUID) -> User | None:
-        return self._s.users.get(user_id)
-
-    def list_users(self, *, limit: int = 100, offset: int = 0) -> list[User]:
-        ordered = sorted(self._s.users.values(), key=lambda u: u.created_at)
-        return ordered[offset : offset + limit]
-
-    def create_user(self, *, email: str, password_hash: str) -> User | None:
-        if email in self._s.users_by_email:
-            return None
-        now = _aware_now()
-        user = User(
-            id=uuid4(),
-            email=email,
-            password_hash=password_hash,
-            is_active=True,
-            is_verified=False,
-            authz_version=1,
-            created_at=now,
-            updated_at=now,
-            last_login_at=None,
-        )
-        self._s.users[user.id] = user
-        self._s.users_by_email[email] = user.id
-        return user
-
-    def update_user_login(self, user_id: UUID, when: datetime) -> None:
-        existing = self._s.users.get(user_id)
-        if existing is None:
-            return
-        self._s.users[user_id] = _replace(existing, last_login_at=when, updated_at=when)
-
-    def set_user_active(self, user_id: UUID, is_active: bool) -> None:
-        existing = self._s.users.get(user_id)
-        if existing is None:
-            return
-        self._s.users[user_id] = _replace(
-            existing, is_active=is_active, updated_at=_aware_now()
-        )
-
-    def set_user_verified(self, user_id: UUID) -> None:
-        existing = self._s.users.get(user_id)
-        if existing is None:
-            return
-        self._s.users[user_id] = _replace(
-            existing, is_verified=True, updated_at=_aware_now()
-        )
-
-    def update_user_password(self, user_id: UUID, password_hash: str) -> None:
-        existing = self._s.users.get(user_id)
-        if existing is None:
-            return
-        self._s.users[user_id] = _replace(
-            existing, password_hash=password_hash, updated_at=_aware_now()
-        )
-
-    def increment_user_authz_version(self, user_id: UUID) -> None:
-        existing = self._s.users.get(user_id)
-        if existing is None:
-            return
-        self._s.users[user_id] = _replace(
-            existing,
-            authz_version=existing.authz_version + 1,
-            updated_at=_aware_now(),
-        )
-
-    def get_principal(self, user_id: UUID) -> Principal | None:
-        user = self._s.users.get(user_id)
-        if user is None:
-            return None
-        return Principal(
-            user_id=user.id,
-            email=user.email,
-            is_active=user.is_active,
-            is_verified=user.is_verified,
-            authz_version=user.authz_version,
-        )
 
     # ── Refresh token operations ─────────────────────────────────────────────
 
@@ -194,10 +108,6 @@ class FakeAuthRepository:
     @contextmanager
     def internal_token_transaction(self) -> Iterator["FakeAuthRepository"]:
         yield self
-
-    # Methods consumed by the transaction port (the fake itself plays the role
-    # of the transactional context for both refresh-token and internal-token
-    # transactions).
 
     def get_refresh_token_for_update(self, token_hash: str) -> RefreshToken | None:
         return self.get_refresh_token_by_hash(token_hash)
@@ -284,11 +194,33 @@ class FakeAuthRepository:
             events = [e for e in events if e.created_at >= since]
         return list(reversed(events))[:limit]
 
-    # ── Test helpers ─────────────────────────────────────────────────────────
+    # ── Credential operations ────────────────────────────────────────────────
 
-    @property
-    def stored_users(self) -> dict[UUID, User]:
-        return self._s.users
+    def get_credential_for_user(
+        self, user_id: UUID, *, algorithm: str = "argon2"
+    ) -> Credential | None:
+        return self._s.credentials.get((user_id, algorithm))
+
+    def upsert_credential(
+        self, *, user_id: UUID, algorithm: str, hash: str
+    ) -> Credential:
+        now = _aware_now()
+        existing = self._s.credentials.get((user_id, algorithm))
+        if existing is None:
+            credential = Credential(
+                id=uuid4(),
+                user_id=user_id,
+                algorithm=algorithm,
+                hash=hash,
+                last_changed_at=now,
+                created_at=now,
+            )
+        else:
+            credential = _replace(existing, hash=hash, last_changed_at=now)
+        self._s.credentials[(user_id, algorithm)] = credential
+        return credential
+
+    # ── Test helpers ─────────────────────────────────────────────────────────
 
     @property
     def stored_refresh_tokens(self) -> dict[UUID, RefreshToken]:
@@ -299,8 +231,8 @@ class FakeAuthRepository:
         return list(self._s.audit_events)
 
 
-def _replace(user: Any, **changes: Any) -> Any:
+def _replace(obj: Any, **changes: Any) -> Any:
     """Create a new frozen-dataclass instance with selected fields replaced."""
     from dataclasses import replace
 
-    return replace(user, **changes)
+    return replace(obj, **changes)

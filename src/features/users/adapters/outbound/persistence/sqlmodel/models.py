@@ -19,10 +19,8 @@ class UserTable(SQLModel, table=True):
 
     Holds activity flags and the ``authz_version`` counter used to
     invalidate already-issued JWTs whenever a user's relationships
-    change. The ``password_hash`` column stays here for the duration of
-    the credentials-split migration (PRs 5–6 of the foundation change);
-    after the column is dropped, credentials live in a separate table
-    owned by the authentication feature.
+    change. Password credentials live in the authentication feature's
+    ``credentials`` table.
     """
 
     __tablename__ = "users"
@@ -35,7 +33,6 @@ class UserTable(SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     email: str = Field(index=True, nullable=False)
-    password_hash: str = Field(nullable=False)
     is_active: bool = Field(default=True, nullable=False)
     is_verified: bool = Field(default=False, nullable=False)
     authz_version: int = Field(default=1, nullable=False)
