@@ -1,36 +1,64 @@
-"""Stub :class:`FileStoragePort` for Amazon S3.
+"""S3-backed :class:`FileStoragePort` implementation.
 
-This adapter exists so the port has a registered production-shaped
-implementation while a consumer project decides which object store
-they want. Every method raises :class:`NotImplementedError` with a
-pointer at ``README.md`` in this directory, which spells out the
-boto3 mapping and the IAM policy a real implementation needs.
+Uses ``boto3``'s synchronous client. The adapter is constructed once at
+composition time and held for the process lifetime; ``botocore`` clients
+are threadsafe for the read paths FastAPI's threadpool uses to dispatch
+sync route dependencies.
 
-Mirrors the SpiceDB authorization adapter stub: the type-checker keeps
-the signature honest, contract tests confirm the methods exist, and
-production startup refuses ``APP_STORAGE_BACKEND=s3`` until the methods
-are filled in.
+Credentials and (optionally) a custom endpoint URL come from the
+standard AWS resolution chain — environment variables, shared config,
+instance profile, etc. Operators pointing at R2 / MinIO / other
+S3-compatible services set ``AWS_ENDPOINT_URL_S3`` rather than threading
+a template-specific knob through ``StorageSettings``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
-from src.features.file_storage.application.errors import FileStorageError
-from src.platform.shared.result import Result
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
-_README_HINT = (
-    "See src/features/file_storage/adapters/outbound/s3/README.md "
-    "for the boto3 mapping and IAM requirements."
+from src.features.file_storage.application.errors import (
+    FileStorageError,
+    ObjectNotFoundError,
+    StorageBackendError,
 )
+from src.platform.shared.result import Err, Ok, Result
+
+# S3 caps presigned URLs at 7 days for SigV4. Going past it returns a URL
+# that fails on use rather than at signing time, so we reject up front.
+_S3_PRESIGNED_URL_MAX_SECONDS = 604800
+
+_NOT_FOUND_CODES = frozenset({"NoSuchKey", "404", "NotFound"})
+
+
+def _is_not_found(exc: ClientError) -> bool:
+    error = exc.response.get("Error", {}) if hasattr(exc, "response") else {}
+    code = error.get("Code")
+    status = str(exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
+    return code in _NOT_FOUND_CODES or status == "404"
 
 
 @dataclass(slots=True)
 class S3FileStorageAdapter:
-    """Stub S3-backed :class:`FileStoragePort` — every method raises."""
+    """Real :class:`FileStoragePort` backed by ``boto3``.
+
+    The :class:`boto3` client is built in ``__post_init__`` from the
+    region passed in by the composition root and stashed on the
+    instance. Tests that want to inject a pre-built client (for
+    ``moto``-mocked transports or otherwise) pass ``client=...``
+    explicitly to bypass construction.
+    """
 
     bucket: str
     region: str
+    client: Any = field(default=None)
+
+    def __post_init__(self) -> None:
+        if self.client is None:
+            self.client = boto3.client("s3", region_name=self.region)
 
     def put(
         self,
@@ -38,25 +66,84 @@ class S3FileStorageAdapter:
         content: bytes,
         content_type: str,
     ) -> Result[None, FileStorageError]:
-        raise NotImplementedError(
-            f"S3FileStorageAdapter.put is not implemented. {_README_HINT}"
-        )
+        try:
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=content,
+                ContentType=content_type,
+            )
+        except ClientError as exc:
+            return Err(StorageBackendError(reason=_format_client_error(exc)))
+        except BotoCoreError as exc:
+            return Err(StorageBackendError(reason=str(exc)))
+        return Ok(None)
 
     def get(self, key: str) -> Result[bytes, FileStorageError]:
-        raise NotImplementedError(
-            f"S3FileStorageAdapter.get is not implemented. {_README_HINT}"
-        )
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            body = response["Body"].read()
+        except ClientError as exc:
+            if _is_not_found(exc):
+                return Err(ObjectNotFoundError(key=key))
+            return Err(StorageBackendError(reason=_format_client_error(exc)))
+        except BotoCoreError as exc:
+            return Err(StorageBackendError(reason=str(exc)))
+        return Ok(body)
 
     def delete(self, key: str) -> Result[None, FileStorageError]:
-        raise NotImplementedError(
-            f"S3FileStorageAdapter.delete is not implemented. {_README_HINT}"
-        )
+        # S3 returns 204 even when the key is absent, so this satisfies
+        # the port's "delete of a missing key is a no-op" contract
+        # without us having to inspect responses.
+        try:
+            self.client.delete_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            return Err(StorageBackendError(reason=_format_client_error(exc)))
+        except BotoCoreError as exc:
+            return Err(StorageBackendError(reason=str(exc)))
+        return Ok(None)
 
     def signed_url(
         self,
         key: str,
         expires_in: int,
     ) -> Result[str, FileStorageError]:
-        raise NotImplementedError(
-            f"S3FileStorageAdapter.signed_url is not implemented. {_README_HINT}"
-        )
+        if expires_in > _S3_PRESIGNED_URL_MAX_SECONDS:
+            return Err(
+                StorageBackendError(
+                    reason=(
+                        f"expires_in exceeds S3 maximum of "
+                        f"{_S3_PRESIGNED_URL_MAX_SECONDS} seconds"
+                    )
+                )
+            )
+        # ``generate_presigned_url`` signs blindly — it returns a URL
+        # even for a missing key. ``LocalFileStorageAdapter`` errors in
+        # that case, so we ``head_object`` first to keep the contracts
+        # aligned across adapters.
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            if _is_not_found(exc):
+                return Err(ObjectNotFoundError(key=key))
+            return Err(StorageBackendError(reason=_format_client_error(exc)))
+        except BotoCoreError as exc:
+            return Err(StorageBackendError(reason=str(exc)))
+        try:
+            url = self.client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket, "Key": key},
+                ExpiresIn=expires_in,
+            )
+        except ClientError as exc:
+            return Err(StorageBackendError(reason=_format_client_error(exc)))
+        except BotoCoreError as exc:
+            return Err(StorageBackendError(reason=str(exc)))
+        return Ok(url)
+
+
+def _format_client_error(exc: ClientError) -> str:
+    error = exc.response.get("Error", {}) if hasattr(exc, "response") else {}
+    code = error.get("Code", "Unknown")
+    message = error.get("Message", str(exc))
+    return f"{code}: {message}"

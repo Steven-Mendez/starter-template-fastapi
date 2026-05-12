@@ -1,8 +1,8 @@
 # Email
 
 The `email` feature owns transactional mail dispatch. It ships with a port,
-two adapters, and a template registry features contribute to at composition
-time.
+three adapters (console, SMTP, Resend), and a template registry features
+contribute to at composition time.
 
 ## At A Glance
 
@@ -12,6 +12,7 @@ time.
 | Registry | `src/features/email/application/registry.py` — `EmailTemplateRegistry.register_template(name, path)` |
 | Console adapter | `src/features/email/adapters/outbound/console/` |
 | SMTP adapter | `src/features/email/adapters/outbound/smtp/` |
+| Resend adapter | `src/features/email/adapters/outbound/resend/` (HTTP API) |
 | Settings | `src/features/email/composition/settings.py` (`EmailSettings`) |
 | Container | `src/features/email/composition/container.py` (`build_email_container`) |
 
@@ -19,17 +20,21 @@ time.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `APP_EMAIL_BACKEND` | `console` | One of `console`, `smtp`. **Production refuses `console`.** |
-| `APP_EMAIL_FROM` | unset | Required when backend is `smtp`. |
+| `APP_EMAIL_BACKEND` | `console` | One of `console`, `smtp`, `resend`. **Production refuses `console`.** |
+| `APP_EMAIL_FROM` | unset | Required when backend is `smtp` or `resend`. |
 | `APP_EMAIL_SMTP_HOST` | unset | Required when backend is `smtp`. |
 | `APP_EMAIL_SMTP_PORT` | `587` | Submission port. |
 | `APP_EMAIL_SMTP_USERNAME` / `..._PASSWORD` | unset | Optional auth credentials. |
 | `APP_EMAIL_SMTP_USE_STARTTLS` | `true` | STARTTLS upgrade on the submission port. |
 | `APP_EMAIL_SMTP_USE_SSL` | `false` | Implicit TLS on port 465. Mutually exclusive with STARTTLS. |
 | `APP_EMAIL_SMTP_TIMEOUT_SECONDS` | `10.0` | Socket timeout. |
+| `APP_EMAIL_RESEND_API_KEY` | unset | Required when backend is `resend`. |
+| `APP_EMAIL_RESEND_BASE_URL` | `https://api.resend.com` | Switch to `https://api.eu.resend.com` for the EU data plane or point at a Resend-compatible host. |
 
-The settings validator refuses to start when `APP_EMAIL_BACKEND=smtp` and
-either `APP_EMAIL_SMTP_HOST` or `APP_EMAIL_FROM` is missing.
+The settings validator refuses to start when:
+
+- `APP_EMAIL_BACKEND=smtp` and either `APP_EMAIL_SMTP_HOST` or `APP_EMAIL_FROM` is missing,
+- `APP_EMAIL_BACKEND=resend` and either `APP_EMAIL_RESEND_API_KEY` or `APP_EMAIL_FROM` is missing.
 
 ## How To Send Mail
 
@@ -102,8 +107,46 @@ STARTTLS (port 587) and implicit TLS (port 465). `EmailError` covers
 connection failure, authentication failure, and recipient rejection.
 
 The contract test suite (`src/features/email/tests/contracts/`) runs the
-same assertions against both adapters using a fake SMTP server provided by
-`aiosmtpd`, so the production code path is exercised against a real socket.
+same assertions against every adapter — the SMTP path uses a fake SMTP
+server provided by `aiosmtpd`, so the production code path is exercised
+against a real socket.
+
+### Resend (`ResendEmailAdapter`)
+
+POSTs the rendered email to Resend's `/emails` endpoint over `httpx`.
+Status-code mapping:
+
+- `2xx` → `Ok(None)`
+- `4xx` → `Err(DeliveryError(reason="resend rejected: <status> <message>"))`,
+  reading `message` from the JSON body when present, falling back to
+  the raw response text.
+- `5xx` → `Err(DeliveryError(reason="resend transient error: <status> ..."))`
+- `httpx.HTTPError` (timeout, connect error) → `Err(DeliveryError(reason=str(exc)))`
+
+The adapter does **not** retry. For at-least-once delivery, enqueue the
+`send_email` background job (see `docs/background-jobs.md`) and let the
+job-queue retry policy handle transient failures — retrying inside the
+adapter risks double-sends because Resend's API is not idempotent on the
+client side.
+
+#### Acquiring an API key
+
+Create an account at <https://resend.com>, verify the sending domain
+(SPF + DKIM records are issued in the dashboard), and create an API
+key under *API Keys*. Free tier today is 100 emails/day with a 10
+emails/second cap — keep `APP_EMAIL_BACKEND=console` in development
+unless you specifically want to spend the quota.
+
+#### Region (EU vs US)
+
+Resend's EU data plane is reachable at `https://api.eu.resend.com`.
+Set `APP_EMAIL_RESEND_BASE_URL` to switch — no other change is needed.
+
+The same setting can also point at a Resend-compatible self-hosted
+service.
+
+The Resend contract path is exercised by `respx`-mocked HTTP transport;
+no real Resend account is touched in CI.
 
 ## Extending The Feature
 

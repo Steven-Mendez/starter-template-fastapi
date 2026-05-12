@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-EmailBackend = Literal["console", "smtp"]
+EmailBackend = Literal["console", "smtp", "resend"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +27,8 @@ class EmailSettings:
     smtp_use_starttls: bool
     smtp_use_ssl: bool
     smtp_timeout_seconds: float
+    resend_api_key: str | None
+    resend_base_url: str
 
     @classmethod
     def from_app_settings(
@@ -42,6 +44,8 @@ class EmailSettings:
         smtp_use_starttls: bool | None = None,
         smtp_use_ssl: bool | None = None,
         smtp_timeout_seconds: float | None = None,
+        resend_api_key: str | None = None,
+        resend_base_url: str | None = None,
     ) -> "EmailSettings":
         """Construct from either an :class:`AppSettings` or flat kwargs.
 
@@ -58,9 +62,12 @@ class EmailSettings:
             smtp_use_starttls = app.email_smtp_use_starttls
             smtp_use_ssl = app.email_smtp_use_ssl
             smtp_timeout_seconds = app.email_smtp_timeout_seconds
-        if backend not in ("console", "smtp"):
+            resend_api_key = app.email_resend_api_key
+            resend_base_url = app.email_resend_base_url
+        if backend not in ("console", "smtp", "resend"):
             raise ValueError(
-                f"APP_EMAIL_BACKEND must be 'console' or 'smtp'; got {backend!r}"
+                "APP_EMAIL_BACKEND must be one of 'console', 'smtp', 'resend'; "
+                f"got {backend!r}"
             )
         return cls(
             backend=backend,  # type: ignore[arg-type]
@@ -76,6 +83,8 @@ class EmailSettings:
             smtp_timeout_seconds=(
                 10.0 if smtp_timeout_seconds is None else smtp_timeout_seconds
             ),
+            resend_api_key=resend_api_key,
+            resend_base_url=resend_base_url or "https://api.resend.com",
         )
 
     def resolved_from_address(self) -> str:
@@ -94,10 +103,20 @@ class EmailSettings:
                 missing.append("APP_EMAIL_SMTP_PORT")
             if missing:
                 errors.append("APP_EMAIL_BACKEND=smtp requires: " + ", ".join(missing))
+        if self.backend == "resend":
+            missing = []
+            if not self.resend_api_key:
+                missing.append("APP_EMAIL_RESEND_API_KEY")
+            if not self.from_address:
+                missing.append("APP_EMAIL_FROM")
+            if missing:
+                errors.append(
+                    "APP_EMAIL_BACKEND=resend requires: " + ", ".join(missing)
+                )
 
     def validate_production(self, errors: list[str]) -> None:
         if self.backend == "console":
             errors.append(
                 "APP_EMAIL_BACKEND must not be 'console' in production; "
-                "configure 'smtp' and set APP_EMAIL_SMTP_HOST/APP_EMAIL_FROM"
+                "configure 'smtp' or 'resend' and set the matching credentials"
             )

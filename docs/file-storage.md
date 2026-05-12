@@ -1,9 +1,9 @@
 # File Storage
 
 The `file_storage` feature owns persistent-blob access. It ships with a port,
-a local-filesystem adapter, and an S3 stub. No consumer feature wires it in
-the current source tree; it ships as scaffolding ready to plug into your
-own feature.
+a local-filesystem adapter, and a real `boto3`-backed S3 adapter. No consumer
+feature wires it in the current source tree; it ships as scaffolding ready
+to plug into your own feature.
 
 ## At A Glance
 
@@ -11,7 +11,7 @@ own feature.
 | --- | --- |
 | Port | `src/features/file_storage/application/ports/file_storage_port.py` — `FileStoragePort.put`, `.get`, `.delete`, `.signed_url` |
 | Local adapter | `src/features/file_storage/adapters/outbound/local/` |
-| S3 stub | `src/features/file_storage/adapters/outbound/s3/` |
+| S3 adapter | `src/features/file_storage/adapters/outbound/s3/` (`boto3`-backed) |
 | Fake (for tests) | `src/features/file_storage/tests/fakes/` |
 | Settings | `src/features/file_storage/composition/settings.py` (`StorageSettings`) |
 | Container | `src/features/file_storage/composition/container.py` |
@@ -60,16 +60,33 @@ this adapter when `APP_STORAGE_ENABLED=true`.
 `signed_url(...)` returns a `file://` URL — useful for tests, useless for
 browsers.
 
-### S3 stub (`S3FileStorageAdapter`)
+### S3 (`S3FileStorageAdapter`)
 
-Every method raises `NotImplementedError`. The `README.md` next to the
-adapter describes the boto3 mapping and the IAM permissions a real
-implementation needs (`s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`,
-plus `s3:GetObject` on a different ARN for presigned URLs).
+Backed by `boto3`. Credentials come from the standard AWS chain
+(environment variables, shared config, EC2 / ECS / EKS instance profile,
+SSO, etc.) — no template-specific knob.
 
-The stub mirrors the SpiceDB authorization stub: the port's shape is fixed
-by the codebase, and filling in the adapter is one of the first things a
-consumer who needs S3 will do.
+- `put` → `s3_client.put_object`
+- `get` → `s3_client.get_object`; `NoSuchKey` / 404 is mapped to `ObjectNotFoundError`
+- `delete` → `s3_client.delete_object` (already idempotent on S3)
+- `signed_url` calls `head_object` first (so a missing key returns
+  `ObjectNotFoundError` instead of a URL that 404s), then
+  `generate_presigned_url`. `expires_in > 604800` (S3's 7-day SigV4
+  maximum) is rejected as `StorageBackendError`.
+
+Every other `botocore.exceptions.ClientError` (and `BotoCoreError` /
+`EndpointConnectionError`) is wrapped as `StorageBackendError(reason=...)`.
+
+#### Pointing at R2 / MinIO / other S3-compatible services
+
+The adapter does not expose an `endpoint_url` setting. Set
+`AWS_ENDPOINT_URL_S3` (or `AWS_ENDPOINT_URL`) at the process level and
+`boto3` picks it up natively — no code changes required.
+
+#### AWS setup
+
+The IAM policy and bucket-configuration checklist live in
+`src/features/file_storage/adapters/outbound/s3/README.md`.
 
 ### Fake (`FakeFileStorage`)
 
@@ -83,10 +100,8 @@ against all three adapters:
 
 - the fake (always),
 - the local adapter (always),
-- the S3 stub (skipped with `xfail` until the real implementation lands).
-
-When you implement the S3 adapter, flip the contract test from `xfail` to
-`xpass` and provide testcontainers (e.g. `minio`) or a moto fixture.
+- the S3 adapter, exercised in-process against `moto`'s AWS mock —
+  no Docker required.
 
 ## Extending The Feature
 

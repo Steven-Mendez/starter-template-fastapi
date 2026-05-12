@@ -47,19 +47,18 @@ KANBAN_SKIP_TESTCONTAINERS=1 make test-integration
 ## Architecture
 
 Feature-first hexagonal architecture enforced by Import Linter contracts.
-Six features ship out of the box; the worked kanban example lives on the
-`examples/kanban` branch with a weekly CI rebase to keep it from rotting.
-The previous in-tree `_template` scaffold has been removed — copy from git
-history or the `examples/kanban` branch when starting a new feature.
+Six features ship out of the box. The previous in-tree `_template`
+scaffold has been removed — copy from git history when starting a new
+feature.
 
 | Feature | Role |
 |---|---|
 | `authentication` | JWT issuance, login/logout/refresh, password reset, email verify, rate limiting, principal resolution, `credentials` table |
 | `users` | The `User` entity, registration, profile, deactivation, admin user listing, `UserPort` |
 | `authorization` | ReBAC engine, `AuthorizationPort`, `AuthorizationRegistry`, SQLModel adapter, SpiceDB stub, `BootstrapSystemAdmin` |
-| `email` | `EmailPort`, console + SMTP adapters, `EmailTemplateRegistry` |
+| `email` | `EmailPort`, console + SMTP + Resend adapters, `EmailTemplateRegistry` |
 | `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, `JobHandlerRegistry`, worker entrypoint |
-| `file_storage` | `FileStoragePort`, local adapter, S3 stub |
+| `file_storage` | `FileStoragePort`, local + S3 (`boto3`) adapters |
 
 Cross-feature communication goes through ports only:
 
@@ -165,11 +164,9 @@ Pure ReBAC concerns. Other features call into it through one port; it calls back
 ### Scaffold for new features
 
 The in-tree `_template` feature has been removed. To start a new feature,
-recover the scaffold from one of:
-
-- Git history: `git checkout <pre-removal-sha>^ -- src/features/_template`,
-  then `mv src/features/_template src/features/<your-feature>`.
-- The `examples/kanban` branch (rebased weekly onto `main`).
+recover the scaffold from git history:
+`git checkout <pre-removal-sha>^ -- src/features/_template`, then
+`mv src/features/_template src/features/<your-feature>`.
 
 The scaffold demonstrates a domain entity with a small invariant, a
 `UnitOfWorkPort` + SQLModel adapter that commits the resource row and the
@@ -208,7 +205,7 @@ Run boundary checks: `make lint-arch`
 
 ## Adding a new feature
 
-1. Recover the scaffold from git history (`git checkout <pre-removal-sha>^ -- src/features/_template`) or copy a feature from the `examples/kanban` branch, then move it to `src/features/<name>/` and rename the entity, table, routes, and tests inside the copy.
+1. Recover the scaffold from git history (`git checkout <pre-removal-sha>^ -- src/features/_template`), then move it to `src/features/<name>/` and rename the entity, table, routes, and tests inside the copy.
 2. Decide which resource types your feature owns. For each *leaf* type (one whose tuples will live in the `relationships` table), call `registry.register_resource_type("<type>", actions={...}, hierarchy={...})` from your feature's wiring module. For each *inherited* type (delegates to a parent via a lookup), call `registry.register_parent("<type>", parent_of=..., inherits_from="<parent>")`.
 3. Build your feature's container in `main.py` after the authorization container exists; pass `authorization.port` and `authorization.registry` in.
 4. Gate your HTTP routes with the platform-level `require_authorization("<action>", "<resource_type>", id_loader=...)` dependency.
@@ -235,7 +232,7 @@ Coverage gate: `make ci` enforces 80% line coverage.
 - `@dataclass(slots=True)` for use cases and mutable domain entities; `@dataclass(frozen=True, slots=True)` for immutable commands/queries/contracts.
 - FastAPI dependencies are declared as `Annotated` type aliases (see existing `*Dep` names in `adapters/inbound/http/dependencies.py`).
 - Feature HTTP errors map application errors to HTTP status codes in `adapters/inbound/http/errors.py`; the platform renders the final Problem Details response.
-- New feature code goes under `src/features/<feature_name>/` mirroring the scaffold recovered from git history or the `examples/kanban` branch (see "Adding a new feature").
+- New feature code goes under `src/features/<feature_name>/` mirroring the scaffold recovered from git history (see "Adding a new feature").
 - New migrations: update SQLModel tables first, then `uv run alembic revision --autogenerate -m "..."`.
 - Per-feature settings: every feature ships a `composition/settings.py` with a typed projection and a `validate_production(errors: list[str]) -> None` method. `AppSettings` aggregates them.
 
@@ -248,7 +245,7 @@ The settings validator refuses to start when `APP_ENVIRONMENT=production` and an
 - `APP_AUTH_COOKIE_SECURE=false`
 - `APP_ENABLE_DOCS=true`
 - `APP_AUTH_RBAC_ENABLED=false`
-- `APP_EMAIL_BACKEND=console`
+- `APP_EMAIL_BACKEND=console` (must be `smtp` or `resend` in production, with the matching credentials set)
 - `APP_JOBS_BACKEND=in_process`
 - `APP_AUTH_RETURN_INTERNAL_TOKENS=true`
 - `APP_STORAGE_ENABLED=true` with `APP_STORAGE_BACKEND=local`
@@ -273,7 +270,9 @@ See `docs/operations.md` for the full env-var reference.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `APP_EMAIL_BACKEND` | `console` | `console` for dev/test, `smtp` in production |
+| `APP_EMAIL_BACKEND` | `console` | `console` for dev/test, `smtp` or `resend` in production |
+| `APP_EMAIL_RESEND_API_KEY` | unset | Required when `APP_EMAIL_BACKEND=resend` |
+| `APP_EMAIL_RESEND_BASE_URL` | `https://api.resend.com` | Use `https://api.eu.resend.com` for the EU data plane |
 | `APP_JOBS_BACKEND` | `in_process` | `in_process` for dev/test, `arq` in production |
 | `APP_JOBS_REDIS_URL` | unset | Required for `arq`; falls back to `APP_AUTH_REDIS_URL` |
 | `APP_STORAGE_BACKEND` | `local` | `local` for dev/test, `s3` in production when `APP_STORAGE_ENABLED=true` |

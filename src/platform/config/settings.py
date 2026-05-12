@@ -128,9 +128,10 @@ class AppSettings(BaseSettings):
     # Email
     # ---------------------------------------------------------------------------
     # ``console`` logs the rendered email (dev/test default). ``smtp`` uses
-    # smtplib to dispatch via the configured server. The production validator
-    # refuses ``console`` when ``APP_ENVIRONMENT=production``.
-    email_backend: Literal["console", "smtp"] = "console"
+    # smtplib to dispatch via the configured server. ``resend`` POSTs to
+    # Resend's HTTP API. The production validator refuses ``console`` when
+    # ``APP_ENVIRONMENT=production``.
+    email_backend: Literal["console", "smtp", "resend"] = "console"
     email_from: str | None = None
     email_smtp_host: str | None = None
     email_smtp_port: int = 587
@@ -142,6 +143,12 @@ class AppSettings(BaseSettings):
     email_smtp_use_starttls: bool = True
     email_smtp_use_ssl: bool = False
     email_smtp_timeout_seconds: float = 10.0
+    # Resend HTTP backend. ``email_resend_api_key`` is required when
+    # ``email_backend=resend``. ``email_resend_base_url`` defaults to the
+    # US endpoint; switch to ``https://api.eu.resend.com`` for the EU
+    # data plane or point at a self-hosted Resend-compatible service.
+    email_resend_api_key: str | None = None
+    email_resend_base_url: str = "https://api.resend.com"
     # ---------------------------------------------------------------------------
     # Background jobs
     # ---------------------------------------------------------------------------
@@ -159,8 +166,10 @@ class AppSettings(BaseSettings):
     # File storage
     # ---------------------------------------------------------------------------
     # ``local`` writes to ``APP_STORAGE_LOCAL_PATH`` (dev/test default).
-    # ``s3`` selects the bundled S3 stub — calls raise ``NotImplementedError``
-    # until the consumer fills it in (see adapters/outbound/s3/README.md).
+    # ``s3`` uses the bundled ``boto3``-backed adapter; credentials come from
+    # the standard AWS chain (env, instance profile, …). Operators pointing
+    # at R2/MinIO/other S3-compatible endpoints set ``AWS_ENDPOINT_URL_S3``
+    # at the SDK level — no template-specific knob is required.
     # ``storage_enabled`` is the "is a consumer feature actually wired?" flag:
     # the production validator only refuses ``local`` when this is true, so
     # projects that never use file storage are not forced to set up S3.

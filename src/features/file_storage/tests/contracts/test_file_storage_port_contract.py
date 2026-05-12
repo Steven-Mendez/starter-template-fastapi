@@ -1,18 +1,19 @@
 """Behavioural contract shared by every :class:`FileStoragePort` implementation.
 
-The fake and the local on-disk adapter are exercised against the same
-scenarios so a regression on either side surfaces here. The s3 stub
-is parametrised in too, but every scenario is marked ``xfail`` until
-the stub is implemented — the parametrisation exists so an
-implementer cannot silently forget the contract.
+The fake, the local on-disk adapter, and the S3 adapter (backed by
+``moto``'s in-process AWS mock) are exercised against the same
+scenarios. A regression on any backend surfaces here.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Callable
 
+import boto3
 import pytest
+from moto import mock_aws
 
 from src.features.file_storage.adapters.outbound.local import LocalFileStorageAdapter
 from src.features.file_storage.adapters.outbound.s3 import S3FileStorageAdapter
@@ -30,6 +31,22 @@ pytestmark = pytest.mark.unit
 
 AdapterFactory = Callable[[Path], FileStoragePort]
 
+_S3_TEST_BUCKET = "contract-test"
+_S3_TEST_REGION = "us-east-1"
+
+
+@pytest.fixture(autouse=True)
+def _aws_mock() -> Iterator[None]:
+    """Wrap every contract test in moto's AWS mock.
+
+    The fake and local adapters do not touch AWS, so an always-on mock
+    costs nothing for them; the S3 factory below relies on it.
+    """
+    with mock_aws():
+        client = boto3.client("s3", region_name=_S3_TEST_REGION)
+        client.create_bucket(Bucket=_S3_TEST_BUCKET)
+        yield
+
 
 def _fake_factory(_: Path) -> FileStoragePort:
     return FakeFileStorage()
@@ -40,37 +57,22 @@ def _local_factory(tmp_path: Path) -> FileStoragePort:
 
 
 def _s3_factory(_: Path) -> FileStoragePort:
-    return S3FileStorageAdapter(bucket="contract-test", region="us-east-1")
+    client = boto3.client("s3", region_name=_S3_TEST_REGION)
+    return S3FileStorageAdapter(
+        bucket=_S3_TEST_BUCKET,
+        region=_S3_TEST_REGION,
+        client=client,
+    )
 
 
-# The s3 stub raises ``NotImplementedError`` from every method until it
-# is implemented. Parametrising it in with ``xfail`` keeps the scenario
-# list honest: a real implementation flips ``strict=True`` (or removes
-# the marker) and any drift fails immediately.
 _REAL_ADAPTERS = pytest.mark.parametrize(
     "factory",
-    [_fake_factory, _local_factory],
-    ids=["fake", "local"],
-)
-_ALL_ADAPTERS = pytest.mark.parametrize(
-    "factory",
-    [
-        _fake_factory,
-        _local_factory,
-        pytest.param(
-            _s3_factory,
-            marks=pytest.mark.xfail(
-                raises=NotImplementedError,
-                reason="S3 adapter is a stub; see adapters/outbound/s3/README.md",
-                strict=True,
-            ),
-        ),
-    ],
+    [_fake_factory, _local_factory, _s3_factory],
     ids=["fake", "local", "s3"],
 )
 
 
-@_ALL_ADAPTERS
+@_REAL_ADAPTERS
 def test_put_then_get_returns_bytes(factory: AdapterFactory, tmp_path: Path) -> None:
     port = factory(tmp_path)
     put_result = port.put("k1", b"hello", "text/plain")

@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.features.email.adapters.outbound.console import ConsoleEmailAdapter
+from src.features.email.adapters.outbound.resend import ResendEmailAdapter
 from src.features.email.adapters.outbound.smtp import SmtpEmailAdapter
 from src.features.email.application.ports.email_port import EmailPort
 from src.features.email.application.registry import EmailTemplateRegistry
@@ -55,6 +56,17 @@ def build_email_container(settings: EmailSettings) -> EmailContainer:
             use_starttls=settings.smtp_use_starttls,
             use_ssl=settings.smtp_use_ssl,
             timeout=settings.smtp_timeout_seconds,
+        )
+    elif settings.backend == "resend":
+        if not settings.resend_api_key:
+            raise RuntimeError(
+                "APP_EMAIL_RESEND_API_KEY is required when APP_EMAIL_BACKEND=resend"
+            )
+        port = ResendEmailAdapter(
+            registry=registry,
+            api_key=settings.resend_api_key,
+            from_address=settings.resolved_from_address(),
+            base_url=settings.resend_base_url,
         )
     else:  # pragma: no cover - guarded by EmailSettings construction
         raise RuntimeError(f"Unknown email backend: {settings.backend!r}")

@@ -184,3 +184,30 @@ def test_smtp_backend_requires_from(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("APP_EMAIL_FROM", raising=False)
     with pytest.raises(ValidationError, match="APP_EMAIL_FROM"):
         AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_resend_backend_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_EMAIL_BACKEND", "resend")
+    monkeypatch.setenv("APP_EMAIL_FROM", "no-reply@example.com")
+    monkeypatch.delenv("APP_EMAIL_RESEND_API_KEY", raising=False)
+    with pytest.raises(ValidationError, match="APP_EMAIL_RESEND_API_KEY"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_resend_backend_requires_from(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_EMAIL_BACKEND", "resend")
+    monkeypatch.setenv("APP_EMAIL_RESEND_API_KEY", "re_test_key")
+    monkeypatch.delenv("APP_EMAIL_FROM", raising=False)
+    with pytest.raises(ValidationError, match="APP_EMAIL_FROM"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_accepts_resend_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_EMAIL_BACKEND", "resend")
+    monkeypatch.setenv("APP_EMAIL_RESEND_API_KEY", "re_test_key")
+    # Configured production values still satisfy SMTP fields, but Resend
+    # only needs FROM + key — construct should succeed without raising.
+    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.email_backend == "resend"
