@@ -45,7 +45,7 @@ audit: ## Audit dependencies for known vulnerabilities
 
 sast: ## Run Bandit static security scan
 	uv run --with bandit bandit -r src \
-		--exclude src/features/authentication/tests,src/features/_template/tests,src/features/authorization/tests,src/platform/tests \
+		--exclude src/features/authentication/tests,src/features/_template/tests,src/features/authorization/tests,src/features/background_jobs/tests,src/features/email/tests,src/features/file_storage/tests,src/features/users/tests,src/platform/tests \
 		--severity-level medium
 
 migration-check: ## Verify Alembic upgrade/check/downgrade against ephemeral PostgreSQL
