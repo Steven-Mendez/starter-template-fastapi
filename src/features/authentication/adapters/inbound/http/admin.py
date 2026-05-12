@@ -19,32 +19,12 @@ from src.features.authentication.adapters.inbound.http.errors import (
 from src.features.authentication.adapters.inbound.http.schemas import (
     AuditEventRead,
     AuditLogRead,
-    UserPublic,
 )
 from src.features.authentication.composition.app_state import get_auth_container
 from src.platform.api.authorization import require_authorization
 from src.platform.shared.result import Err, Ok
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-@admin_router.get(
-    "/users",
-    response_model=list[UserPublic],
-    dependencies=[require_authorization("manage_users", "system", None)],
-)
-def list_users(
-    request: Request,
-    offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-) -> list[UserPublic]:
-    """Return user accounts ordered by email, paginated at the database level."""
-    result = get_auth_container(request).list_users.execute(limit=limit, offset=offset)
-    match result:
-        case Ok(value=users):
-            return [UserPublic.model_validate(u) for u in users]
-        case Err(error=exc):
-            raise_http_from_auth_error(exc)
 
 
 @admin_router.get(

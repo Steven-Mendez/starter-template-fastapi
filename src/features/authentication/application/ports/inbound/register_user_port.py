@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from src.features.authentication.application.errors import AuthError
-from src.features.authentication.domain.models import User
+from src.features.users.domain.user import User
 from src.platform.shared.result import Result
 
 

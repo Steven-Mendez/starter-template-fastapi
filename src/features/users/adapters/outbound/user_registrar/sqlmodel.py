@@ -1,23 +1,21 @@
 """Idempotent register-or-lookup adapter for the authorization feature.
 
-Wraps the existing ``RegisterUser`` use case and the auth repository's
-``get_user_by_email`` lookup. The adapter is intentionally narrow: it
-returns only the user id, never the full ``User`` aggregate, because
-authorization has no business reading the rest of the user record.
+Implements the authorization feature's ``UserRegistrarPort``. The
+adapter takes the users feature's :class:`UserPort` and a
+:class:`CredentialWriterPort` (implemented by authentication so the
+initial password can be persisted into the ``credentials`` table without
+this module having to import authentication directly).
 """
 
 from __future__ import annotations
 
 from uuid import UUID
 
-from src.features.authentication.application.errors import DuplicateEmailError
-from src.features.authentication.application.normalization import normalize_email
-from src.features.authentication.application.ports.outbound.auth_repository import (
-    AuthRepositoryPort,
+from src.features.users.application.errors import UserError
+from src.features.users.application.ports.credential_writer_port import (
+    CredentialWriterPort,
 )
-from src.features.authentication.application.use_cases.auth.register_user import (
-    RegisterUser,
-)
+from src.features.users.application.ports.user_port import UserPort
 from src.platform.shared.result import Err, Ok
 
 
@@ -25,30 +23,37 @@ class SQLModelUserRegistrarAdapter:
     """Returns an existing user id by email or registers a new account."""
 
     def __init__(
-        self, *, repository: AuthRepositoryPort, register_user: RegisterUser
+        self,
+        *,
+        users: UserPort,
+        credential_writer: CredentialWriterPort,
     ) -> None:
-        self._repository = repository
-        self._register_user = register_user
+        self._users = users
+        self._credential_writer = credential_writer
 
     def register_or_lookup(self, *, email: str, password: str) -> UUID:
         """Return the user id for ``email``, creating the account if missing.
 
-        Idempotent on email. ``DuplicateEmailError`` from a concurrent
-        write (two replicas racing during bootstrap) is swallowed by
-        re-reading the row; any other auth-domain error propagates.
+        Idempotent on email. A concurrent write that races into a
+        duplicate-email error is resolved by re-reading the row. When a
+        new account is created the supplied password is also written as
+        the initial credential.
         """
-        normalized = normalize_email(email)
-        existing = self._repository.get_user_by_email(normalized)
+        normalized = email.strip().lower()
+        existing = self._users.get_by_email(normalized)
         if existing is not None:
             return existing.id
 
-        result = self._register_user.execute(email=normalized, password=password)
+        result = self._users.create(email=normalized)
         match result:
             case Ok(value=created):
+                self._credential_writer.set_initial_password(
+                    user_id=created.id, password=password
+                )
                 return created.id
-            case Err(error=exc):
-                if isinstance(exc, DuplicateEmailError):
-                    racer = self._repository.get_user_by_email(normalized)
+            case Err(error=err):
+                if err is UserError.DUPLICATE_EMAIL:
+                    racer = self._users.get_by_email(normalized)
                     if racer is not None:
                         return racer.id
-                raise exc
+                raise RuntimeError(f"User registration failed: {err}")

@@ -17,15 +17,27 @@ from src.features.authentication.application.ports.outbound.auth_repository impo
     AuthRepositoryPort,
 )
 from src.features.authentication.application.types import IssuedTokens
+from src.features.users.application.ports.user_port import UserPort
 from src.platform.config.settings import AppSettings
 from src.platform.shared.principal import Principal
 from src.platform.shared.result import Err, Ok, Result
+
+
+def _principal_from_user(user: object) -> Principal:
+    return Principal(
+        user_id=user.id,  # type: ignore[attr-defined]
+        email=user.email,  # type: ignore[attr-defined]
+        is_active=user.is_active,  # type: ignore[attr-defined]
+        is_verified=user.is_verified,  # type: ignore[attr-defined]
+        authz_version=user.authz_version,  # type: ignore[attr-defined]
+    )
 
 
 @dataclass(slots=True)
 class RotateRefreshToken:
     """Rotate a refresh token and issue a new token pair."""
 
+    _users: UserPort
     _repository: AuthRepositoryPort
     _token_service: AccessTokenService
     _settings: AppSettings
@@ -67,11 +79,12 @@ class RotateRefreshToken:
                 tx.revoke_refresh_token(record.id)
                 invalid_token_error = InvalidTokenError("Invalid refresh token")
             else:
-                principal = tx.get_principal(record.user_id)
-                if principal is None:
+                user = self._users.get_by_id(record.user_id)
+                if user is None:
                     return Err(InvalidCredentialsError("Invalid credentials"))
-                if not principal.is_active:
+                if not user.is_active:
                     return Err(InactiveUserError("Inactive user"))
+                principal = _principal_from_user(user)
 
                 access_token, expires_in = self._token_service.issue(
                     subject=record.user_id,

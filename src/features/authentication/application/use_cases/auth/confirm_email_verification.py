@@ -9,6 +9,7 @@ from src.features.authentication.application.errors import AuthError, InvalidTok
 from src.features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
+from src.features.users.application.ports.user_port import UserPort
 from src.platform.shared.result import Err, Ok, Result
 
 EMAIL_VERIFY_PURPOSE = "email_verify"
@@ -18,6 +19,7 @@ EMAIL_VERIFY_PURPOSE = "email_verify"
 class ConfirmEmailVerification:
     """Consume an email-verification token and mark the user as verified."""
 
+    _users: UserPort
     _repository: AuthRepositoryPort
     _cache: PrincipalCachePort | None = None
 
@@ -38,7 +40,7 @@ class ConfirmEmailVerification:
         if record.user_id is None:
             return Err(InvalidTokenError("Invalid token"))
 
-        self._repository.set_user_verified(record.user_id)
+        self._users.mark_verified(record.user_id)
         self._repository.mark_internal_token_used(record.id)
         if self._cache is not None:
             self._cache.invalidate_user(record.user_id)

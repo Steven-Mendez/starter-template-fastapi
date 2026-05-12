@@ -11,7 +11,6 @@ from src.features.authentication.domain.models import (
     AuditEvent,
     InternalToken,
     RefreshToken,
-    User,
 )
 
 pytestmark = pytest.mark.unit
@@ -19,36 +18,6 @@ pytestmark = pytest.mark.unit
 
 _AWARE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 _NAIVE = datetime(2026, 1, 1)
-
-
-def test_user_rejects_naive_created_at() -> None:
-    with pytest.raises(ValueError, match="User.created_at"):
-        User(
-            id=uuid4(),
-            email="user@example.com",
-            password_hash="x",
-            is_active=True,
-            is_verified=True,
-            authz_version=1,
-            created_at=_NAIVE,
-            updated_at=_AWARE,
-            last_login_at=None,
-        )
-
-
-def test_user_rejects_naive_last_login_at() -> None:
-    with pytest.raises(ValueError, match="User.last_login_at"):
-        User(
-            id=uuid4(),
-            email="user@example.com",
-            password_hash="x",
-            is_active=True,
-            is_verified=True,
-            authz_version=1,
-            created_at=_AWARE,
-            updated_at=_AWARE,
-            last_login_at=_NAIVE,
-        )
 
 
 def test_refresh_token_rejects_naive_expires() -> None:
