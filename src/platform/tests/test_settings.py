@@ -17,6 +17,11 @@ _VALID_PROD_ENV = {
     "APP_AUTH_JWT_AUDIENCE": "starter-template-fastapi",
     "APP_CORS_ORIGINS": '["https://example.com"]',
     "APP_AUTH_COOKIE_SECURE": "true",
+    "APP_EMAIL_BACKEND": "smtp",
+    "APP_EMAIL_SMTP_HOST": "smtp.example.com",
+    "APP_EMAIL_FROM": "no-reply@example.com",
+    "APP_JOBS_BACKEND": "arq",
+    "APP_JOBS_REDIS_URL": "redis://localhost:6379/0",
 }
 
 
@@ -125,4 +130,57 @@ def test_production_rejects_raw_wildcard_cors(
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("APP_CORS_ORIGINS", '["*"]')
     with pytest.raises(ValidationError, match="APP_CORS_ORIGINS"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_rejects_console_email(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_EMAIL_BACKEND", "console")
+    with pytest.raises(ValidationError, match="APP_EMAIL_BACKEND"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_rejects_return_internal_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_AUTH_RETURN_INTERNAL_TOKENS", "true")
+    with pytest.raises(ValidationError, match="APP_AUTH_RETURN_INTERNAL_TOKENS"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_rejects_in_process_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_JOBS_BACKEND", "in_process")
+    monkeypatch.delenv("APP_JOBS_REDIS_URL", raising=False)
+    with pytest.raises(ValidationError, match="APP_JOBS_BACKEND"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_arq_backend_requires_redis_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_JOBS_BACKEND", "arq")
+    monkeypatch.delenv("APP_JOBS_REDIS_URL", raising=False)
+    monkeypatch.delenv("APP_AUTH_REDIS_URL", raising=False)
+    with pytest.raises(ValidationError, match="APP_JOBS_REDIS_URL"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_smtp_backend_requires_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_EMAIL_BACKEND", "smtp")
+    monkeypatch.setenv("APP_EMAIL_FROM", "no-reply@example.com")
+    monkeypatch.delenv("APP_EMAIL_SMTP_HOST", raising=False)
+    with pytest.raises(ValidationError, match="APP_EMAIL_SMTP_HOST"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_smtp_backend_requires_from(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_EMAIL_BACKEND", "smtp")
+    monkeypatch.setenv("APP_EMAIL_SMTP_HOST", "smtp.example.com")
+    monkeypatch.delenv("APP_EMAIL_FROM", raising=False)
+    with pytest.raises(ValidationError, match="APP_EMAIL_FROM"):
         AppSettings(_env_file=None)  # type: ignore[call-arg]

@@ -1,4 +1,27 @@
-"""Runtime configuration loaded from environment variables and .env."""
+"""Runtime configuration loaded from environment variables and .env.
+
+:class:`AppSettings` is the single env-loading boundary; it holds the
+flat ``APP_*`` fields that pydantic-settings populates from the
+environment. Per-feature and platform sub-settings classes
+(:class:`AuthenticationSettings`, :class:`EmailSettings`,
+:class:`DatabaseSettings`, …) are typed projections built from this
+class via their ``from_app_settings(app)`` classmethods. They live in
+each feature's ``composition/settings.py`` (and, for cross-cutting
+platform knobs, in :mod:`src.platform.config.sub_settings`), so a
+feature owns its config — including its production-validation method
+— alongside the rest of its code.
+
+The aggregation pattern: each sub-settings class defines a
+``validate_production(self, errors: list[str]) -> None`` method.
+:class:`AppSettings` constructs each sub-settings projection during
+``_validate_production_settings`` and calls those methods, aggregating
+all error messages into a single :class:`ValueError`.
+
+Why the flat fields remain: ``APP_*`` env vars are the public contract.
+Every existing consumer reads ``settings.<flat_attr>`` and continues to
+work. New code that wants the structured view writes
+``settings.email`` or ``EmailSettings.from_app_settings(settings)``.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +30,12 @@ from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.platform.config.sub_settings import (
+    ApiSettings,
+    DatabaseSettings,
+    ObservabilitySettings,
+)
 
 JWT_ALGORITHM_WHITELIST = {"HS256", "RS256"}
 
@@ -19,10 +48,10 @@ class AppSettings(BaseSettings):
     taking precedence. Unknown keys are ignored so individual deployments
     can carry extra variables without breaking validation.
 
-    Auth-related fields are grouped together at the bottom of the class
-    and most have safe defaults so the application boots in development
-    without any secrets configured. ``auth_jwt_secret_key`` is the one
-    field that must be set in any deployment that issues real tokens.
+    Flat ``APP_*`` fields stay the public contract. Structured per-feature
+    views (``settings.email``, ``settings.jobs``, …) are computed on
+    demand from those fields and own their own production-validation
+    methods, which ``_validate_production_settings`` aggregates.
     """
 
     model_config = SettingsConfigDict(
@@ -33,6 +62,12 @@ class AppSettings(BaseSettings):
 
     environment: Literal["development", "test", "production"] = "development"
     enable_docs: bool = True
+    # Public-facing URL the application is reachable at — used to build the
+    # links embedded in transactional emails (password reset, email verify).
+    # Trailing slashes are stripped at use time.
+    app_public_url: str = "http://localhost:8000"
+    # Short human-friendly product name used in subject lines and signatures.
+    app_display_name: str = "Starter"
     cors_origins: list[str] = ["*"]
     trusted_hosts: list[str] = ["*"]
     log_level: str = "INFO"
@@ -90,6 +125,51 @@ class AppSettings(BaseSettings):
     # instead and this value controls its TTL.
     auth_principal_cache_ttl_seconds: int = 5
     # ---------------------------------------------------------------------------
+    # Email
+    # ---------------------------------------------------------------------------
+    # ``console`` logs the rendered email (dev/test default). ``smtp`` uses
+    # smtplib to dispatch via the configured server. The production validator
+    # refuses ``console`` when ``APP_ENVIRONMENT=production``.
+    email_backend: Literal["console", "smtp"] = "console"
+    email_from: str | None = None
+    email_smtp_host: str | None = None
+    email_smtp_port: int = 587
+    email_smtp_username: str | None = None
+    email_smtp_password: str | None = None
+    # STARTTLS upgrade on submission port (587) is the common case. Set
+    # ``email_smtp_use_ssl`` instead for implicit-TLS on port 465 — the
+    # two are mutually exclusive at the transport level.
+    email_smtp_use_starttls: bool = True
+    email_smtp_use_ssl: bool = False
+    email_smtp_timeout_seconds: float = 10.0
+    # ---------------------------------------------------------------------------
+    # Background jobs
+    # ---------------------------------------------------------------------------
+    # ``in_process`` runs handlers inline at enqueue time (dev/test default).
+    # ``arq`` enqueues onto Redis for the worker process to consume. The
+    # production validator refuses ``in_process`` when ``APP_ENVIRONMENT=production``
+    # because losing the web process would lose every queued job.
+    jobs_backend: Literal["in_process", "arq"] = "in_process"
+    # Falls back to ``APP_AUTH_REDIS_URL`` at composition time if unset, so
+    # single-Redis deployments can leave this alone. Setting it explicitly
+    # lets the queue and the rate limiter use different Redis instances.
+    jobs_redis_url: str | None = None
+    jobs_queue_name: str = "arq:queue"
+    # ---------------------------------------------------------------------------
+    # File storage
+    # ---------------------------------------------------------------------------
+    # ``local`` writes to ``APP_STORAGE_LOCAL_PATH`` (dev/test default).
+    # ``s3`` selects the bundled S3 stub — calls raise ``NotImplementedError``
+    # until the consumer fills it in (see adapters/outbound/s3/README.md).
+    # ``storage_enabled`` is the "is a consumer feature actually wired?" flag:
+    # the production validator only refuses ``local`` when this is true, so
+    # projects that never use file storage are not forced to set up S3.
+    storage_enabled: bool = False
+    storage_backend: Literal["local", "s3"] = "local"
+    storage_local_path: str | None = None
+    storage_s3_bucket: str | None = None
+    storage_s3_region: str = "us-east-1"
+    # ---------------------------------------------------------------------------
     # Observability
     # ---------------------------------------------------------------------------
     # When set, OpenTelemetry spans are exported to this OTLP/HTTP endpoint.
@@ -103,46 +183,70 @@ class AppSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_auth_settings(self) -> "AppSettings":
-        """Validate auth settings that must fail in every environment."""
+        """Validate fields that must be well-formed in every environment.
+
+        Most checks delegate to the per-feature sub-settings classes
+        (which own their own ``validate(errors)`` methods); the JWT
+        algorithm/leeway range checks stay here because they are platform-
+        level invariants with no natural home in a single feature.
+        """
+        errors: list[str] = []
         if self.auth_jwt_algorithm not in JWT_ALGORITHM_WHITELIST:
-            raise ValueError(
+            errors.append(
                 "APP_AUTH_JWT_ALGORITHM must be one of "
                 f"{sorted(JWT_ALGORITHM_WHITELIST)}"
             )
         if not (0 <= self.auth_jwt_leeway_seconds <= 60):
-            raise ValueError("APP_AUTH_JWT_LEEWAY_SECONDS must be between 0 and 60")
+            errors.append("APP_AUTH_JWT_LEEWAY_SECONDS must be between 0 and 60")
+        # Email/jobs/storage need to validate their own backend-specific
+        # combinations (e.g. ``smtp`` requires a host). Importing the
+        # classes lazily keeps :mod:`src.platform.config.settings` free
+        # of compile-time dependencies on feature packages so the
+        # platform-isolation Import Linter contract stays clean.
+        from src.features.background_jobs.composition.settings import JobsSettings
+        from src.features.email.composition.settings import EmailSettings
+        from src.features.file_storage.composition.settings import StorageSettings
+
+        EmailSettings.from_app_settings(self).validate(errors)
+        JobsSettings.from_app_settings(self).validate(errors)
+        StorageSettings.from_app_settings(self).validate(errors)
+        if errors:
+            raise ValueError("\n".join(errors))
         return self
 
     @model_validator(mode="after")
     def _validate_production_settings(self) -> "AppSettings":
-        """Refuse to start in production if critical security settings are missing."""
+        """Refuse to start in production if critical settings are missing.
+
+        Delegates to each per-feature sub-settings class' own
+        ``validate_production(errors)`` method and aggregates the error
+        list into a single :class:`ValueError`. Production-only platform
+        checks (database, API, observability) go through the equivalent
+        classes in :mod:`src.platform.config.sub_settings`.
+        """
         if self.environment != "production":
             return self
+        from src.features.authentication.composition.settings import (
+            AuthenticationSettings,
+        )
+        from src.features.authorization.composition.settings import (
+            AuthorizationSettings,
+        )
+        from src.features.background_jobs.composition.settings import JobsSettings
+        from src.features.email.composition.settings import EmailSettings
+        from src.features.file_storage.composition.settings import StorageSettings
+        from src.features.users.composition.settings import UsersSettings
+
         errors: list[str] = []
-        if not self.auth_jwt_secret_key:
-            errors.append("APP_AUTH_JWT_SECRET_KEY must be set in production")
-        if not self.auth_jwt_issuer:
-            errors.append("APP_AUTH_JWT_ISSUER must be set in production")
-        if not self.auth_jwt_audience:
-            errors.append("APP_AUTH_JWT_AUDIENCE must be set in production")
-        if self.cors_origins == ["*"] or "*" in self.cors_origins:
-            errors.append(
-                "APP_CORS_ORIGINS must not be ['*'] in production; "
-                "provide explicit allowed origins"
-            )
-        if not self.auth_cookie_secure:
-            errors.append("APP_AUTH_COOKIE_SECURE must be True in production")
-        if self.enable_docs:
-            errors.append("APP_ENABLE_DOCS must be False in production")
-        if not self.auth_rbac_enabled:
-            errors.append("APP_AUTH_RBAC_ENABLED must be True in production")
-        if not self.auth_redis_url and self.auth_require_distributed_rate_limit:
-            errors.append(
-                "APP_AUTH_REDIS_URL must be set in production when "
-                "APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT is true; "
-                "set APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=false only if "
-                "the deployment is guaranteed to run as a single replica"
-            )
+        AuthenticationSettings.from_app_settings(self).validate_production(errors)
+        UsersSettings.from_app_settings(self).validate_production(errors)
+        AuthorizationSettings.from_app_settings(self).validate_production(errors)
+        EmailSettings.from_app_settings(self).validate_production(errors)
+        JobsSettings.from_app_settings(self).validate_production(errors)
+        StorageSettings.from_app_settings(self).validate_production(errors)
+        DatabaseSettings.from_app_settings(self).validate_production(errors)
+        ApiSettings.from_app_settings(self).validate_production(errors)
+        ObservabilitySettings.from_app_settings(self).validate_production(errors)
         if errors:
             raise ValueError(
                 "Production configuration errors:\n"
