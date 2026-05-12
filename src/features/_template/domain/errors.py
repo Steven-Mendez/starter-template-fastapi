@@ -1,11 +1,11 @@
-"""Closed enumeration of domain failures for the template feature scaffold."""
+"""Domain-level exceptions raised by the :mod:`_template.domain` package."""
 
 from __future__ import annotations
 
-from enum import StrEnum
+
+class TemplateDomainError(Exception):
+    """Base class for domain-level errors in the template feature."""
 
 
-class TemplateDomainError(StrEnum):
-    """Domain failures for the copied feature, without HTTP coupling."""
-
-    NOT_FOUND = "not_found"
+class ThingNameRequiredError(TemplateDomainError):
+    """Raised when a :class:`Thing` is created or renamed with an empty name."""

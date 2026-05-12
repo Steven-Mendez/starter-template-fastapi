@@ -1,25 +1,13 @@
-"""Closed enumeration of application failures for the template feature scaffold."""
+"""Application-layer errors returned by use cases."""
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum
 
 
-class ApplicationError(StrEnum):
-    """Application errors that the copied feature maps at its inbound edge."""
+class ApplicationError(Enum):
+    """Closed enumeration of failure modes returned via :class:`Result`."""
 
-    NOT_FOUND = ("not_found", "Resource not found")
-
-    _detail: str
-
-    def __new__(cls, value: str, detail: str) -> ApplicationError:
-        """Build a ``StrEnum`` member that also carries a ``detail`` attribute."""
-        member = str.__new__(cls, value)
-        member._value_ = value
-        member._detail = detail
-        return member
-
-    @property
-    def detail(self) -> str:
-        """Return the human-readable description for this error."""
-        return self._detail
+    NOT_FOUND = "not_found"
+    NAME_REQUIRED = "name_required"
+    FORBIDDEN = "forbidden"

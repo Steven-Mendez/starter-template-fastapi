@@ -1,25 +1,32 @@
-"""In-memory fake repository for unit testing the _template feature."""
+"""In-memory :class:`ThingRepositoryPort` for unit and e2e tests."""
 
 from __future__ import annotations
 
-from src.features._template.domain.errors import TemplateDomainError
-from src.features._template.domain.models.example_aggregate import ExampleAggregate
-from src.platform.shared.result import Err, Ok, Result
+from dataclasses import dataclass, field
+from uuid import UUID
+
+from src.features._template.domain.models.thing import Thing
 
 
-class FakeExampleRepository:
-    """Simple dict-backed repository satisfying ``ExampleRepositoryPort``."""
+@dataclass(slots=True)
+class FakeThingRepository:
+    _by_id: dict[UUID, Thing] = field(default_factory=dict)
 
-    def __init__(self) -> None:
-        self._store: dict[str, ExampleAggregate] = {}
+    def add(self, thing: Thing) -> None:
+        if thing.id in self._by_id:
+            raise KeyError(f"Thing {thing.id} already exists")
+        self._by_id[thing.id] = thing
 
-    def find_by_id(
-        self, entity_id: str
-    ) -> Result[ExampleAggregate, TemplateDomainError]:
-        entity = self._store.get(entity_id)
-        if entity is None:
-            return Err(TemplateDomainError.NOT_FOUND)
-        return Ok(entity)
+    def get(self, thing_id: UUID) -> Thing | None:
+        return self._by_id.get(thing_id)
 
-    def save(self, entity: ExampleAggregate) -> None:
-        self._store[entity.id] = entity
+    def list_by_ids(self, ids: list[UUID]) -> list[Thing]:
+        return [self._by_id[i] for i in ids if i in self._by_id]
+
+    def update(self, thing: Thing) -> None:
+        if thing.id not in self._by_id:
+            raise KeyError(f"Thing {thing.id} does not exist")
+        self._by_id[thing.id] = thing
+
+    def delete(self, thing_id: UUID) -> None:
+        self._by_id.pop(thing_id, None)
