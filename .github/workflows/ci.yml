@@ -83,7 +83,7 @@ jobs:
         # constructs (assert, hardcoded creds) Bandit flags by default.
         run: |
           uv run --python ${{ env.PYTHON_VERSION }} --with bandit bandit -r src \
-            --exclude src/features/authentication/tests,src/features/_template/tests,src/features/authorization/tests,src/features/background_jobs/tests,src/features/email/tests,src/features/file_storage/tests,src/features/users/tests,src/platform/tests \
+            --exclude '*/tests,*/tests/*' \
             --severity-level medium
 
       - name: Secret scan (gitleaks)
