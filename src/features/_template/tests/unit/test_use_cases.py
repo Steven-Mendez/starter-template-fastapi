@@ -27,12 +27,17 @@ from src.features._template.application.use_cases.update_thing import (
     UpdateThingCommand,
     UpdateThingUseCase,
 )
+from src.features._template.application.use_cases.upload_attachment import (
+    UploadAttachmentCommand,
+    UploadAttachmentUseCase,
+)
 from src.features._template.tests.fakes.fake_authorization import FakeAuthorization
 from src.features._template.tests.fakes.fake_repository import FakeThingRepository
 from src.features._template.tests.fakes.fake_uow import FakeUnitOfWork
 from src.features.authorization.tests.contracts.registry_helper import (
     make_test_registry,
 )
+from src.features.file_storage.tests.fakes.fake_file_storage import FakeFileStorage
 from src.platform.shared.result import Err, Ok
 
 pytestmark = pytest.mark.unit
@@ -103,6 +108,78 @@ def test_update_thing_renames_and_returns_new_instance() -> None:
     )
     assert isinstance(result, Ok)
     assert result.value.name == "New"
+
+
+def test_upload_attachment_stores_blob_under_thing_prefix() -> None:
+    uow, _, repo = _bundle()
+    owner = uuid4()
+    created = CreateThingUseCase(uow=uow).execute(
+        CreateThingCommand(name="With attachment", owner_id=owner)
+    )
+    assert isinstance(created, Ok)
+    thing = created.value
+    storage = FakeFileStorage()
+    result = UploadAttachmentUseCase(repository=repo, file_storage=storage).execute(
+        UploadAttachmentCommand(
+            thing_id=thing.id, content=b"hello", content_type="text/plain"
+        )
+    )
+    assert isinstance(result, Ok)
+    attachment = result.value
+    assert attachment.thing_id == thing.id
+    assert attachment.key.startswith(f"things/{thing.id}/")
+    assert attachment.size_bytes == 5
+    assert storage.objects[attachment.key].content == b"hello"
+    assert storage.objects[attachment.key].content_type == "text/plain"
+
+
+def test_upload_attachment_returns_not_found_when_thing_missing() -> None:
+    _, _, repo = _bundle()
+    result = UploadAttachmentUseCase(
+        repository=repo, file_storage=FakeFileStorage()
+    ).execute(
+        UploadAttachmentCommand(
+            thing_id=uuid4(), content=b"x", content_type="text/plain"
+        )
+    )
+    assert isinstance(result, Err)
+    assert result.error is ApplicationError.NOT_FOUND
+
+
+def test_upload_attachment_returns_storage_failed_when_backend_errors() -> None:
+    from src.features.file_storage.application.errors import StorageBackendError
+    from src.features.file_storage.application.ports.file_storage_port import (
+        FileStoragePort,
+    )
+
+    uow, _, repo = _bundle()
+    created = CreateThingUseCase(uow=uow).execute(
+        CreateThingCommand(name="X", owner_id=uuid4())
+    )
+    assert isinstance(created, Ok)
+    thing = created.value
+
+    class FailingStorage:
+        def put(self, key, content, content_type):  # type: ignore[no-untyped-def]
+            return Err(StorageBackendError(reason="disk full"))
+
+        def get(self, key):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+        def delete(self, key):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+        def signed_url(self, key, expires_in):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+    storage: FileStoragePort = FailingStorage()
+    result = UploadAttachmentUseCase(repository=repo, file_storage=storage).execute(
+        UploadAttachmentCommand(
+            thing_id=thing.id, content=b"x", content_type="text/plain"
+        )
+    )
+    assert isinstance(result, Err)
+    assert result.error is ApplicationError.STORAGE_FAILED
 
 
 def test_delete_thing_removes_resource_and_tuples() -> None:

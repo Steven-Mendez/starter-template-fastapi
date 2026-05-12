@@ -21,10 +21,16 @@ from src.features._template.composition.wiring import (
     mount_template_routes,
     register_template_authorization,
 )
+from src.features.authentication.adapters.outbound.persistence.sqlmodel import (
+    SQLModelAuthRepository,
+)
 from src.features.authentication.composition.container import build_auth_container
 from src.features.authentication.composition.wiring import (
     attach_auth_container,
     mount_auth_routes,
+)
+from src.features.authentication.email_templates import (
+    register_authentication_email_templates,
 )
 from src.features.authorization.composition import (
     AuthorizationContainer,
@@ -32,8 +38,28 @@ from src.features.authorization.composition import (
     build_authorization_container,
     register_authorization_error_handlers,
 )
+from src.features.background_jobs.composition.container import build_jobs_container
+from src.features.background_jobs.composition.settings import JobsSettings
+from src.features.background_jobs.composition.wiring import attach_jobs_container
+from src.features.email.composition.container import build_email_container
+from src.features.email.composition.jobs import register_send_email_handler
+from src.features.email.composition.settings import EmailSettings
+from src.features.email.composition.wiring import attach_email_container
+from src.features.file_storage.composition.container import (
+    build_file_storage_container,
+)
+from src.features.file_storage.composition.settings import StorageSettings
+from src.features.file_storage.composition.wiring import attach_file_storage_container
 from src.features.users.adapters.outbound.authz_version import (
     SessionSQLModelUserAuthzVersionAdapter,
+)
+from src.features.users.composition.container import (
+    build_user_registrar_adapter,
+    build_users_container,
+)
+from src.features.users.composition.wiring import (
+    attach_users_container,
+    mount_users_routes,
 )
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import set_app_container
@@ -93,24 +119,80 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     # before lifespan startup completes. Containers are attached in lifespan
     # because they require DB connections that should not outlive the process.
     mount_auth_routes(app)
+    mount_users_routes(app)
     mount_template_routes(app)
     register_authorization_error_handlers(app)
     instrument_fastapi_app(app, app_settings)
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
-        auth = build_auth_container(settings=app_settings)
+        # Build a shared engine via the auth repository, then construct the
+        # users container around the same engine before wiring authentication.
+        # Auth depends on users.UserPort, so the users container must exist
+        # first; the engine outlives both because auth.shutdown disposes it.
+        repository = SQLModelAuthRepository(
+            app_settings.postgresql_dsn,
+            create_schema=False,
+            pool_size=app_settings.db_pool_size,
+            max_overflow=app_settings.db_max_overflow,
+            pool_recycle=app_settings.db_pool_recycle_seconds,
+            pool_pre_ping=app_settings.db_pool_pre_ping,
+        )
+        users = build_users_container(engine=repository.engine)
+        email = build_email_container(
+            EmailSettings.from_app_settings(
+                backend=app_settings.email_backend,
+                from_address=app_settings.email_from,
+                smtp_host=app_settings.email_smtp_host,
+                smtp_port=app_settings.email_smtp_port,
+                smtp_username=app_settings.email_smtp_username,
+                smtp_password=app_settings.email_smtp_password,
+                smtp_use_starttls=app_settings.email_smtp_use_starttls,
+                smtp_use_ssl=app_settings.email_smtp_use_ssl,
+                smtp_timeout_seconds=app_settings.email_smtp_timeout_seconds,
+            )
+        )
+        register_authentication_email_templates(email.registry)
+        # Every feature that contributes templates has now done so.
+        email.registry.seal()
+        # Build the jobs container after email so the email feature's
+        # send_email handler can register itself with the queue's registry.
+        # The arq adapter, when selected, reuses the shared rate-limit/cache
+        # Redis URL if APP_JOBS_REDIS_URL is unset.
+        jobs = build_jobs_container(
+            JobsSettings.from_app_settings(
+                backend=app_settings.jobs_backend,
+                redis_url=app_settings.jobs_redis_url or app_settings.auth_redis_url,
+                queue_name=app_settings.jobs_queue_name,
+            )
+        )
+        register_send_email_handler(jobs.registry, email.port)
+        jobs.registry.seal()
+        auth = build_auth_container(
+            settings=app_settings,
+            users=users.user_repository,
+            jobs=jobs.port,
+            repository=repository,
+        )
+        user_registrar = build_user_registrar_adapter(
+            users=users,
+            credential_writer=auth.credential_writer_adapter,
+        )
         authorization = build_authorization_container(
-            engine=auth.repository.engine,
-            user_authz_version=auth.user_authz_version_adapter,
-            user_registrar=auth.user_registrar_adapter,
+            engine=repository.engine,
+            user_authz_version=users.user_authz_version_adapter,
+            user_registrar=user_registrar,
             audit=auth.audit_adapter,
+        )
+        file_storage = build_file_storage_container(
+            StorageSettings.from_app_settings(app_settings)
         )
         template = build_template_container(
             postgresql_dsn=app_settings.postgresql_dsn,
             authorization=authorization.port,
             registry=authorization.registry,
             user_authz_version_factory=SessionSQLModelUserAuthzVersionAdapter,
+            file_storage=file_storage.port,
             pool_size=app_settings.db_pool_size,
             max_overflow=app_settings.db_max_overflow,
             pool_recycle=app_settings.db_pool_recycle_seconds,
@@ -129,6 +211,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         lifespan_app.state.principal_resolver = auth.resolve_principal.execute
         attach_authorization_container(lifespan_app, authorization)
         attach_auth_container(lifespan_app, auth)
+        attach_users_container(lifespan_app, users)
+        attach_email_container(lifespan_app, email)
+        attach_jobs_container(lifespan_app, jobs)
+        attach_file_storage_container(lifespan_app, file_storage)
         attach_template_container(lifespan_app, template)
 
         # Shared Redis client used by health probes and other platform consumers.
@@ -151,6 +237,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             # Shutdown order is reverse of startup so dependent resources
             # (e.g. connection pools) are closed after the services that use them.
             template.shutdown()
+            jobs.shutdown()
+            users.shutdown()
             authorization.shutdown()
             auth.shutdown()
             if redis_client is not None:

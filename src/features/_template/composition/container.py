@@ -30,6 +30,9 @@ from src.features._template.application.use_cases.list_things import (
 from src.features._template.application.use_cases.update_thing import (
     UpdateThingUseCase,
 )
+from src.features._template.application.use_cases.upload_attachment import (
+    UploadAttachmentUseCase,
+)
 from src.features.authorization.adapters.outbound.sqlmodel.repository import (
     SessionSQLModelAuthorizationAdapter,
 )
@@ -40,6 +43,9 @@ from src.features.authorization.application.ports.outbound.user_authz_version_po
     UserAuthzVersionPort,
 )
 from src.features.authorization.application.registry import AuthorizationRegistry
+from src.features.file_storage.application.ports.file_storage_port import (
+    FileStoragePort,
+)
 
 SessionUserAuthzVersionFactory = Callable[[Session], UserAuthzVersionPort]
 
@@ -53,6 +59,7 @@ class TemplateContainer:
     uow: SQLModelUnitOfWork
     authorization: AuthorizationPort
     registry: AuthorizationRegistry
+    file_storage: FileStoragePort
 
     # ----- use-case factories -----------------------------------------
     def create_thing(self) -> CreateThingUseCase:
@@ -72,6 +79,11 @@ class TemplateContainer:
     def delete_thing(self) -> DeleteThingUseCase:
         return DeleteThingUseCase(uow=self.uow)
 
+    def upload_attachment(self) -> UploadAttachmentUseCase:
+        return UploadAttachmentUseCase(
+            repository=self.repository, file_storage=self.file_storage
+        )
+
     def shutdown(self) -> None:
         self.engine.dispose()
 
@@ -82,6 +94,7 @@ def build_template_container(
     authorization: AuthorizationPort,
     registry: AuthorizationRegistry,
     user_authz_version_factory: SessionUserAuthzVersionFactory,
+    file_storage: FileStoragePort,
     pool_size: int = 5,
     max_overflow: int = 10,
     pool_recycle: int = 1800,
@@ -116,4 +129,5 @@ def build_template_container(
         uow=uow,
         authorization=authorization,
         registry=registry,
+        file_storage=file_storage,
     )

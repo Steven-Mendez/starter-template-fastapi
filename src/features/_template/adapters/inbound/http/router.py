@@ -8,14 +8,16 @@ schemas, headers) never leak into the use cases.
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 
 from src.features._template.adapters.inbound.http.dependencies import (
     get_template_container,
 )
 from src.features._template.adapters.inbound.http.schemas import (
+    AttachmentResponse,
     CreateThingRequest,
     ListThingsResponse,
     ThingResponse,
@@ -32,6 +34,9 @@ from src.features._template.application.use_cases.get_thing import GetThingQuery
 from src.features._template.application.use_cases.list_things import ListThingsQuery
 from src.features._template.application.use_cases.update_thing import (
     UpdateThingCommand,
+)
+from src.features._template.application.use_cases.upload_attachment import (
+    UploadAttachmentCommand,
 )
 from src.features._template.domain.models.thing import Thing
 from src.platform.api.authorization import (
@@ -69,6 +74,11 @@ def _map_error(error: ApplicationError) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="name must be a non-empty string",
+        )
+    if error is ApplicationError.STORAGE_FAILED:
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Storage backend failed to accept the upload",
         )
     return HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -141,6 +151,37 @@ def build_template_router() -> APIRouter:
         match result:
             case Ok(value=thing):
                 return _to_response(thing)
+            case Err(error=err):
+                raise _map_error(err)
+
+    @router.post(
+        "/{thing_id}/attachments",
+        response_model=AttachmentResponse,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[require_authorization("update", "thing", _id_from_path)],
+    )
+    async def upload_attachment(
+        request: Request,
+        thing_id: UUID,
+        file: Annotated[UploadFile, File(...)],
+    ) -> AttachmentResponse:
+        container = get_template_container(request.app)
+        content = await file.read()
+        result = container.upload_attachment().execute(
+            UploadAttachmentCommand(
+                thing_id=thing_id,
+                content=content,
+                content_type=file.content_type or "application/octet-stream",
+            )
+        )
+        match result:
+            case Ok(value=attachment):
+                return AttachmentResponse(
+                    thing_id=attachment.thing_id,
+                    key=attachment.key,
+                    content_type=attachment.content_type,
+                    size_bytes=attachment.size_bytes,
+                )
             case Err(error=err):
                 raise _map_error(err)
 

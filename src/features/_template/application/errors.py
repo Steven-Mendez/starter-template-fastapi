@@ -11,3 +11,4 @@ class ApplicationError(Enum):
     NOT_FOUND = "not_found"
     NAME_REQUIRED = "name_required"
     FORBIDDEN = "forbidden"
+    STORAGE_FAILED = "storage_failed"

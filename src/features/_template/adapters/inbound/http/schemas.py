@@ -26,3 +26,10 @@ class ThingResponse(BaseModel):
 
 class ListThingsResponse(BaseModel):
     items: list[ThingResponse]
+
+
+class AttachmentResponse(BaseModel):
+    thing_id: UUID
+    key: str
+    content_type: str
+    size_bytes: int
