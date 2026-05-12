@@ -14,7 +14,6 @@ can import and increment them directly::
     from src.platform.observability.metrics import (
         AUTH_LOGIN_ATTEMPTS,
         AUTH_RATE_LIMIT_BLOCKS,
-        KANBAN_CARD_MOVES,
     )
     AUTH_LOGIN_ATTEMPTS.labels(outcome="success").inc()
 """
@@ -41,11 +40,6 @@ AUTH_RATE_LIMIT_BLOCKS: Counter = Counter(
     "auth_rate_limit_blocks_total",
     "Total requests blocked by the auth rate limiter",
     ["endpoint"],
-)
-
-KANBAN_CARD_MOVES: Counter = Counter(
-    "kanban_card_moves_total",
-    "Total card move operations",
 )
 
 

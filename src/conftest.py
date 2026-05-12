@@ -14,7 +14,7 @@ def test_settings() -> AppSettings:
         cors_origins=["*"],
         trusted_hosts=["*"],
         log_level="WARNING",
-        postgresql_dsn="postgresql+psycopg://test:test@localhost:5432/kanban_test",
+        postgresql_dsn="postgresql+psycopg://test:test@localhost:5432/starter_test",
         health_persistence_backend="postgresql",
         # Keep tests deterministic in CI and on machines with different .env
         # files; auth container wiring requires a secret in test mode.

@@ -57,8 +57,8 @@ def get_current_principal(
     result = container.resolve_principal.execute(token)
     match result:
         case Ok(value=principal):
-            # Publish the actor id onto request.state so other features (e.g.,
-            # kanban) can stamp audit columns without importing from auth.
+            # Publish the actor id onto request.state so other features can
+            # stamp audit columns without importing from auth.
             set_actor_id(request, principal.user_id)
             return principal
         case Err(error=exc):

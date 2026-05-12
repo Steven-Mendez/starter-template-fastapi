@@ -65,7 +65,7 @@ def _make_app(authz: _FakeAuthorization) -> FastAPI:
         dependencies=[
             require_authorization(
                 "read",
-                "kanban",
+                "thing",
                 lambda r: r.path_params["board_id"],
             )
         ],
@@ -128,7 +128,7 @@ def test_id_loader_extracts_path_param(
     client, authz = deny_client
     client.get("/board/board-42")
     assert authz.last_call is not None
-    assert authz.last_call[1:] == ("read", "kanban", "board-42")
+    assert authz.last_call[1:] == ("read", "thing", "board-42")
 
 
 def test_no_id_loader_uses_main_sentinel(

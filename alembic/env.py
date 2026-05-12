@@ -6,18 +6,15 @@ import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
+from sqlmodel import SQLModel
 
-# Importing the auth models and the platform-owned authorization models
-# registers their SQLModel metadata with the shared MetaData instance so
-# Alembic can detect every table the application owns. The noqa
-# suppresses the "imported but unused" warning; the side-effect is
-# intentional.
+# Importing every feature's SQLModel module registers its tables with the
+# shared SQLModel.metadata instance so Alembic can detect every table the
+# application owns. The noqa suppresses the "imported but unused" warning;
+# the side-effect is intentional.
 import src.features.auth.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
 import src.platform.persistence.sqlmodel.authorization.models  # noqa: F401
 from alembic import context
-from src.features.kanban.adapters.outbound.persistence.sqlmodel.models import (
-    get_sqlmodel_metadata,
-)
 from src.platform.config.settings import AppSettings
 
 config = context.config
@@ -26,7 +23,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 
-_DEFAULT_INI_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
+_DEFAULT_INI_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/starter"
 
 
 def _resolve_database_url() -> str:
@@ -50,7 +47,7 @@ def _resolve_database_url() -> str:
 
 
 config.set_main_option("sqlalchemy.url", _resolve_database_url())
-target_metadata = get_sqlmodel_metadata()
+target_metadata = SQLModel.metadata
 
 
 def run_migrations_offline() -> None:

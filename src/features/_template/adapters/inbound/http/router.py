@@ -2,7 +2,7 @@
 
 The template stays inert until copied. A real feature should compose
 its read/write routers here and map application errors to Problem
-Details, mirroring the kanban feature's layout.
+Details.
 """
 
 from __future__ import annotations

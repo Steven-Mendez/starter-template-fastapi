@@ -1,6 +1,6 @@
 """Unit tests for ``SQLModelAuthorizationAdapter.check`` over a SQLite fixture.
 
-These exercise the engine's hierarchy resolution at the kanban resource
+These exercise the engine's hierarchy resolution at the thing resource
 level. Cross-resource inheritance is covered by
 ``test_authorization_engine_inheritance.py``.
 """
@@ -65,7 +65,7 @@ def test_owner_satisfies_read_update_and_delete(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=board_id,
                 relation="owner",
                 subject_type="user",
@@ -77,7 +77,7 @@ def test_owner_satisfies_read_update_and_delete(
         assert adapter.check(
             user_id=user_id,
             action=action,
-            resource_type="kanban",
+            resource_type="thing",
             resource_id=board_id,
         ), action
 
@@ -88,7 +88,7 @@ def test_writer_satisfies_read_and_update_but_not_delete(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=board_id,
                 relation="writer",
                 subject_type="user",
@@ -97,13 +97,13 @@ def test_writer_satisfies_read_and_update_but_not_delete(
         ]
     )
     assert adapter.check(
-        user_id=user_id, action="read", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="read", resource_type="thing", resource_id=board_id
     )
     assert adapter.check(
-        user_id=user_id, action="update", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="update", resource_type="thing", resource_id=board_id
     )
     assert not adapter.check(
-        user_id=user_id, action="delete", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="delete", resource_type="thing", resource_id=board_id
     )
 
 
@@ -113,7 +113,7 @@ def test_reader_satisfies_only_read(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=board_id,
                 relation="reader",
                 subject_type="user",
@@ -122,10 +122,10 @@ def test_reader_satisfies_only_read(
         ]
     )
     assert adapter.check(
-        user_id=user_id, action="read", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="read", resource_type="thing", resource_id=board_id
     )
     assert not adapter.check(
-        user_id=user_id, action="update", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="update", resource_type="thing", resource_id=board_id
     )
 
 
@@ -136,7 +136,7 @@ def test_no_tuple_denies_every_action(
         assert not adapter.check(
             user_id=user_id,
             action=action,
-            resource_type="kanban",
+            resource_type="thing",
             resource_id=board_id,
         )
 
@@ -149,7 +149,7 @@ def test_check_is_user_scoped(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=board_id,
                 relation="owner",
                 subject_type="user",
@@ -158,10 +158,10 @@ def test_check_is_user_scoped(
         ]
     )
     assert adapter.check(
-        user_id=grantee, action="read", resource_type="kanban", resource_id=board_id
+        user_id=grantee, action="read", resource_type="thing", resource_id=board_id
     )
     assert not adapter.check(
-        user_id=other, action="read", resource_type="kanban", resource_id=board_id
+        user_id=other, action="read", resource_type="thing", resource_id=board_id
     )
 
 
@@ -192,7 +192,7 @@ def test_duplicate_writes_are_idempotent(
     adapter: SQLModelAuthorizationAdapter, user_id: UUID, board_id: str
 ) -> None:
     tup = Relationship(
-        resource_type="kanban",
+        resource_type="thing",
         resource_id=board_id,
         relation="reader",
         subject_type="user",
@@ -201,7 +201,7 @@ def test_duplicate_writes_are_idempotent(
     adapter.write_relationships([tup])
     adapter.write_relationships([tup])  # second call must not raise
     assert adapter.check(
-        user_id=user_id, action="read", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="read", resource_type="thing", resource_id=board_id
     )
 
 
@@ -209,7 +209,7 @@ def test_delete_removes_the_grant(
     adapter: SQLModelAuthorizationAdapter, user_id: UUID, board_id: str
 ) -> None:
     tup = Relationship(
-        resource_type="kanban",
+        resource_type="thing",
         resource_id=board_id,
         relation="owner",
         subject_type="user",
@@ -217,11 +217,11 @@ def test_delete_removes_the_grant(
     )
     adapter.write_relationships([tup])
     assert adapter.check(
-        user_id=user_id, action="read", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="read", resource_type="thing", resource_id=board_id
     )
     adapter.delete_relationships([tup])
     assert not adapter.check(
-        user_id=user_id, action="read", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="read", resource_type="thing", resource_id=board_id
     )
 
 

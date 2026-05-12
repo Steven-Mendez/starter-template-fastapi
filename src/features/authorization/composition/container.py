@@ -2,9 +2,9 @@
 
 The container is constructed *after* the auth container so the three
 outbound ports (``UserAuthzVersionPort``, ``UserRegistrarPort``,
-``AuditPort``) can be passed in as already-built adapters. Kanban (and
-any future feature that authorizes anything) consumes only the
-``port`` and ``registry`` fields, never the inner adapters.
+``AuditPort``) can be passed in as already-built adapters. Any feature
+that authorizes anything consumes only the ``port`` and ``registry``
+fields, never the inner adapters.
 """
 
 from __future__ import annotations

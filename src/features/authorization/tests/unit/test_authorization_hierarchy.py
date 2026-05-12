@@ -13,30 +13,30 @@ from src.features.authorization.tests.contracts.registry_helper import (
 pytestmark = pytest.mark.unit
 
 
-def test_kanban_owner_satisfies_every_inferior_relation() -> None:
+def test_thing_owner_satisfies_every_inferior_relation() -> None:
     registry = make_test_registry()
-    assert expand_relations(registry, "kanban", frozenset({"reader"})) == frozenset(
+    assert expand_relations(registry, "thing", frozenset({"reader"})) == frozenset(
         {"reader", "writer", "owner"}
     )
-    assert expand_relations(registry, "kanban", frozenset({"writer"})) == frozenset(
+    assert expand_relations(registry, "thing", frozenset({"writer"})) == frozenset(
         {"writer", "owner"}
     )
-    assert expand_relations(registry, "kanban", frozenset({"owner"})) == frozenset(
+    assert expand_relations(registry, "thing", frozenset({"owner"})) == frozenset(
         {"owner"}
     )
 
 
-def test_kanban_multiple_relations_take_union_closure() -> None:
+def test_thing_multiple_relations_take_union_closure() -> None:
     registry = make_test_registry()
     assert expand_relations(
-        registry, "kanban", frozenset({"reader", "owner"})
+        registry, "thing", frozenset({"reader", "owner"})
     ) == frozenset({"reader", "writer", "owner"})
 
 
 def test_inherited_children_reuse_parent_hierarchy() -> None:
     registry = make_test_registry()
     registry.register_parent(
-        "column", parent_of=lambda _id: None, inherits_from="kanban"
+        "column", parent_of=lambda _id: None, inherits_from="thing"
     )
     registry.register_parent("card", parent_of=lambda _id: None, inherits_from="column")
     for resource_type in ("column", "card"):
@@ -61,4 +61,4 @@ def test_unknown_resource_type_raises() -> None:
 def test_unknown_relation_raises() -> None:
     registry = make_test_registry()
     with pytest.raises(UnknownActionError):
-        expand_relations(registry, "kanban", frozenset({"viewer"}))
+        expand_relations(registry, "thing", frozenset({"viewer"}))

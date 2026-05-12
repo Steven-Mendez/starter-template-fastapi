@@ -94,7 +94,7 @@ def test_write_bumps_authz_version_for_user_subject(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=str(uuid4()),
                 relation="reader",
                 subject_type="user",
@@ -111,7 +111,7 @@ def test_delete_bumps_authz_version_for_user_subject(
 ) -> None:
     user_id = _seed_user(engine)
     tup = Relationship(
-        resource_type="kanban",
+        resource_type="thing",
         resource_id=str(uuid4()),
         relation="reader",
         subject_type="user",
@@ -134,14 +134,14 @@ def test_writes_for_multiple_users_bump_each_independently(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=board,
                 relation="reader",
                 subject_type="user",
                 subject_id=str(a),
             ),
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=board,
                 relation="writer",
                 subject_type="user",
@@ -164,7 +164,7 @@ def test_no_bump_for_non_user_subjects(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=str(uuid4()),
                 relation="reader",
                 subject_type="service",
@@ -184,7 +184,7 @@ def test_writing_to_a_missing_user_silently_skips_the_bump(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=str(uuid4()),
                 relation="reader",
                 subject_type="user",

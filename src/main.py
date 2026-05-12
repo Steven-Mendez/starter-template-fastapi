@@ -15,9 +15,6 @@ from typing import AsyncIterator
 import redis as redis_lib
 from fastapi import FastAPI
 
-from src.features.auth.adapters.outbound.authz_version import (
-    SessionSQLModelUserAuthzVersionAdapter,
-)
 from src.features.auth.composition.container import build_auth_container
 from src.features.auth.composition.wiring import (
     attach_auth_container,
@@ -28,11 +25,6 @@ from src.features.authorization.composition import (
     attach_authorization_container,
     build_authorization_container,
     register_authorization_error_handlers,
-)
-from src.features.kanban.composition import (
-    attach_kanban_container,
-    build_kanban_container,
-    mount_kanban_routes,
 )
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import set_app_container
@@ -92,7 +84,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     # before lifespan startup completes. Containers are attached in lifespan
     # because they require DB connections that should not outlive the process.
     mount_auth_routes(app)
-    mount_kanban_routes(app)
     register_authorization_error_handlers(app)
     instrument_fastapi_app(app, app_settings)
 
@@ -104,16 +95,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             user_authz_version=auth.user_authz_version_adapter,
             user_registrar=auth.user_registrar_adapter,
             audit=auth.audit_adapter,
-        )
-        kanban = build_kanban_container(
-            postgresql_dsn=app_settings.postgresql_dsn,
-            authorization=authorization.port,
-            registry=authorization.registry,
-            user_authz_version_factory=SessionSQLModelUserAuthzVersionAdapter,
-            pool_size=app_settings.db_pool_size,
-            max_overflow=app_settings.db_max_overflow,
-            pool_recycle=app_settings.db_pool_recycle_seconds,
-            pool_pre_ping=app_settings.db_pool_pre_ping,
         )
         # Every feature has now contributed to the registry; freeze it
         # so a stray runtime ``register_…`` call surfaces as a clear error
@@ -127,7 +108,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         lifespan_app.state.principal_resolver = auth.resolve_principal.execute
         attach_authorization_container(lifespan_app, authorization)
         attach_auth_container(lifespan_app, auth)
-        attach_kanban_container(lifespan_app, kanban)
 
         # Shared Redis client used by health probes and other platform consumers.
         # Stored on app.state so it can be injected without coupling features.
@@ -148,7 +128,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         finally:
             # Shutdown order is reverse of startup so dependent resources
             # (e.g. connection pools) are closed after the services that use them.
-            kanban.shutdown()
             authorization.shutdown()
             auth.shutdown()
             if redis_client is not None:

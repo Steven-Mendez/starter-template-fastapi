@@ -1,10 +1,9 @@
-"""Unit tests for cross-resource inheritance (card → column → board).
+"""Unit tests for cross-resource inheritance through synthetic parent walks.
 
-Registers the inherited resource types (``card``, ``column``) on an
-:class:`AuthorizationRegistry` whose ``parent_of`` callables read from a
-pre-seeded fake. The walk uses ``card → column`` then ``column → kanban``
-so the engine exercises multi-level resolution rather than a hardcoded
-shortcut.
+Registers two inherited resource types on an :class:`AuthorizationRegistry`
+whose ``parent_of`` callables read from a pre-seeded fake. The walk uses
+two levels (``grandchild → child`` then ``child → thing``) so the engine
+exercises multi-level resolution rather than a hardcoded shortcut.
 """
 
 from __future__ import annotations
@@ -60,7 +59,7 @@ def registry(child_index: FakeChildIndex) -> AuthorizationRegistry:
         board_id = child_index.columns_to_boards.get(column_id)
         if board_id is None:
             return None
-        return ("kanban", board_id)
+        return ("thing", board_id)
 
     def _card_parent(card_id: str) -> tuple[str, str] | None:
         column_id = child_index.cards_to_columns.get(card_id)
@@ -68,7 +67,7 @@ def registry(child_index: FakeChildIndex) -> AuthorizationRegistry:
             return None
         return ("column", column_id)
 
-    reg.register_parent("column", parent_of=_column_parent, inherits_from="kanban")
+    reg.register_parent("column", parent_of=_column_parent, inherits_from="thing")
     reg.register_parent("card", parent_of=_card_parent, inherits_from="column")
     return reg
 
@@ -98,7 +97,7 @@ def _grant(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=board_id,
                 relation=relation,
                 subject_type="user",
@@ -210,5 +209,5 @@ def test_no_tuples_are_written_for_card_or_column_inheritance(
         rows = list(
             session.execute(text("SELECT resource_type, relation FROM relationships"))
         )
-    assert all(row[0] == "kanban" for row in rows)
+    assert all(row[0] == "thing" for row in rows)
     assert {row[1] for row in rows} == {"writer"}

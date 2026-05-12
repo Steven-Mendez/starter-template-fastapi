@@ -20,8 +20,8 @@ class DependencyContainerNotReadyError(RuntimeError):
 class AppContainer(Protocol):
     """Minimal platform-level container exposed via ``app.state.container``.
 
-    Feature-specific containers (e.g. Kanban) are wired separately by their
-    own composition root and accessed via their feature's wiring helpers.
+    Feature-specific containers are wired separately by their own
+    composition root and accessed via their feature's wiring helpers.
     """
 
     @property

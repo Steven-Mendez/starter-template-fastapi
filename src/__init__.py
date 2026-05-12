@@ -1,1 +1,1 @@
-"""Kanban board API package."""
+"""FastAPI starter template package."""

@@ -1,8 +1,12 @@
 """add first-party auth and rbac
 
 Revision ID: 20260505_0003
-Revises: 20260427_0002
+Revises:
 Create Date: 2026-05-05 00:00:00.000000
+
+Note: kanban-related migrations (0001, 0002, 0004, 0005) were removed as
+part of the ``starter-template-foundation`` change. This revision now
+serves as the chain root until the migration squash in PR 12.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20260505_0003"
-down_revision: str | None = "20260427_0002"
+down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

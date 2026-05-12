@@ -2,10 +2,11 @@
 
 The default adapter resolves the relation hierarchy and cross-resource
 inheritance at *check time* by consulting the
-:class:`AuthorizationRegistry`. Inherited resource types (such as a
-kanban ``card``) declare a ``parent_of`` callable at registration; the
-engine walks parents until it lands on a leaf type with stored tuples,
-then evaluates the original action against the parent's hierarchy.
+:class:`AuthorizationRegistry`. Inherited resource types (e.g., a child
+resource that does not store its own tuples) declare a ``parent_of``
+callable at registration; the engine walks parents until it lands on a
+leaf type with stored tuples, then evaluates the original action against
+the parent's hierarchy.
 
 Scaling note
 ============
@@ -17,14 +18,14 @@ thousands of ids per request, switch to a real ReBAC engine
 at write time using a watch-and-expand pipeline. The port boundary is
 designed so that swap is one adapter, not an engine rewrite.
 
-The adapter ships in two flavours so kanban use cases can write
-relationship tuples inside the same DB transaction as the kanban write:
+The adapter ships in two flavours so a feature's use cases can write
+relationship tuples inside the same DB transaction as the resource write:
 
 * :class:`SQLModelAuthorizationAdapter` owns its own engine and opens
   a fresh session per call. Suitable for read paths and standalone writes.
 * :class:`SessionSQLModelAuthorizationAdapter` borrows an existing
-  session managed by an outer unit-of-work, so kanban ``CREATE BOARD``
-  + initial-owner-tuple write commit or roll back together.
+  session managed by an outer unit-of-work, so a feature's "create
+  resource + initial-owner-tuple" pair commits or rolls back together.
 """
 
 from __future__ import annotations
@@ -316,8 +317,8 @@ class SQLModelAuthorizationAdapter(_BaseAuthorizationAdapter):
 class SessionSQLModelAuthorizationAdapter(_BaseAuthorizationAdapter):
     """Adapter that borrows a Session managed by an outer unit-of-work.
 
-    Used by the kanban ``CreateBoardUseCase``: the initial-owner-tuple
-    write must commit atomically with the board insert, so both
+    Used by a feature's "create resource" use case: the initial-owner-
+    tuple write must commit atomically with the resource insert, so both
     operations need to share the same Session.
     """
 

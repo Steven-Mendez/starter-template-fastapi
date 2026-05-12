@@ -45,7 +45,7 @@ def adapter() -> Iterator[SQLModelAuthorizationAdapter]:
 
 def _tuple(*, resource_id: str, relation: str, user_id: UUID) -> Relationship:
     return Relationship(
-        resource_type="kanban",
+        resource_type="thing",
         resource_id=resource_id,
         relation=relation,
         subject_type="user",
@@ -68,7 +68,7 @@ def test_lookup_resources_returns_boards_with_at_least_reader(
         ]
     )
     found = adapter.lookup_resources(
-        user_id=user_id, action="read", resource_type="kanban"
+        user_id=user_id, action="read", resource_type="thing"
     )
     assert set(found) == {b1, b2, b3}
     assert b4 not in found
@@ -87,12 +87,12 @@ def test_lookup_resources_filters_by_action(
         ]
     )
     delete = adapter.lookup_resources(
-        user_id=user_id, action="delete", resource_type="kanban"
+        user_id=user_id, action="delete", resource_type="thing"
     )
     assert delete == [b_owner]
 
     update = adapter.lookup_resources(
-        user_id=user_id, action="update", resource_type="kanban"
+        user_id=user_id, action="update", resource_type="thing"
     )
     assert set(update) == {b_owner, b_writer}
 
@@ -109,7 +109,7 @@ def test_lookup_resources_dedups_when_user_holds_multiple_relations(
         ]
     )
     found = adapter.lookup_resources(
-        user_id=user_id, action="read", resource_type="kanban"
+        user_id=user_id, action="read", resource_type="thing"
     )
     assert found == [board_id]
 
@@ -123,11 +123,11 @@ def test_lookup_resources_caps_at_the_limit(
         [_tuple(resource_id=b, relation="reader", user_id=user_id) for b in boards]
     )
     default = adapter.lookup_resources(
-        user_id=user_id, action="read", resource_type="kanban"
+        user_id=user_id, action="read", resource_type="thing"
     )
     assert len(default) == 100  # default limit
     capped = adapter.lookup_resources(
-        user_id=user_id, action="read", resource_type="kanban", limit=10
+        user_id=user_id, action="read", resource_type="thing", limit=10
     )
     assert len(capped) == 10
 
@@ -141,7 +141,7 @@ def test_lookup_resources_max_limit_is_500(
         [_tuple(resource_id=b, relation="reader", user_id=user_id) for b in boards]
     )
     very_high = adapter.lookup_resources(
-        user_id=user_id, action="read", resource_type="kanban", limit=10_000
+        user_id=user_id, action="read", resource_type="thing", limit=10_000
     )
     assert len(very_high) == 500
 
@@ -164,12 +164,12 @@ def test_lookup_subjects_returns_users_with_relation_or_higher(
     )
     readers = set(
         adapter.lookup_subjects(
-            resource_type="kanban", resource_id=board_id, relation="reader"
+            resource_type="thing", resource_id=board_id, relation="reader"
         )
     )
     assert readers == {owner, writer, reader}
 
     only_owners = adapter.lookup_subjects(
-        resource_type="kanban", resource_id=board_id, relation="owner"
+        resource_type="thing", resource_id=board_id, relation="owner"
     )
     assert only_owners == [owner]

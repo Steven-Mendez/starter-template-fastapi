@@ -16,7 +16,7 @@ from src.features.authorization.application.types import Relationship
 
 def _tuple(*, board_id: str, relation: str, user_id: UUID) -> Relationship:
     return Relationship(
-        resource_type="kanban",
+        resource_type="thing",
         resource_id=board_id,
         relation=relation,
         subject_type="user",
@@ -45,7 +45,7 @@ class AuthorizationContract:
             assert adapter.check(
                 user_id=user_id,
                 action=action,
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=board_id,
             ), action
 
@@ -58,13 +58,13 @@ class AuthorizationContract:
         assert adapter.check(
             user_id=user_id,
             action="update",
-            resource_type="kanban",
+            resource_type="thing",
             resource_id=board_id,
         )
         assert not adapter.check(
             user_id=user_id,
             action="delete",
-            resource_type="kanban",
+            resource_type="thing",
             resource_id=board_id,
         )
 
@@ -77,7 +77,7 @@ class AuthorizationContract:
         assert not adapter.check(
             user_id=user_id,
             action="update",
-            resource_type="kanban",
+            resource_type="thing",
             resource_id=board_id,
         )
 
@@ -87,7 +87,7 @@ class AuthorizationContract:
             assert not adapter.check(
                 user_id=uuid4(),
                 action=action,
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=str(uuid4()),
             )
 
@@ -106,7 +106,7 @@ class AuthorizationContract:
         )
         result = set(
             adapter.lookup_resources(
-                user_id=user_id, action="read", resource_type="kanban"
+                user_id=user_id, action="read", resource_type="thing"
             )
         )
         assert result == {owned, written, read}
@@ -123,7 +123,7 @@ class AuthorizationContract:
         )
         readers = set(
             adapter.lookup_subjects(
-                resource_type="kanban", resource_id=board_id, relation="reader"
+                resource_type="thing", resource_id=board_id, relation="reader"
             )
         )
         assert readers == {owner, writer}
@@ -139,7 +139,7 @@ class AuthorizationContract:
         assert adapter.check(
             user_id=user_id,
             action="read",
-            resource_type="kanban",
+            resource_type="thing",
             resource_id=board_id,
         )
 

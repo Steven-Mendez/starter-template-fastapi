@@ -72,7 +72,7 @@ def test_crud_round_trip_against_real_postgres(
     user_id = _seed_user(postgres_auth_repository)
     board_id = str(uuid4())
     tup = Relationship(
-        resource_type="kanban",
+        resource_type="thing",
         resource_id=board_id,
         relation="owner",
         subject_type="user",
@@ -81,11 +81,11 @@ def test_crud_round_trip_against_real_postgres(
 
     adapter.write_relationships([tup])
     assert adapter.check(
-        user_id=user_id, action="delete", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="delete", resource_type="thing", resource_id=board_id
     )
     adapter.delete_relationships([tup])
     assert not adapter.check(
-        user_id=user_id, action="delete", resource_type="kanban", resource_id=board_id
+        user_id=user_id, action="delete", resource_type="thing", resource_id=board_id
     )
 
 
@@ -95,7 +95,7 @@ def test_unique_constraint_makes_writes_idempotent(
 ) -> None:
     user_id = _seed_user(postgres_auth_repository)
     tup = Relationship(
-        resource_type="kanban",
+        resource_type="thing",
         resource_id=str(uuid4()),
         relation="reader",
         subject_type="user",
@@ -140,7 +140,7 @@ def test_lookup_resources_uses_subject_index(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=str(uuid4()),
                 relation="reader",
                 subject_type="user",
@@ -155,7 +155,7 @@ def test_lookup_resources_uses_subject_index(
             text(
                 "EXPLAIN SELECT resource_id FROM relationships "
                 "WHERE subject_type = 'user' AND subject_id = :sid "
-                "AND resource_type = 'kanban' "
+                "AND resource_type = 'thing' "
                 "AND relation IN ('reader','writer','owner') "
                 "ORDER BY resource_id LIMIT 100"
             ),
@@ -179,7 +179,7 @@ def test_authz_version_bumps_on_write_against_postgres(
     adapter.write_relationships(
         [
             Relationship(
-                resource_type="kanban",
+                resource_type="thing",
                 resource_id=str(uuid4()),
                 relation="reader",
                 subject_type="user",

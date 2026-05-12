@@ -36,7 +36,9 @@ class AppSettings(BaseSettings):
     cors_origins: list[str] = ["*"]
     trusted_hosts: list[str] = ["*"]
     log_level: str = "INFO"
-    postgresql_dsn: str = "postgresql+psycopg://postgres:postgres@localhost:5432/kanban"
+    postgresql_dsn: str = (
+        "postgresql+psycopg://postgres:postgres@localhost:5432/starter"
+    )
     health_persistence_backend: str = "postgresql"
     # Database connection-pool tuning. ``pool_recycle`` defends against
     # idle-cutting load balancers (RDS, PgBouncer) that close stale conns;

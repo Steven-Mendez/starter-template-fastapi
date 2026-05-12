@@ -8,8 +8,8 @@ Exposes:
   from any feature.
 * ``register_authorization_error_handlers``: maps domain authorization
   errors raised inside ``AuthorizationPort.check`` (typically by the
-  platform-level ``require_authorization`` dependency on kanban routes)
-  to Problem Details responses.
+  platform-level ``require_authorization`` dependency on a feature's
+  routes) to Problem Details responses.
 """
 
 from __future__ import annotations

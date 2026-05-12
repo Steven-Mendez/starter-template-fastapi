@@ -8,7 +8,7 @@ satisfying inferior checks — is encoded as the per-resource-type
 
 For SpiceDB this would be a schema fragment such as::
 
-    definition kanban {
+    definition thing {
         relation reader: user
         relation writer: user
         relation owner: user

@@ -1,9 +1,9 @@
 """Belt-and-braces layering test.
 
-Walks the AST of every production module in ``src/features/{auth,authorization,kanban}``
+Walks the AST of every production module in ``src/features/{auth,authorization}``
 and asserts no cross-feature imports outside the allowed seams. Import
 Linter is the primary check; this test pins down the spec scenario
-("Auth/Authorization/Kanban do not import each other") as Python so a
+("Auth and Authorization do not import each other") as Python so a
 broken contract shows up in pytest output alongside the other suites.
 """
 
@@ -48,9 +48,8 @@ def _imported_modules(path: pathlib.Path) -> list[str]:
 
 
 _FORBIDDEN = {
-    "auth": ("src.features.authorization", "src.features.kanban"),
-    "authorization": ("src.features.auth", "src.features.kanban"),
-    "kanban": ("src.features.auth",),
+    "auth": ("src.features.authorization",),
+    "authorization": ("src.features.auth",),
 }
 
 

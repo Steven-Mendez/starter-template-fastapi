@@ -1,9 +1,10 @@
-"""Static check: the auth authorization layer never mentions kanban vocabulary.
+"""Static check: authorization never mentions any feature's vocabulary.
 
 After ``decouple-authz-from-features``, the authorization engine learns
 about resource types only from the runtime registry. This test fails if
-a future change re-introduces a kanban-flavoured resource type string
-under ``application/authorization/`` or the SQLModel adapter.
+a future change re-introduces a feature-flavoured resource type string
+(``"thing"``, ``"column"``, ``"card"``, ``"board"``, …) under
+``authorization/application/`` or its SQLModel adapter.
 """
 
 from __future__ import annotations
@@ -14,22 +15,27 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
-_FORBIDDEN_TOKENS = ('"kanban"', '"column"', '"card"')
+_FORBIDDEN_TOKENS = (
+    '"thing"',
+    '"column"',
+    '"card"',
+    '"board"',
+    '"kanban"',
+)
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[5]
 _SCANNED_DIRS = (
-    _PROJECT_ROOT / "src" / "features" / "auth" / "application" / "authorization",
+    _PROJECT_ROOT / "src" / "features" / "authorization" / "application",
     _PROJECT_ROOT
     / "src"
     / "features"
-    / "auth"
+    / "authorization"
     / "adapters"
     / "outbound"
-    / "authorization"
     / "sqlmodel",
 )
 
 
-def test_no_kanban_resource_type_strings_under_auth_authorization() -> None:
+def test_no_feature_resource_type_strings_under_authorization() -> None:
     offenders: list[str] = []
     for directory in _SCANNED_DIRS:
         for path in directory.rglob("*.py"):
@@ -38,8 +44,7 @@ def test_no_kanban_resource_type_strings_under_auth_authorization() -> None:
                 if token in text:
                     offenders.append(f"{path}: {token}")
     assert not offenders, (
-        "Kanban-flavoured resource type strings found under "
-        "src/features/auth/application/authorization/ or the SQLModel "
-        "authorization adapter — these belong to whichever feature owns "
-        "the resource, not auth:\n  " + "\n  ".join(offenders)
+        "Feature-flavoured resource type strings found under the "
+        "authorization feature — these belong to whichever feature owns "
+        "the resource type, not authorization itself:\n  " + "\n  ".join(offenders)
     )

@@ -1,7 +1,7 @@
 """Typed contract for per-request state shared across features.
 
-Auth writes ``actor_id`` after validating a JWT; kanban reads it to stamp
-audit columns without importing from the auth feature directly.
+Auth writes ``actor_id`` after validating a JWT; other features read it to
+stamp audit columns without importing from the auth feature directly.
 """
 
 from __future__ import annotations

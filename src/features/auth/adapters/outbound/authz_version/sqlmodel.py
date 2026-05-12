@@ -4,8 +4,8 @@ The principal cache keys on ``(user_id, authz_version)``; incrementing
 the column on a user's row invalidates any previously-cached principal
 the next time the platform's principal resolver runs.
 
-Two flavours mirror the authorization adapter so the kanban
-unit-of-work can commit a board write, an owner-tuple write, and the
+Two flavours mirror the authorization adapter so a feature's
+unit-of-work can commit a resource write, an owner-tuple write, and the
 authz-version bump as a single transaction.
 """
 
@@ -56,9 +56,9 @@ class SQLModelUserAuthzVersionAdapter:
 class SessionSQLModelUserAuthzVersionAdapter:
     """Adapter that borrows an outer unit-of-work's session.
 
-    Used inside kanban's UoW so the board write, owner-tuple write, and
-    authz-version bump commit or roll back as a single transaction. The
-    outer UoW owns commit; this adapter only stages the update.
+    Used inside a feature's UoW so the resource write, owner-tuple write,
+    and authz-version bump commit or roll back as a single transaction.
+    The outer UoW owns commit; this adapter only stages the update.
     """
 
     def __init__(self, session: Session) -> None:

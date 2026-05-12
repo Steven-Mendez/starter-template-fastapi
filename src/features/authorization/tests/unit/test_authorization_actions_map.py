@@ -18,13 +18,13 @@ from src.features.authorization.tests.contracts.registry_helper import (
 pytestmark = pytest.mark.unit
 
 
-def test_kanban_action_mappings_match_spec() -> None:
+def test_thing_action_mappings_match_spec() -> None:
     registry = make_test_registry()
-    assert relations_for(registry, "kanban", "read") == frozenset(
+    assert relations_for(registry, "thing", "read") == frozenset(
         {"reader", "writer", "owner"}
     )
-    assert relations_for(registry, "kanban", "update") == frozenset({"writer", "owner"})
-    assert relations_for(registry, "kanban", "delete") == frozenset({"owner"})
+    assert relations_for(registry, "thing", "update") == frozenset({"writer", "owner"})
+    assert relations_for(registry, "thing", "delete") == frozenset({"owner"})
 
 
 def test_system_action_mappings_match_spec() -> None:
@@ -33,11 +33,11 @@ def test_system_action_mappings_match_spec() -> None:
     assert relations_for(registry, "system", "read_audit") == frozenset({"admin"})
 
 
-def test_inherited_children_share_kanban_actions() -> None:
+def test_inherited_children_share_thing_actions() -> None:
     """Inherited resource types reuse their parent's registered action map."""
     registry = make_test_registry()
     registry.register_parent(
-        "column", parent_of=lambda _id: None, inherits_from="kanban"
+        "column", parent_of=lambda _id: None, inherits_from="thing"
     )
     registry.register_parent("card", parent_of=lambda _id: None, inherits_from="column")
     assert relations_for(registry, "column", "delete") == frozenset({"owner"})
@@ -55,10 +55,10 @@ def test_relations_for_unknown_resource_type_raises() -> None:
 def test_relations_for_unknown_action_raises() -> None:
     registry = make_test_registry()
     with pytest.raises(UnknownActionError):
-        relations_for(registry, "kanban", "purge")
+        relations_for(registry, "thing", "purge")
 
 
 def test_relations_for_returns_the_mapped_set() -> None:
     registry = make_test_registry()
-    assert relations_for(registry, "kanban", "delete") == frozenset({"owner"})
+    assert relations_for(registry, "thing", "delete") == frozenset({"owner"})
     assert relations_for(registry, "system", "manage_users") == frozenset({"admin"})

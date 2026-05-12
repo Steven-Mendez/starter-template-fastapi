@@ -145,10 +145,11 @@ def require_authorization(
     * Raises 403 on deny.
 
     Args:
-        action: The action name as declared in
-            ``src/features/auth/application/authorization/actions.py``.
+        action: The action name as registered with the
+            :class:`AuthorizationRegistry` by the resource-owning feature.
         resource_type: The resource type the action targets
-            (e.g. ``"kanban"``, ``"system"``, ``"column"``, ``"card"``).
+            (e.g. ``"system"``, ``"thing"``, or any type a feature has
+            registered with the authorization registry).
         id_loader: Callable that extracts the resource id from the request
             (typically a one-line lambda reading ``request.path_params``).
             Pass ``None`` for system-level routes; the sentinel ``"main"``
