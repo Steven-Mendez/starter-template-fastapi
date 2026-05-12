@@ -18,3 +18,15 @@ def read_root() -> dict[str, str]:
         "name": "starter-template-fastapi",
         "message": "FastAPI service is running.",
     }
+
+
+@root_router.get("/health/live", tags=["health"])
+def liveness() -> dict[str, str]:
+    """Process liveness probe.
+
+    Returns 200 as long as the ASGI app can serve a request. Does not
+    touch DB, Redis, or any downstream — that's the readiness probe's
+    job. Already excluded from tracing and Prometheus metrics in
+    ``platform.observability``.
+    """
+    return {"status": "ok"}

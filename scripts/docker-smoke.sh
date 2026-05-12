@@ -20,6 +20,7 @@ docker run --rm -d \
   --name "$container" \
   -e APP_AUTH_JWT_SECRET_KEY=ci-test-secret-key-min-32-chars \
   -e APP_ENVIRONMENT=development \
+  -e APP_STORAGE_LOCAL_PATH=/tmp/storage \
   -p "127.0.0.1::8000" \
   "$image" >/dev/null
 
