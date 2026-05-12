@@ -273,7 +273,9 @@ def me(principal: CurrentPrincipalDep) -> PrincipalPublic:
     return _principal_response(principal)
 
 
-@auth_router.post("/password/forgot", response_model=InternalTokenResponse)
+@auth_router.post(
+    "/password/forgot", response_model=InternalTokenResponse, status_code=202
+)
 def forgot_password(
     body: PasswordForgotRequest, request: Request
 ) -> InternalTokenResponse:
@@ -322,7 +324,9 @@ def reset_password(body: PasswordResetRequest, request: Request) -> MessageRespo
             raise_http_from_auth_error(exc)
 
 
-@auth_router.post("/email/verify/request", response_model=InternalTokenResponse)
+@auth_router.post(
+    "/email/verify/request", response_model=InternalTokenResponse, status_code=202
+)
 def request_email_verify(
     principal: CurrentPrincipalDep, request: Request
 ) -> InternalTokenResponse:

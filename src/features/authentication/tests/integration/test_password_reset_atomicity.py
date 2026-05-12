@@ -11,6 +11,10 @@ from src.features.authentication.adapters.outbound.persistence.sqlmodel.reposito
 )
 from src.features.authentication.application.errors import TokenAlreadyUsedError
 from src.features.authentication.composition.container import build_auth_container
+from src.features.background_jobs.tests.fakes.fake_job_queue import FakeJobQueue
+from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+    SQLModelUserRepository,
+)
 from src.platform.config.settings import AppSettings
 from src.platform.shared.result import Ok
 
@@ -29,8 +33,11 @@ def test_concurrent_password_reset_serializes_on_token_row(
             "auth_redis_url": None,
         }
     )
+    users = SQLModelUserRepository(engine=postgres_auth_repository.engine)
     container = build_auth_container(
         settings=settings,
+        users=users,
+        jobs=FakeJobQueue(),
         repository=postgres_auth_repository,
     )
     reg = container.register_user.execute(

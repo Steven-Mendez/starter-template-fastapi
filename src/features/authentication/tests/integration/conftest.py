@@ -7,24 +7,31 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from sqlalchemy.engine import Engine
+from sqlalchemy import text
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import create_engine
 
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
+    CredentialTable,
     RefreshTokenTable,
-    UserTable,
 )
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
+)
+from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+    UserTable,
+)
+from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+    SQLModelUserRepository,
 )
 from src.platform.persistence.sqlmodel.authorization.models import RelationshipTable
 
 AUTH_TABLES: list[Any] = [
     UserTable,
     RelationshipTable,
+    CredentialTable,
     RefreshTokenTable,
     AuthAuditEventTable,
     AuthInternalTokenTable,
@@ -53,6 +60,14 @@ def _docker_available() -> bool:
         return True
     except Exception:
         return False
+
+
+@pytest.fixture
+def users_for_auth(
+    sqlite_auth_repository: SQLModelAuthRepository,
+) -> SQLModelUserRepository:
+    """``UserPort`` implementation sharing the in-memory SQLite engine."""
+    return SQLModelUserRepository(engine=sqlite_auth_repository.engine)
 
 
 @pytest.fixture
@@ -88,17 +103,26 @@ def _auth_postgres_url() -> Iterator[str]:
 def postgres_auth_repository(
     _auth_postgres_url: str,
 ) -> Iterator[SQLModelAuthRepository]:
-    """PostgreSQL-backed auth repository for row-locking integration tests."""
+    """PostgreSQL-backed auth repository for row-locking integration tests.
+
+    The session-scoped postgres container is shared across tests, and the
+    migration round-trip suite can leave the schema at an arbitrary
+    historical revision. Drop ``public`` before invoking ``create_all`` so
+    every test sees the same fresh schema regardless of what ran before.
+    """
+    _reset_public_schema(_auth_postgres_url)
     repository = SQLModelAuthRepository(_auth_postgres_url, create_schema=True)
-    _clear_database(repository.engine)
     try:
         yield repository
     finally:
         repository.close()
 
 
-def _clear_database(engine: Engine) -> None:
-    with Session(engine) as session:
-        for table in reversed(SQLModel.metadata.sorted_tables):
-            session.exec(table.delete())  # type: ignore[call-overload]
-        session.commit()
+def _reset_public_schema(url: str) -> None:
+    engine = create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+    finally:
+        engine.dispose()

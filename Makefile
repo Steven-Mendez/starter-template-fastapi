@@ -2,7 +2,7 @@ PORT ?= 8000
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports
+.PHONY: help sync dev worker format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -12,6 +12,9 @@ sync: ## Sync dependencies (uv lock + install)
 
 dev: ## Run API with auto-reload (FastAPI CLI)
 	uv run fastapi dev src/main.py --host 0.0.0.0 --port $(PORT)
+
+worker: ## Run the arq background-jobs worker (requires APP_JOBS_BACKEND=arq)
+	uv run python -m src.worker
 
 format: ## Format code with Ruff formatter
 	uv run ruff format .
@@ -70,19 +73,19 @@ test-feature: ## Run tests for a single feature: make test-feature FEATURE=authe
 	uv run pytest src/features/$$feature/tests
 
 cov: ## Run tests with terminal coverage report
-	uv run pytest -m "not integration" --cov --cov-report=term-missing --cov-fail-under=70
+	uv run pytest -m "not integration" --cov --cov-report=term-missing --cov-fail-under=80
 
 cov-html: ## Run tests and generate fancy HTML coverage report at reports/coverage/index.html
 	@mkdir -p reports
 	uv run pytest -m "not integration" \
-	    --cov --cov-report=html:reports/coverage --cov-report=term --cov-fail-under=70
+	    --cov --cov-report=html:reports/coverage --cov-report=term --cov-fail-under=80
 	@echo ""
 	@echo "Coverage report: file://$(CURDIR)/reports/coverage/index.html"
 
 cov-xml: ## Run tests and emit Cobertura XML at reports/coverage.xml (CI artifacts)
 	@mkdir -p reports
 	uv run pytest -m "not integration" \
-	    --cov --cov-report=xml:reports/coverage.xml --cov-fail-under=70
+	    --cov --cov-report=xml:reports/coverage.xml --cov-fail-under=80
 
 cov-open: ## Open the latest HTML coverage report in the default browser
 	@if [ ! -f reports/coverage/index.html ]; then echo "Run 'make cov-html' first."; exit 1; fi
@@ -91,7 +94,7 @@ cov-open: ## Open the latest HTML coverage report in the default browser
 report: ## Generate HTML test report + HTML coverage at reports/
 	@mkdir -p reports
 	uv run pytest -m "not integration" \
-	    --cov --cov-report=html:reports/coverage --cov-report=term --cov-fail-under=70 \
+	    --cov --cov-report=html:reports/coverage --cov-report=term --cov-fail-under=80 \
 	    --html=reports/tests.html --self-contained-html
 	@echo ""
 	@echo "Test report:     file://$(CURDIR)/reports/tests.html"

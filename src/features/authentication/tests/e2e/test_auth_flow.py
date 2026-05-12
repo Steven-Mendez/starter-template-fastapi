@@ -192,7 +192,7 @@ def test_inactive_user_with_valid_token_is_403(auth_context: AuthTestContext) ->
     client = auth_context.client
     user = _register(client)
     token = _login(client)
-    auth_context.repository.set_user_active(UUID(user["id"]), False)
+    auth_context.user_repository.set_active(UUID(user["id"]), is_active=False)
 
     response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 403
@@ -201,7 +201,7 @@ def test_inactive_user_with_valid_token_is_403(auth_context: AuthTestContext) ->
 def test_inactive_user_login_returns_403(auth_context: AuthTestContext) -> None:
     client = auth_context.client
     user = _register(client, "inactive-login@example.com")
-    auth_context.repository.set_user_active(UUID(user["id"]), False)
+    auth_context.user_repository.set_active(UUID(user["id"]), is_active=False)
 
     response = client.post(
         "/auth/login",
@@ -216,7 +216,7 @@ def test_password_reset_and_email_verification(client: TestClient) -> None:
     _register(client)
 
     forgot = client.post("/auth/password/forgot", json={"email": "user@example.com"})
-    assert forgot.status_code == 200
+    assert forgot.status_code == 202
     reset_token = forgot.json()["dev_token"]
     assert reset_token
 
@@ -237,7 +237,7 @@ def test_password_reset_and_email_verification(client: TestClient) -> None:
         "/auth/email/verify/request",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert verify_request.status_code == 200
+    assert verify_request.status_code == 202
     verify_token = verify_request.json()["dev_token"]
 
     verify = client.post("/auth/email/verify", json={"token": verify_token})
@@ -262,7 +262,7 @@ def test_internal_token_omission_does_not_emit_per_request_warning(
 
     forgot = client.post("/auth/password/forgot", json={"email": "user@example.com"})
 
-    assert forgot.status_code == 200
+    assert forgot.status_code == 202
     assert forgot.json()["dev_token"] is None
     assert "no delivery provider" not in caplog.text
 
@@ -284,7 +284,7 @@ def test_stale_token_returns_401_with_invalid_token_detail(
     user_id = UUID(user["id"])
 
     # Bump the user's authz_version (as a relationship write would).
-    auth_context.repository.increment_user_authz_version(user_id)
+    auth_context.user_repository.set_active(user_id, is_active=True)
 
     # The old token now carries a stale authz_version — it must be rejected
     # with a machine-readable code so clients know to re-authenticate rather

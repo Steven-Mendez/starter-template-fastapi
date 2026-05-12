@@ -10,22 +10,28 @@ import pytest
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
+from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+    SQLModelUserRepository,
+)
+from src.platform.shared.result import Ok
 
 pytestmark = pytest.mark.integration
 
 
 def test_create_refresh_token_rejects_family_belonging_to_other_user(
     sqlite_auth_repository: SQLModelAuthRepository,
+    users_for_auth: SQLModelUserRepository,
 ) -> None:
     repo = sqlite_auth_repository
-    user_a = repo.create_user(email="a@example.com", password_hash="hash-a")
-    user_b = repo.create_user(email="b@example.com", password_hash="hash-b")
-    assert user_a is not None and user_b is not None
+    user_a = users_for_auth.create(email="a@example.com")
+    user_b = users_for_auth.create(email="b@example.com")
+    assert isinstance(user_a, Ok)
+    assert isinstance(user_b, Ok)
 
     family_id = uuid4()
     expires = datetime.now(timezone.utc) + timedelta(days=7)
     repo.create_refresh_token(
-        user_id=user_a.id,
+        user_id=user_a.value.id,
         token_hash="hash-token-a",
         family_id=family_id,
         expires_at=expires,
@@ -35,7 +41,7 @@ def test_create_refresh_token_rejects_family_belonging_to_other_user(
 
     with pytest.raises(ValueError, match="different user"):
         repo.create_refresh_token(
-            user_id=user_b.id,
+            user_id=user_b.value.id,
             token_hash="hash-token-b",
             family_id=family_id,
             expires_at=expires,

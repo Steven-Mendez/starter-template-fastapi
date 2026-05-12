@@ -22,8 +22,8 @@ from sqlmodel import create_engine
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
+    CredentialTable,
     RefreshTokenTable,
-    UserTable,
 )
 from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
@@ -33,10 +33,36 @@ from src.features.authentication.composition.wiring import (
     attach_auth_container,
     mount_auth_routes,
 )
+from src.features.authentication.email_templates import (
+    register_authentication_email_templates,
+)
 from src.features.authorization.composition import (
     attach_authorization_container,
     build_authorization_container,
     register_authorization_error_handlers,
+)
+from src.features.background_jobs.adapters.outbound.in_process import (
+    InProcessJobQueueAdapter,
+)
+from src.features.background_jobs.application.registry import JobHandlerRegistry
+from src.features.email.composition.container import build_email_container
+from src.features.email.composition.jobs import register_send_email_handler
+from src.features.email.composition.settings import EmailSettings
+from src.features.email.composition.wiring import attach_email_container
+from src.features.email.tests.fakes.fake_email_port import FakeEmailPort
+from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+    UserTable,
+)
+from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+    SQLModelUserRepository,
+)
+from src.features.users.composition.container import (
+    build_user_registrar_adapter,
+    build_users_container,
+)
+from src.features.users.composition.wiring import (
+    attach_users_container,
+    mount_users_routes,
 )
 from src.platform.api.app_factory import build_fastapi_app
 from src.platform.api.dependencies.container import set_app_container
@@ -63,11 +89,14 @@ class AuthTestContext:
 
     client: TestClient
     repository: SQLModelAuthRepository
+    user_repository: SQLModelUserRepository
+    email: FakeEmailPort
 
 
 AUTH_TABLES: list[Any] = [
     UserTable,
     RelationshipTable,
+    CredentialTable,
     RefreshTokenTable,
     AuthAuditEventTable,
     AuthInternalTokenTable,
@@ -114,16 +143,54 @@ def auth_repository() -> Iterator[SQLModelAuthRepository]:
         repository.close()
 
 
-def _build_app(settings: AppSettings, repository: SQLModelAuthRepository) -> FastAPI:
+def _build_app(
+    settings: AppSettings,
+    repository: SQLModelAuthRepository,
+    email_port: FakeEmailPort,
+) -> tuple[FastAPI, SQLModelUserRepository]:
     """Build a wired FastAPI app with a bootstrapped system-admin account."""
     app = build_fastapi_app(settings)
     mount_auth_routes(app)
+    mount_users_routes(app)
     register_authorization_error_handlers(app)
-    auth = build_auth_container(settings=settings, repository=repository)
+    users = build_users_container(engine=repository.engine)
+    email_container = build_email_container(
+        EmailSettings.from_app_settings(
+            backend="console",
+            from_address="test@example.com",
+            smtp_host=None,
+            smtp_port=587,
+            smtp_username=None,
+            smtp_password=None,
+            smtp_use_starttls=False,
+            smtp_use_ssl=False,
+            smtp_timeout_seconds=1.0,
+        )
+    )
+    register_authentication_email_templates(email_container.registry)
+    email_container.registry.seal()
+    # Auth's password-reset/email-verify flows enqueue ``send_email``
+    # via the jobs port. Wiring the in-process queue with the
+    # ``send_email`` handler bound to the fake email port keeps the
+    # e2e tests able to inspect ``email_port.sent`` for behavioural
+    # assertions exactly as before.
+    jobs_registry = JobHandlerRegistry()
+    register_send_email_handler(jobs_registry, email_port)
+    jobs_registry.seal()
+    jobs_port = InProcessJobQueueAdapter(registry=jobs_registry)
+    auth = build_auth_container(
+        settings=settings,
+        users=users.user_repository,
+        jobs=jobs_port,
+        repository=repository,
+    )
+    user_registrar = build_user_registrar_adapter(
+        users=users, credential_writer=auth.credential_writer_adapter
+    )
     authorization = build_authorization_container(
         engine=repository.engine,
-        user_authz_version=auth.user_authz_version_adapter,
-        user_registrar=auth.user_registrar_adapter,
+        user_authz_version=users.user_authz_version_adapter,
+        user_registrar=user_registrar,
         audit=auth.audit_adapter,
     )
     authorization.registry.seal()
@@ -140,11 +207,13 @@ def _build_app(settings: AppSettings, repository: SQLModelAuthRepository) -> Fas
         lifespan_app.state.principal_resolver = auth.resolve_principal.execute
         attach_authorization_container(lifespan_app, authorization)
         attach_auth_container(lifespan_app, auth)
+        attach_users_container(lifespan_app, users)
+        attach_email_container(lifespan_app, email_container)
         yield
         lifespan_app.state.container = None
 
     app.router.lifespan_context = lifespan
-    return app
+    return app, users.user_repository
 
 
 @pytest.fixture
@@ -154,9 +223,15 @@ def auth_context(
 ) -> Iterator[AuthTestContext]:
     """Yield a fully composed :class:`AuthTestContext` for an e2e test."""
     settings = _settings(test_settings)
-    app = _build_app(settings, auth_repository)
+    email_port = FakeEmailPort()
+    app, user_repository = _build_app(settings, auth_repository, email_port)
     with TestClient(app) as client:
-        yield AuthTestContext(client=client, repository=auth_repository)
+        yield AuthTestContext(
+            client=client,
+            repository=auth_repository,
+            user_repository=user_repository,
+            email=email_port,
+        )
 
 
 @pytest.fixture
@@ -168,9 +243,15 @@ def auth_context_rate_limited(
     settings = _settings(test_settings).model_copy(
         update={"auth_rate_limit_enabled": True}
     )
-    app = _build_app(settings, auth_repository)
+    email_port = FakeEmailPort()
+    app, user_repository = _build_app(settings, auth_repository, email_port)
     with TestClient(app) as client:
-        yield AuthTestContext(client=client, repository=auth_repository)
+        yield AuthTestContext(
+            client=client,
+            repository=auth_repository,
+            user_repository=user_repository,
+            email=email_port,
+        )
 
 
 @pytest.fixture
@@ -182,9 +263,15 @@ def auth_context_internal_tokens_hidden(
     settings = _settings(test_settings).model_copy(
         update={"auth_return_internal_tokens": False}
     )
-    app = _build_app(settings, auth_repository)
+    email_port = FakeEmailPort()
+    app, user_repository = _build_app(settings, auth_repository, email_port)
     with TestClient(app) as client:
-        yield AuthTestContext(client=client, repository=auth_repository)
+        yield AuthTestContext(
+            client=client,
+            repository=auth_repository,
+            user_repository=user_repository,
+            email=email_port,
+        )
 
 
 @pytest.fixture
@@ -196,9 +283,15 @@ def auth_context_email_verification_required(
     settings = _settings(test_settings).model_copy(
         update={"auth_require_email_verification": True}
     )
-    app = _build_app(settings, auth_repository)
+    email_port = FakeEmailPort()
+    app, user_repository = _build_app(settings, auth_repository, email_port)
     with TestClient(app) as client:
-        yield AuthTestContext(client=client, repository=auth_repository)
+        yield AuthTestContext(
+            client=client,
+            repository=auth_repository,
+            user_repository=user_repository,
+            email=email_port,
+        )
 
 
 @pytest.fixture

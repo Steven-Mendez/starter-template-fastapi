@@ -183,9 +183,9 @@ class RedisRateLimiter:
                 _SLIDING_WINDOW_SCRIPT,
                 1,
                 f"rate:{key}",
-                now_ms,
-                self._window_ms,
-                self._max_attempts,
+                str(now_ms),
+                str(self._window_ms),
+                str(self._max_attempts),
                 member,
             ),
         )
