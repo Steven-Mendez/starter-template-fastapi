@@ -26,9 +26,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Removes the ``_template`` feature's table and its relationships rows.
+    # The template scaffold was never production schema, so the ``# allow:
+    # destructive`` opt-out applies — see docs/operations.md#migration-policy.
     op.execute(sa.text("DELETE FROM relationships WHERE resource_type = 'thing'"))
-    op.drop_index("ix_things_owner_id", table_name="things")
-    op.drop_table("things")
+    op.drop_index("ix_things_owner_id", table_name="things")  # allow: destructive
+    op.drop_table("things")  # allow: destructive
 
 
 def downgrade() -> None:

@@ -111,6 +111,67 @@ Alembic resolves the database URL in this order:
 1. `APP_POSTGRESQL_DSN` environment variable.
 2. `AppSettings().postgresql_dsn` default or `.env` value.
 
+### Migration Policy
+
+Reversible migrations are the default. Every Alembic migration should ship with an
+`upgrade()` and a `downgrade()` that round-trips schema state cleanly.
+
+A migration is **destructive** when its `upgrade()` drops a column, drops a table,
+drops an index, or runs raw SQL that does the same (`op.execute("DROP ...")` /
+`op.execute("ALTER TABLE ... DROP ...")`). Narrowing an `alter_column` (for
+example `String(length=255)` → `String(length=64)`) is also destructive but
+cannot be detected statically — the same policy applies, by hand.
+
+Destructive migrations MUST mark `downgrade()` so that the first executable
+statement raises `NotImplementedError` with a message that references this
+section. For example:
+
+```python
+def downgrade() -> None:
+    raise NotImplementedError(
+        "One-way migration: drop of users.password_hash is not safely "
+        "reversible. If you need to revert, restore from backup. "
+        "See docs/operations.md#migration-policy."
+    )
+```
+
+A `downgrade()` that silently re-adds the dropped column with a default value
+(or re-creates an empty table) is worse than no downgrade at all — running it
+in production would mask data loss. Raising `NotImplementedError` makes the
+abort loud and points the operator at this runbook.
+
+**Recovery runbook.** If a destructive migration must be rolled back in
+production, the only safe path is to **restore from backup**:
+
+1. Stop the application processes that write to the database.
+2. Provision a fresh PostgreSQL instance (or target a recovery instance).
+3. Restore the most recent pre-deploy backup using your platform's database
+   restore tooling (see [Backups](#backups)).
+4. Point `APP_POSTGRESQL_DSN` at the restored instance.
+5. Redeploy the application image that matches the restored schema revision.
+
+`uv run alembic downgrade -1` is not an option for destructive revisions — the
+`NotImplementedError` will abort the command before any schema change is
+applied.
+
+**Escape hatch — `# allow: destructive`.** A destructive `upgrade()` may
+suppress the policy on a single line by appending `# allow: destructive` to it:
+
+```python
+def upgrade() -> None:
+    op.drop_index("ix_legacy_unused")  # allow: destructive
+```
+
+Use this only when the downgrade is genuinely reversible — for example, when
+dropping an index that can be re-created cheaply, or when removing greenfield
+or template-only schema that has never held production data. PR review enforces
+the comment; the CI scanner trusts it.
+
+**CI enforcement.** `make migrations-check` runs a pytest scanner over
+`alembic/versions/*.py` and fails when a destructive operation is found without
+either a raising `downgrade()` or an inline `# allow: destructive` annotation.
+`make ci` invokes the scanner alongside the other quality gates.
+
 ## Auth And RBAC Bootstrap
 
 Set auth configuration before issuing tokens:

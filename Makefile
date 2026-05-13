@@ -7,7 +7,7 @@ BRANCH_COVERAGE_FLOOR ?= 60
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev worker format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports check-branch-coverage
+.PHONY: help sync dev worker format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check migrations-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports check-branch-coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -58,6 +58,9 @@ sast: ## Run Bandit static security scan
 
 migration-check: ## Verify Alembic upgrade/check/downgrade against ephemeral PostgreSQL
 	scripts/migration-check.sh
+
+migrations-check: ## Enforce migration policy (destructive ops must raise on downgrade)
+	uv run pytest tests/quality/test_migration_policy.py -q
 
 docker-smoke: ## Build and smoke-test the runtime Docker image
 	scripts/docker-smoke.sh
@@ -140,7 +143,7 @@ report-open: ## Open the latest test report and coverage report
 clean-reports: ## Remove generated reports/ and .coverage artifacts
 	rm -rf reports/ .coverage .coverage.* htmlcov/
 
-ci: quality cov test-integration ## Full gate: quality + unit + e2e (with line+branch coverage gate) + integration
+ci: quality migrations-check cov test-integration ## Full gate: quality + migration policy + unit + e2e (with line+branch coverage gate) + integration
 
 ci-local: quality app-import-smoke cov test-integration migration-check audit sast docker-smoke ## Local pre-push gate mirroring CI jobs
 

@@ -29,10 +29,13 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Drop RBAC tables and create the relationships table."""
-    op.drop_table("role_permissions")
-    op.drop_table("user_roles")
-    op.drop_table("permissions")
-    op.drop_table("roles")
+    # Greenfield migration: the template ships ReBAC, RBAC tables hold no
+    # production data. The downgrade re-creates empty RBAC tables for
+    # structural round-trip parity — see docs/operations.md#migration-policy.
+    op.drop_table("role_permissions")  # allow: destructive
+    op.drop_table("user_roles")  # allow: destructive
+    op.drop_table("permissions")  # allow: destructive
+    op.drop_table("roles")  # allow: destructive
 
     op.create_table(
         "relationships",

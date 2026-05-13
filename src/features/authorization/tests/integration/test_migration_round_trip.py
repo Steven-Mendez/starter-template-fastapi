@@ -94,6 +94,16 @@ def test_relationships_table_move_revision_is_a_no_op(
     assert _index_names(engine, "relationships") == after_move_indexes
 
 
+# The rebac round-trip is tested against ``20260512_0009`` — the last revision
+# whose ``downgrade()`` is honestly reversible. ``20260513_0010`` drops
+# ``users.password_hash`` and, per ``docs/operations.md#migration-policy``, its
+# ``downgrade()`` raises ``NotImplementedError`` so production data can't be
+# silently re-introduced under a default value. Downgrading past ``0010``
+# from ``head`` is therefore intentionally impossible, so this round-trip is
+# pinned just before that boundary.
+_PRE_DESTRUCTIVE_REVISION = "20260512_0009"
+
+
 def test_downgrade_to_rbac_restores_legacy_tables(
     postgres_auth_repository: SQLModelAuthRepository,
     alembic_config: Config,
@@ -108,7 +118,7 @@ def test_downgrade_to_rbac_restores_legacy_tables(
         conn.execute(text("DROP SCHEMA public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
 
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, _PRE_DESTRUCTIVE_REVISION)
     command.downgrade(alembic_config, "20260505_0003")
 
     tables = _table_names(engine)
@@ -129,12 +139,12 @@ def test_round_trip_converges_on_the_same_schema(
         conn.execute(text("DROP SCHEMA public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
 
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, _PRE_DESTRUCTIVE_REVISION)
     initial_tables = _table_names(engine)
     initial_indexes = _index_names(engine, "relationships")
 
     command.downgrade(alembic_config, "20260505_0003")
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, _PRE_DESTRUCTIVE_REVISION)
 
     assert _table_names(engine) == initial_tables
     assert _index_names(engine, "relationships") == initial_indexes

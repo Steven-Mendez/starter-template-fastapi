@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-
 from alembic import op
 
 revision: str = "20260513_0010"
@@ -32,16 +30,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Restore the column with a server-side empty default so existing rows
-    # satisfy the NOT NULL constraint. Operators who need the real hashes
-    # back can copy from ``credentials`` in a follow-up data migration.
-    op.add_column(
-        "users",
-        sa.Column(
-            "password_hash",
-            sa.String(),
-            nullable=False,
-            server_default="",
-        ),
+    raise NotImplementedError(
+        "One-way migration: drop of users.password_hash is not safely "
+        "reversible. If you need to revert, restore from backup. "
+        "See docs/operations.md#migration-policy."
     )
-    op.alter_column("users", "password_hash", server_default=None)
