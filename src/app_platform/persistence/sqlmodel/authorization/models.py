@@ -9,7 +9,7 @@ platform owns only the declarative schema.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -18,9 +18,8 @@ from sqlmodel import Field, SQLModel
 
 def utc_now() -> datetime:
     """Return the current UTC time as a timezone-aware datetime."""
-    from datetime import timezone  # noqa: PLC0415
 
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class RelationshipTable(SQLModel, table=True):

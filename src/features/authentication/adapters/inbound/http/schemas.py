@@ -20,6 +20,7 @@ from features.authentication.application.normalization import normalize_email
 # forcing all four classes pushes users toward predictable transformations
 # ("Password1!"). We accept either path: ≥ 3 of 4 classes, or length ≥ 20.
 _MIN_PASSWORD_LENGTH_FOR_RELAXED_RULE = 20
+_MIN_PASSWORD_CLASS_COUNT = 3
 
 
 def _validate_password_complexity(value: str) -> str:
@@ -32,7 +33,7 @@ def _validate_password_complexity(value: str) -> str:
         any(ch.isdigit() for ch in value),
         any(not ch.isalnum() and not ch.isspace() for ch in value),
     )
-    if sum(classes) < 3:
+    if sum(classes) < _MIN_PASSWORD_CLASS_COUNT:
         raise ValueError(
             "Password must contain at least 3 of: uppercase, lowercase, "
             "digit, symbol — or be at least 20 characters long"
@@ -105,7 +106,7 @@ class TokenResponse(BaseModel):
     """Login/refresh response with access token and current identity."""
 
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105 — OAuth token-type identifier, not a credential
     expires_in: int
     user: PrincipalPublic
 

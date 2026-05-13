@@ -9,7 +9,7 @@ accumulate, since the index only contains rows the relay can act on.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -20,9 +20,8 @@ from sqlmodel import Column, Field, SQLModel
 
 def _utc_now() -> datetime:
     """Return the current UTC instant as a timezone-aware datetime."""
-    from datetime import timezone  # noqa: PLC0415
 
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class OutboxMessageTable(SQLModel, table=True):

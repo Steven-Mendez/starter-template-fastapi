@@ -7,9 +7,8 @@ parametrisation.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Callable
 
 import httpx
 import pytest

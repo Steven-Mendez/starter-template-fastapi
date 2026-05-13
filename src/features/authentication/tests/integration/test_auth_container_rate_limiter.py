@@ -10,7 +10,7 @@ import pytest
 import redis as redis_lib
 
 from app_platform.config.settings import AppSettings
-from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
 from features.authentication.application.cache import InProcessPrincipalCache
@@ -123,7 +123,7 @@ def test_build_auth_container_uses_configured_principal_cache_ttl(
     )
 
     assert isinstance(container.principal_cache, InProcessPrincipalCache)
-    assert container.principal_cache._cache.ttl == 5  # noqa: SLF001
+    assert container.principal_cache._cache.ttl == 5
     container.shutdown()
 
 

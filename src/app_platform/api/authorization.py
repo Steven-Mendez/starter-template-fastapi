@@ -19,7 +19,7 @@ credentials return 401.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any, TypeAlias
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -97,7 +97,7 @@ def get_current_principal(
             raise _credentials_exception()
 
 
-CurrentPrincipalDep: TypeAlias = Annotated[Principal, Depends(get_current_principal)]
+type CurrentPrincipalDep = Annotated[Principal, Depends(get_current_principal)]
 
 
 def build_principal_dependency(

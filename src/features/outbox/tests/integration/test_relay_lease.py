@@ -9,7 +9,7 @@ outbox table without coordinating.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import text
@@ -47,7 +47,7 @@ def test_two_concurrent_claims_observe_disjoint_rows(
     postgres_outbox_engine: Engine,
 ) -> None:
     _seed(postgres_outbox_engine, count=4)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     del now  # used only for clarity; the query embeds ``now()`` directly
 
     conn_a = postgres_outbox_engine.connect()

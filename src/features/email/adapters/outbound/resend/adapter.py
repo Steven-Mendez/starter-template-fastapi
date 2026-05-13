@@ -31,6 +31,9 @@ _logger = logging.getLogger("features.email.resend")
 
 _DEFAULT_BASE_URL = "https://api.resend.com"
 _SEND_PATH = "/emails"
+_HTTP_OK_MIN = 200
+_HTTP_OK_MAX = 300
+_HTTP_SERVER_ERROR_MIN = 500
 
 
 @dataclass(slots=True)
@@ -87,15 +90,14 @@ class ResendEmailAdapter:
         try:
             response = self.client.post(_SEND_PATH, json=payload)
         except httpx.HTTPError as exc:
-            _logger.error(
-                "event=email.resend.failed to=%s template=%s reason=%s",
+            _logger.exception(
+                "event=email.resend.failed to=%s template=%s",
                 to,
                 template_name,
-                exc,
             )
             return Err(DeliveryError(reason=str(exc)))
 
-        if 200 <= response.status_code < 300:
+        if _HTTP_OK_MIN <= response.status_code < _HTTP_OK_MAX:
             _logger.info(
                 "event=email.resend.sent to=%s template=%s",
                 to,
@@ -131,6 +133,6 @@ def _format_failure(response: httpx.Response) -> str:
     if detail is None:
         detail = response.text.strip() or "(no body)"
 
-    if status >= 500:
+    if status >= _HTTP_SERVER_ERROR_MIN:
         return f"resend transient error: {status} {detail}"
     return f"resend rejected: {status} {detail}"

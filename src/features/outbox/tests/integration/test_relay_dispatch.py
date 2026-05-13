@@ -14,7 +14,7 @@ without Docker.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -106,7 +106,7 @@ def test_transient_failure_increments_attempts_and_reschedules(
     assert rows[0].status == "pending"
     assert rows[0].attempts == 1
     assert rows[0].last_error is not None
-    assert rows[0].available_at > datetime.now(timezone.utc)
+    assert rows[0].available_at > datetime.now(UTC)
 
 
 def test_exhausted_attempts_flips_to_failed(
@@ -127,7 +127,7 @@ def test_exhausted_attempts_flips_to_failed(
     # Force the row back to claim-eligible immediately.
     with Session(postgres_outbox_engine, expire_on_commit=False) as session:
         row = session.exec(_select_all()).one()
-        row.available_at = datetime.now(timezone.utc)
+        row.available_at = datetime.now(UTC)
         session.add(row)
         session.commit()
     # Second tick: attempts would be 2 (== max), so the row flips to failed.

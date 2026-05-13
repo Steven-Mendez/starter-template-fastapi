@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app_platform.shared.clock_port import ClockPort
 
@@ -14,4 +14,4 @@ class SystemClock(ClockPort):
 
     def now(self) -> datetime:
         """Return the current time as a timezone-aware UTC datetime."""
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)

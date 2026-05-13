@@ -159,9 +159,11 @@ def test_error_log_uses_extra_not_raw_json(caplog: pytest.LogCaptureFixture) -> 
     def boom() -> None:
         raise RuntimeError("test error")
 
-    with caplog.at_level(logging.ERROR, logger="api.error"):
-        with TestClient(app, raise_server_exceptions=False) as client:
-            resp = client.get("/__boom")
+    with (
+        caplog.at_level(logging.ERROR, logger="api.error"),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        resp = client.get("/__boom")
 
     assert resp.status_code == 500
     assert any(

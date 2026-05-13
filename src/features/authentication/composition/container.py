@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Union
 
 from app_platform.config.settings import AppSettings
 from features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
@@ -44,7 +43,7 @@ from features.authentication.application.use_cases.admin.list_audit_events impor
 from features.authentication.application.use_cases.auth.confirm_email_verification import (  # noqa: E501
     ConfirmEmailVerification,
 )
-from features.authentication.application.use_cases.auth.confirm_password_reset import (  # noqa: E501
+from features.authentication.application.use_cases.auth.confirm_password_reset import (
     ConfirmPasswordReset,
 )
 from features.authentication.application.use_cases.auth.login_user import LoginUser
@@ -61,7 +60,7 @@ from features.authentication.application.use_cases.auth.register_user import (
 from features.authentication.application.use_cases.auth.request_email_verification import (  # noqa: E501
     RequestEmailVerification,
 )
-from features.authentication.application.use_cases.auth.request_password_reset import (  # noqa: E501
+from features.authentication.application.use_cases.auth.request_password_reset import (
     RequestPasswordReset,
 )
 from features.authentication.application.use_cases.auth.resolve_principal import (
@@ -72,7 +71,7 @@ from features.users.application.ports.user_port import UserPort
 
 _logger = logging.getLogger(__name__)
 
-RateLimiter = Union[FixedWindowRateLimiter, RedisRateLimiter]
+RateLimiter = FixedWindowRateLimiter | RedisRateLimiter
 
 
 @dataclass(slots=True)

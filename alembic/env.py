@@ -14,8 +14,8 @@ import app_platform.persistence.sqlmodel.authorization.models  # noqa: F401
 # shared SQLModel.metadata instance so Alembic can detect every table the
 # application owns. The noqa suppresses the "imported but unused" warning;
 # the side-effect is intentional.
-import features.authentication.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
-import features.outbox.adapters.outbound.sqlmodel.models  # noqa: F401
+import features.authentication.adapters.outbound.persistence.sqlmodel.models
+import features.outbox.adapters.outbound.sqlmodel.models
 import features.users.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
 from alembic import context
 from app_platform.config.settings import AppSettings

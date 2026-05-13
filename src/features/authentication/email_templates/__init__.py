@@ -16,7 +16,7 @@ from features.email.application.registry import EmailTemplateRegistry
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent
 
-PASSWORD_RESET_TEMPLATE = "authentication/password_reset"
+PASSWORD_RESET_TEMPLATE = "authentication/password_reset"  # noqa: S105 — template name, not a credential
 VERIFY_EMAIL_TEMPLATE = "authentication/verify_email"
 
 

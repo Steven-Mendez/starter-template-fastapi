@@ -29,7 +29,7 @@ class JobsSettings:
         backend: str | None = None,
         redis_url: str | None = None,
         queue_name: str | None = None,
-    ) -> "JobsSettings":
+    ) -> JobsSettings:
         """Construct from either an :class:`AppSettings` or flat kwargs."""
         if app is not None:
             backend = app.jobs_backend

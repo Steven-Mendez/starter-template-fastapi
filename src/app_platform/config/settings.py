@@ -38,6 +38,7 @@ from app_platform.config.sub_settings import (
 )
 
 JWT_ALGORITHM_WHITELIST = {"HS256", "RS256"}
+MAX_JWT_LEEWAY_SECONDS = 60
 
 
 class AppSettings(BaseSettings):
@@ -213,7 +214,7 @@ class AppSettings(BaseSettings):
     metrics_enabled: bool = True
 
     @model_validator(mode="after")
-    def _validate_auth_settings(self) -> "AppSettings":
+    def _validate_auth_settings(self) -> AppSettings:
         """Validate fields that must be well-formed in every environment.
 
         Most checks delegate to the per-feature sub-settings classes
@@ -227,7 +228,7 @@ class AppSettings(BaseSettings):
                 "APP_AUTH_JWT_ALGORITHM must be one of "
                 f"{sorted(JWT_ALGORITHM_WHITELIST)}"
             )
-        if not (0 <= self.auth_jwt_leeway_seconds <= 60):
+        if not (0 <= self.auth_jwt_leeway_seconds <= MAX_JWT_LEEWAY_SECONDS):
             errors.append("APP_AUTH_JWT_LEEWAY_SECONDS must be between 0 and 60")
         # Email/jobs/storage need to validate their own backend-specific
         # combinations (e.g. ``smtp`` requires a host). Importing the
@@ -248,7 +249,7 @@ class AppSettings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _validate_production_settings(self) -> "AppSettings":
+    def _validate_production_settings(self) -> AppSettings:
         """Refuse to start in production if critical settings are missing.
 
         Delegates to each per-feature sub-settings class' own

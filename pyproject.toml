@@ -132,7 +132,38 @@ line-length = 88
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B"]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "S",
+    "C4",
+    "RUF",
+    "SIM",
+    "PT",
+    "TRY",
+    "RET",
+    "ARG",
+    "DTZ",
+    "ASYNC",
+    "PERF",
+    "PL",
+]
+extend-ignore = [
+    "TRY003",
+    "PLC0415",
+    "PLR0911",
+    "PLR0913",
+    "PLR0915",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106", "S107", "S301", "S311", "ARG", "PLR2004", "DTZ001"]
+"**/conftest.py" = ["S101", "S105", "S106", "S107", "S301", "S311", "ARG", "PLR2004", "DTZ001"]
+"src/features/**/adapters/outbound/persistence/sqlmodel/models.py" = ["RUF012"]
+"alembic/versions/*.py" = ["ALL"]
 
 [tool.mypy]
 python_version = "3.12"

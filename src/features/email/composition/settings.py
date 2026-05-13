@@ -46,7 +46,7 @@ class EmailSettings:
         smtp_timeout_seconds: float | None = None,
         resend_api_key: str | None = None,
         resend_base_url: str | None = None,
-    ) -> "EmailSettings":
+    ) -> EmailSettings:
         """Construct from either an :class:`AppSettings` or flat kwargs.
 
         The keyword form is kept for callers that still pass individual

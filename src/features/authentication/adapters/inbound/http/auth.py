@@ -175,6 +175,7 @@ def register(body: RegisterRequest, request: Request) -> UserPublic:
             return UserPublic.model_validate(user)
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None
 
 
 @auth_router.post("/login", response_model=TokenResponse)
@@ -202,6 +203,7 @@ def login(body: LoginRequest, request: Request, response: Response) -> TokenResp
             )
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None
 
 
 @auth_router.post("/refresh", response_model=TokenResponse)
@@ -232,6 +234,7 @@ def refresh(
             )
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None
 
 
 @auth_router.post("/logout", response_model=MessageResponse)
@@ -265,6 +268,7 @@ def logout_all(
             return MessageResponse(message="All sessions revoked")
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None
 
 
 @auth_router.get("/me", response_model=PrincipalPublic)
@@ -301,6 +305,7 @@ def forgot_password(
             )
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None
 
 
 @auth_router.post("/password/reset", response_model=MessageResponse)
@@ -322,6 +327,7 @@ def reset_password(body: PasswordResetRequest, request: Request) -> MessageRespo
             return MessageResponse(message="Password reset complete")
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None
 
 
 @auth_router.post(
@@ -345,6 +351,7 @@ def request_email_verify(
             )
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None
 
 
 @auth_router.post("/email/verify", response_model=MessageResponse)
@@ -358,3 +365,4 @@ def verify_email(body: EmailVerifyRequest, request: Request) -> MessageResponse:
             return MessageResponse(message="Email verified")
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None

@@ -43,7 +43,7 @@ class AuthenticationSettings:
     return_internal_tokens: bool
 
     @classmethod
-    def from_app_settings(cls, app: Any) -> "AuthenticationSettings":
+    def from_app_settings(cls, app: Any) -> AuthenticationSettings:
         """Project the flat ``APP_AUTH_*`` fields of an AppSettings-like
         object into this feature's structured view. ``app`` is duck-typed
         so per-feature settings stay decoupled from :class:`AppSettings`."""

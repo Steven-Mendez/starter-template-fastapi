@@ -7,7 +7,7 @@ contradicting pattern and create stale-roles drift.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import jwt
@@ -41,7 +41,7 @@ def test_legacy_token_with_roles_claim_still_decodes() -> None:
     """Tokens issued before this change carried a ``roles`` array; they must
     keep validating so a deployment cut-over does not log everyone out."""
     service = AccessTokenService(_settings())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     subject = uuid4()
     legacy_payload = {
         "sub": str(subject),

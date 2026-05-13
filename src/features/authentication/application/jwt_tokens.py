@@ -8,7 +8,7 @@ can invalidate tokens on permission changes without keeping a blacklist.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -76,7 +76,7 @@ class AccessTokenService:
         Raises:
             ConfigurationError: If ``AUTH_JWT_SECRET_KEY`` is not configured.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires_delta = timedelta(
             minutes=self._settings.auth_access_token_expire_minutes
         )
@@ -139,7 +139,7 @@ class AccessTokenService:
                 **kwargs,
             )
             subject = UUID(str(payload["sub"]))
-            exp = datetime.fromtimestamp(float(payload["exp"]), tz=timezone.utc)
+            exp = datetime.fromtimestamp(float(payload["exp"]), tz=UTC)
             # Legacy tokens may carry a ``roles`` claim from before the ReBAC
             # migration. We accept and ignore it: authorization is resolved
             # through ``AuthorizationPort`` regardless of token contents.

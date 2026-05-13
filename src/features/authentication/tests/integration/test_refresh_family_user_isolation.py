@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 
 from app_platform.shared.result import Ok
-from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
 from features.users.adapters.outbound.persistence.sqlmodel.repository import (
@@ -29,7 +29,7 @@ def test_create_refresh_token_rejects_family_belonging_to_other_user(
     assert isinstance(user_b, Ok)
 
     family_id = uuid4()
-    expires = datetime.now(timezone.utc) + timedelta(days=7)
+    expires = datetime.now(UTC) + timedelta(days=7)
     repo.create_refresh_token(
         user_id=user_a.value.id,
         token_hash="hash-token-a",

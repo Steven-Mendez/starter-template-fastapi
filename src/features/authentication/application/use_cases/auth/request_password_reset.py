@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app_platform.config.settings import AppSettings
 from app_platform.shared.result import Ok, Result
@@ -49,7 +49,7 @@ class RequestPasswordReset:
             return Ok(InternalTokenResult(token=None, expires_at=None))
 
         raw_token = generate_opaque_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(
+        expires_at = datetime.now(UTC) + timedelta(
             minutes=self._settings.auth_password_reset_token_expire_minutes
         )
         with self._repository.issue_internal_token_transaction() as tx:

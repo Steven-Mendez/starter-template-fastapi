@@ -42,7 +42,9 @@ def test_system_admin_can_read_audit_log(auth_context: AuthTestContext) -> None:
     )
     assert response.status_code == 200
     body = response.json()
-    assert "items" in body and "count" in body and "limit" in body
+    assert "items" in body
+    assert "count" in body
+    assert "limit" in body
 
 
 def test_non_admin_user_gets_403_on_admin_users(
@@ -68,7 +70,7 @@ def test_non_admin_user_gets_403_on_admin_audit_log(
 
 
 @pytest.mark.parametrize(
-    "method, path",
+    ("method", "path"),
     [
         ("POST", "/admin/roles"),
         ("PATCH", "/admin/roles/00000000-0000-0000-0000-000000000000"),

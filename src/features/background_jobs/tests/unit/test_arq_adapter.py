@@ -7,7 +7,7 @@ swapping a real Redis instance does not change behaviour.
 from __future__ import annotations
 
 import pickle
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import fakeredis
 import pytest
@@ -69,7 +69,7 @@ def test_enqueue_at_uses_deferred_score(
     registry: JobHandlerRegistry, redis_client: fakeredis.FakeRedis
 ) -> None:
     adapter = ArqJobQueueAdapter(registry=registry, redis_client=redis_client)
-    run_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    run_at = datetime.now(UTC) + timedelta(hours=1)
 
     adapter.enqueue_at("send_email", {"to": "a@e.com"}, run_at)
 

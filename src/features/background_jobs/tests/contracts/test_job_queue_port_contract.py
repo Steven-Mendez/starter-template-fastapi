@@ -6,7 +6,7 @@ new adapter can be plugged in by extending the parametrisation.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import fakeredis
 import pytest

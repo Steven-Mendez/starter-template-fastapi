@@ -195,8 +195,8 @@ def test_no_tuples_are_written_for_card_or_column_inheritance(
     child_index: FakeChildIndex,
 ) -> None:
     """Granting board access SHALL NOT materialize per-card or per-column rows."""
-    from sqlalchemy import text  # noqa: PLC0415
-    from sqlmodel import Session  # noqa: PLC0415
+    from sqlalchemy import text
+    from sqlmodel import Session
 
     user_id = uuid4()
     board_id = str(uuid4())

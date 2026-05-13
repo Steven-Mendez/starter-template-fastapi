@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 AUTH_CONTAINER_ATTR = "auth_container"
 
 
-def set_auth_container(app: FastAPI, container: "AuthContainer") -> None:
+def set_auth_container(app: FastAPI, container: AuthContainer) -> None:
     """Attach an ``AuthContainer`` to the FastAPI application state.
 
     Called during lifespan startup after the container is fully initialised.
@@ -32,7 +32,7 @@ def set_auth_container(app: FastAPI, container: "AuthContainer") -> None:
     setattr(app.state, AUTH_CONTAINER_ATTR, container)
 
 
-def get_auth_container(request: Request) -> "AuthContainer":
+def get_auth_container(request: Request) -> AuthContainer:
     """Retrieve the ``AuthContainer`` from the current request's application state.
 
     Args:

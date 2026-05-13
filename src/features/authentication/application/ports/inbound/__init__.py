@@ -31,7 +31,7 @@ from features.authentication.application.ports.inbound.request_email_verificatio
 from features.authentication.application.ports.inbound.request_password_reset_port import (  # noqa: E501
     RequestPasswordResetPort,
 )
-from features.authentication.application.ports.inbound.resolve_principal_port import (  # noqa: E501
+from features.authentication.application.ports.inbound.resolve_principal_port import (
     ResolvePrincipalFromAccessTokenPort,
 )
 

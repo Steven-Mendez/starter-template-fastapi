@@ -12,7 +12,7 @@ every feature reads it at request time.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -23,7 +23,7 @@ from sqlmodel import Field, SQLModel
 
 def utc_now() -> datetime:
     """Return the current UTC time as a timezone-aware datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class CredentialTable(SQLModel, table=True):

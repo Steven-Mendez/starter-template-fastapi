@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -35,13 +35,13 @@ def _msg(
         id=uuid4(),
         job_name=job_name,
         payload={"to": "x@example.com"},
-        available_at=available_at or datetime.now(timezone.utc),
+        available_at=available_at or datetime.now(UTC),
         status="pending",
         attempts=attempts,
         last_error=None,
         locked_at=None,
         locked_by=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         dispatched_at=None,
     )
 
@@ -56,9 +56,9 @@ class _FakeRepository:
     def claim_batch(
         self,
         *,
-        now: datetime,  # noqa: ARG002 - test uses the passed-in now via the use case
+        now: datetime,
         batch_size: int,
-        worker_id: str,  # noqa: ARG002
+        worker_id: str,
     ) -> list[OutboxMessage]:
         batch = self.ready[:batch_size]
         self.ready = self.ready[batch_size:]
@@ -148,7 +148,7 @@ def test_transient_failure_schedules_retry() -> None:
     _id, attempts, last_error, available_at = repo.retry_calls[0]
     assert attempts == 1
     assert "boom" in last_error
-    assert available_at > datetime.now(timezone.utc) + timedelta(seconds=20)
+    assert available_at > datetime.now(UTC) + timedelta(seconds=20)
 
 
 def test_exhausting_attempts_flips_to_failed() -> None:

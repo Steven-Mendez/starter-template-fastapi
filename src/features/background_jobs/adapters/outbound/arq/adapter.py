@@ -18,7 +18,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import redis as redis_lib
@@ -81,7 +81,7 @@ class ArqJobQueueAdapter:
         if run_at.tzinfo is None:
             raise ValueError("run_at must be timezone-aware")
         enqueue_time_ms = int(time.time() * 1000)
-        score = int(run_at.astimezone(timezone.utc).timestamp() * 1000)
+        score = int(run_at.astimezone(UTC).timestamp() * 1000)
         self._push(
             job_name=job_name,
             payload=payload,

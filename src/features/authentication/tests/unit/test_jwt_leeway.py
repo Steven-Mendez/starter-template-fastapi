@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import jwt
@@ -28,7 +28,7 @@ def _settings(leeway: int) -> AppSettings:
 
 def _expired_token(seconds_ago: int) -> str:
     """Create a real HS256 token whose exp is ``seconds_ago`` in the past."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": str(uuid4()),
         "exp": now - timedelta(seconds=seconds_ago),

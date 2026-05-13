@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from app_platform.shared.result import Err, Ok, Result
@@ -17,7 +17,7 @@ from features.authentication.application.ports.outbound.auth_repository import (
 )
 from features.users.application.ports.user_port import UserPort
 
-PASSWORD_RESET_PURPOSE = "password_reset"
+PASSWORD_RESET_PURPOSE = "password_reset"  # noqa: S105 — token purpose tag, not a credential
 
 
 @dataclass(slots=True)
@@ -51,7 +51,7 @@ class ConfirmPasswordReset:
             record = tx.get_internal_token_for_update(
                 token_hash=hash_token(token), purpose=PASSWORD_RESET_PURPOSE
             )
-            if record is None or record.expires_at <= datetime.now(timezone.utc):
+            if record is None or record.expires_at <= datetime.now(UTC):
                 error = InvalidTokenError("Invalid token")
             elif record.used_at is not None:
                 error = TokenAlreadyUsedError("Token already used")

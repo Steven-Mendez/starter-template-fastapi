@@ -22,13 +22,13 @@ class UsersSettings:
     require_email_verification: bool
 
     @classmethod
-    def from_app_settings(cls, app: Any) -> "UsersSettings":
+    def from_app_settings(cls, app: Any) -> UsersSettings:
         return cls(
             default_user_role=app.auth_default_user_role,
             super_admin_role=app.auth_super_admin_role,
             require_email_verification=app.auth_require_email_verification,
         )
 
-    def validate_production(self, errors: list[str]) -> None:
+    def validate_production(self, errors: list[str]) -> None:  # noqa: ARG002
         """No additional production-only constraints today."""
         return

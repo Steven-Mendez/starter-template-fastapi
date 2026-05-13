@@ -10,7 +10,7 @@ import pytest
 from app_platform.config.settings import AppSettings
 from app_platform.shared.principal import Principal
 from app_platform.shared.result import Ok
-from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
 from features.authentication.application.crypto import hash_token
@@ -54,7 +54,7 @@ def test_concurrent_refresh_serializes_on_presented_token_row(
     assert isinstance(login_result, Ok)
     issued, _ = login_result.value
 
-    token_service = container.rotate_refresh_token._token_service  # noqa: SLF001
+    token_service = container.rotate_refresh_token._token_service
     original_issue = token_service.issue
     first_issue_started = threading.Event()
     release_first_issue = threading.Event()
@@ -88,7 +88,7 @@ def test_concurrent_refresh_serializes_on_presented_token_row(
                     successes.append(pair)
                 case _ as err:
                     errors.append(err.error)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             errors.append(exc)
 
     first = threading.Thread(target=run_refresh, name="refresh-1")

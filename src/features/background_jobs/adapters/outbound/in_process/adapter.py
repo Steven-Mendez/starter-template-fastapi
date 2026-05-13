@@ -39,7 +39,7 @@ class InProcessJobQueueAdapter:
         self,
         job_name: str,
         payload: dict[str, Any],
-        run_at: datetime,  # noqa: ARG002 - unsupported on this backend
+        run_at: datetime,
     ) -> None:
         """Refuse scheduling: the in-process adapter has no scheduler.
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -19,7 +19,7 @@ def test_enqueue_runs_handler_inline() -> None:
     registry = JobHandlerRegistry()
     calls: list[dict[str, object]] = []
 
-    registry.register_handler("send_email", lambda payload: calls.append(payload))
+    registry.register_handler("send_email", calls.append)
     adapter = InProcessJobQueueAdapter(registry=registry)
 
     adapter.enqueue("send_email", {"to": "a@example.com"})
@@ -54,4 +54,4 @@ def test_enqueue_at_unsupported() -> None:
     adapter = InProcessJobQueueAdapter(registry=registry)
 
     with pytest.raises(NotImplementedError):
-        adapter.enqueue_at("noop", {}, datetime.now(timezone.utc))
+        adapter.enqueue_at("noop", {}, datetime.now(UTC))

@@ -12,12 +12,12 @@ if TYPE_CHECKING:
 USERS_CONTAINER_ATTR = "users_container"
 
 
-def set_users_container(app: FastAPI, container: "UsersContainer") -> None:
+def set_users_container(app: FastAPI, container: UsersContainer) -> None:
     """Attach the ``UsersContainer`` to the FastAPI application state."""
     setattr(app.state, USERS_CONTAINER_ATTR, container)
 
 
-def get_users_container(request: Request) -> "UsersContainer":
+def get_users_container(request: Request) -> UsersContainer:
     """Retrieve the ``UsersContainer`` from the current request's application state.
 
     Raises:

@@ -8,7 +8,7 @@ import pytest
 
 from app_platform.config.settings import AppSettings
 from app_platform.shared.result import Ok
-from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
 from features.authentication.application.errors import TokenAlreadyUsedError
@@ -54,7 +54,7 @@ def test_concurrent_password_reset_serializes_on_token_row(
     reset = reset_result.value
     assert reset.token is not None
 
-    password_service = container.confirm_password_reset._password_service  # noqa: SLF001
+    password_service = container.confirm_password_reset._password_service
     original_hash = password_service.hash_password
     first_hash_started = threading.Event()
     release_first_hash = threading.Event()
@@ -86,7 +86,7 @@ def test_concurrent_password_reset_serializes_on_token_row(
                     successes.append(None)
                 case _ as err:
                     errors.append(err.error)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             errors.append(exc)
 
     first = threading.Thread(target=run_reset, name="reset-1")

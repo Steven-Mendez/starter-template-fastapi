@@ -16,7 +16,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 from alembic import command
-from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
 
@@ -27,7 +27,7 @@ pytestmark = pytest.mark.integration
 def alembic_config(_auth_postgres_url: str) -> Iterator[Config]:
     cfg = Config("alembic.ini")
     cfg.set_main_option("sqlalchemy.url", _auth_postgres_url)
-    yield cfg
+    return cfg
 
 
 def _table_names(engine: Engine) -> set[str]:

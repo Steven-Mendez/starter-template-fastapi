@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterator
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from features.authentication.domain.models import (
@@ -17,7 +18,7 @@ from features.authentication.domain.models import (
 
 
 def _aware_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass(slots=True)
@@ -101,16 +102,16 @@ class FakeAuthRepository:
                 )
 
     @contextmanager
-    def refresh_token_transaction(self) -> Iterator["FakeAuthRepository"]:
+    def refresh_token_transaction(self) -> Iterator[FakeAuthRepository]:
         # Single-process fake — no real transaction semantics needed.
         yield self
 
     @contextmanager
-    def internal_token_transaction(self) -> Iterator["FakeAuthRepository"]:
+    def internal_token_transaction(self) -> Iterator[FakeAuthRepository]:
         yield self
 
     @contextmanager
-    def issue_internal_token_transaction(self) -> Iterator["_FakeIssueTokenTx"]:
+    def issue_internal_token_transaction(self) -> Iterator[_FakeIssueTokenTx]:
         """Yield a thin wrapper that exposes ``outbox`` alongside the writes.
 
         The wrapper's ``outbox`` is an :class:`InlineDispatchOutboxAdapter`
@@ -265,7 +266,7 @@ class _FakeIssueTokenTx:
     and exposes ``outbox`` as the configured (or default) adapter.
     """
 
-    def __init__(self, repo: "FakeAuthRepository", outbox: Any) -> None:
+    def __init__(self, repo: FakeAuthRepository, outbox: Any) -> None:
         self._repo = repo
         self.outbox = outbox
 

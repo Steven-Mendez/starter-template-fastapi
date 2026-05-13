@@ -22,7 +22,7 @@ import json
 import logging
 import sys
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 REQUEST_ID_CONTEXT: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -79,7 +79,7 @@ def _get_otel_trace_id() -> str | None:
         ctx = span.get_span_context()
         if ctx.is_valid:
             return format(ctx.trace_id, "032x")
-    except Exception:
+    except Exception:  # noqa: S110 — log-formatter best-effort; never block emission
         pass
     return None
 
@@ -114,9 +114,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
-            "timestamp": datetime.fromtimestamp(
-                record.created, tz=timezone.utc
-            ).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

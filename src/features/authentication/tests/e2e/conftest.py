@@ -29,7 +29,7 @@ from features.authentication.adapters.outbound.persistence.sqlmodel.models impor
     CredentialTable,
     RefreshTokenTable,
 )
-from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
 from features.authentication.composition.container import build_auth_container
@@ -187,7 +187,7 @@ def _build_app(
     # real Postgres via testcontainers.
     def _outbox_session_factory(_session: Any) -> Any:
         return InlineDispatchOutboxAdapter(
-            dispatcher=lambda name, payload: jobs_port.enqueue(name, payload),
+            dispatcher=jobs_port.enqueue,
         )
 
     auth = build_auth_container(

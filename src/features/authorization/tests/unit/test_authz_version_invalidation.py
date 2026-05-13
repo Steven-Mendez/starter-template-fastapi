@@ -192,7 +192,7 @@ def test_writing_to_a_missing_user_silently_skips_the_bump(
         ]
     )
     # No exception raised; the relationship row exists.
-    from sqlalchemy import text  # noqa: PLC0415
+    from sqlalchemy import text
 
     with Session(engine) as session:
         row = session.execute(

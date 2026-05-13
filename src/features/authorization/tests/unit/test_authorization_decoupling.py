@@ -40,9 +40,9 @@ def test_no_feature_resource_type_strings_under_authorization() -> None:
     for directory in _SCANNED_DIRS:
         for path in directory.rglob("*.py"):
             text = path.read_text()
-            for token in _FORBIDDEN_TOKENS:
-                if token in text:
-                    offenders.append(f"{path}: {token}")
+            offenders.extend(
+                f"{path}: {token}" for token in _FORBIDDEN_TOKENS if token in text
+            )
     assert not offenders, (
         "Feature-flavoured resource type strings found under the "
         "authorization feature — these belong to whichever feature owns "

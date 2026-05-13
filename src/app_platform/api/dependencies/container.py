@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Protocol, TypeAlias, cast
+from typing import Annotated, Protocol, cast
 
 from fastapi import Depends, FastAPI, Request
 
@@ -53,4 +53,4 @@ def get_app_settings(request: Request) -> AppSettings:
     return get_app_container(request).settings
 
 
-AppSettingsDep: TypeAlias = Annotated[AppSettings, Depends(get_app_settings)]
+type AppSettingsDep = Annotated[AppSettings, Depends(get_app_settings)]

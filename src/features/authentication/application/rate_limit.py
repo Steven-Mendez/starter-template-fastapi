@@ -141,7 +141,7 @@ class RedisRateLimiter:
         *,
         max_attempts: int = 5,
         window_seconds: int = 60,
-    ) -> "RedisRateLimiter":
+    ) -> RedisRateLimiter:
         """Create a limiter by connecting to a Redis URL and verifying the connection.
 
         Args:

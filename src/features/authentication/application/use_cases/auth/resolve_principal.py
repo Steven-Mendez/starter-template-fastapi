@@ -34,7 +34,7 @@ class ResolvePrincipalFromAccessToken:
         token_service: AccessTokenService,
         settings: AppSettings,
         cache: PrincipalCachePort | None = None,
-    ) -> "ResolvePrincipalFromAccessToken":
+    ) -> ResolvePrincipalFromAccessToken:
         resolved_cache = cache or InProcessPrincipalCache.create(
             ttl=settings.auth_principal_cache_ttl_seconds
         )

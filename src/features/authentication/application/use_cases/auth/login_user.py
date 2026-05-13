@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app_platform.config.settings import AppSettings
@@ -98,7 +98,7 @@ class LoginUser:
                 metadata={"reason": "email_not_verified"},
             )
             return Err(EmailNotVerifiedError("Email not verified"))
-        self._users.update_last_login(user.id, datetime.now(timezone.utc))
+        self._users.update_last_login(user.id, datetime.now(UTC))
         principal = _principal_from_user(user)
         access_token, expires_in = self._token_service.issue(
             subject=user.id,
@@ -109,7 +109,7 @@ class LoginUser:
             user_id=user.id,
             token_hash=hash_token(raw_refresh),
             family_id=uuid4(),
-            expires_at=datetime.now(timezone.utc)
+            expires_at=datetime.now(UTC)
             + timedelta(days=self._settings.auth_refresh_token_expire_days),
             created_ip=ip_address,
             user_agent=user_agent,
@@ -123,7 +123,7 @@ class LoginUser:
         tokens = IssuedTokens(
             access_token=access_token,
             refresh_token=raw_refresh,
-            token_type="bearer",
+            token_type="bearer",  # noqa: S106 — OAuth token-type identifier
             expires_in=expires_in,
         )
         return Ok((tokens, principal))

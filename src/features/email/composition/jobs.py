@@ -54,6 +54,6 @@ def register_send_email_handler(
                 template_name,
                 result.error,
             )
-            raise RuntimeError(f"send_email failed: {result.error}")
+            raise RuntimeError(f"send_email failed: {result.error}")  # noqa: TRY004 — Result-type pattern match, not a type guard
 
     registry.register_handler(SEND_EMAIL_JOB, _handler)

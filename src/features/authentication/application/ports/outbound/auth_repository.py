@@ -8,8 +8,9 @@ users feature and is reached through :class:`UserPort`.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from datetime import datetime
-from typing import Any, ContextManager, Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from features.authentication.domain.models import (
@@ -117,13 +118,13 @@ class TokenRepositoryPort(Protocol):
     def get_refresh_token_by_hash(self, token_hash: str) -> RefreshToken | None: ...
     def refresh_token_transaction(
         self,
-    ) -> ContextManager[AuthRefreshTokenTransactionPort]: ...
+    ) -> AbstractContextManager[AuthRefreshTokenTransactionPort]: ...
     def internal_token_transaction(
         self,
-    ) -> ContextManager[AuthInternalTokenTransactionPort]: ...
+    ) -> AbstractContextManager[AuthInternalTokenTransactionPort]: ...
     def issue_internal_token_transaction(
         self,
-    ) -> ContextManager[AuthIssueTokenTransactionPort]: ...
+    ) -> AbstractContextManager[AuthIssueTokenTransactionPort]: ...
     def revoke_refresh_token(
         self, token_id: UUID, *, replaced_by_token_id: UUID | None = None
     ) -> None: ...

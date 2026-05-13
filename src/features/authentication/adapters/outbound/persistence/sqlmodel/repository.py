@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any, Self, cast, overload
 from uuid import UUID
@@ -51,7 +51,7 @@ def _ensure_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value
 
 
@@ -347,7 +347,7 @@ class SQLModelAuthRepository:
     @classmethod
     def from_engine(
         cls, engine: Engine, *, create_schema: bool = False
-    ) -> "SQLModelAuthRepository":
+    ) -> SQLModelAuthRepository:
         instance = cls.__new__(cls)
         instance._engine = engine
         instance._closed = False

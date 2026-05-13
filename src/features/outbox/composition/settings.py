@@ -48,7 +48,7 @@ class OutboxSettings:
         claim_batch_size: int | None = None,
         max_attempts: int | None = None,
         worker_id: str | None = None,
-    ) -> "OutboxSettings":
+    ) -> OutboxSettings:
         """Construct from either an :class:`AppSettings` or flat kwargs."""
         if app is not None:
             enabled = app.outbox_enabled

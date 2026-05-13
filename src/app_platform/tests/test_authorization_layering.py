@@ -38,12 +38,11 @@ def _imported_modules(path: pathlib.Path) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             names.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                # ImportFrom can have None for relative imports; we only
-                # check absolute imports here (the project uses them
-                # exclusively).
-                names.append(node.module)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            # ImportFrom can have None for relative imports; we only
+            # check absolute imports here (the project uses them
+            # exclusively).
+            names.append(node.module)
     return names
 
 
@@ -59,9 +58,11 @@ def test_feature_does_not_import_other_features(feature: str) -> None:
     offenders: list[str] = []
     for path in _iter_feature_source_files(feature):
         for imported in _imported_modules(path):
-            for forbidden in forbidden_prefixes:
-                if imported == forbidden or imported.startswith(forbidden + "."):
-                    offenders.append(f"{path}: {imported}")
+            offenders.extend(
+                f"{path}: {imported}"
+                for forbidden in forbidden_prefixes
+                if imported == forbidden or imported.startswith(forbidden + ".")
+            )
     assert not offenders, (
         f"`{feature}` source code imports from a forbidden peer feature. "
         "Production code must communicate through ports only:\n  "

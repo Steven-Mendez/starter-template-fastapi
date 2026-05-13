@@ -162,7 +162,7 @@ class RedisPrincipalCache:
         Raises:
             redis.exceptions.ConnectionError: If the server is unreachable.
         """
-        import redis as redis_lib  # noqa: PLC0415
+        import redis as redis_lib
 
         client = redis_lib.Redis.from_url(url, decode_responses=False)
         client.ping()

@@ -9,8 +9,9 @@ without unwinding the stack.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Generic, TypeVar
+from typing import TypeVar
 
 T = TypeVar("T")
 E = TypeVar("E")
@@ -23,14 +24,14 @@ class UnwrapError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class Ok(Generic[T]):
+class Ok[T]:
     """Successful ``Result`` carrying the produced value."""
 
     value: T
 
 
 @dataclass(frozen=True, slots=True)
-class Err(Generic[E]):
+class Err[E]:
     """Failed ``Result`` carrying the domain error."""
 
     error: E
@@ -39,17 +40,17 @@ class Err(Generic[E]):
 type Result[T, E] = Ok[T] | Err[E]
 
 
-def is_ok(result: Result[T, E]) -> bool:
+def is_ok[T, E](result: Result[T, E]) -> bool:
     """Return ``True`` if the ``Result`` is an :class:`Ok` variant."""
     return isinstance(result, Ok)
 
 
-def is_err(result: Result[T, E]) -> bool:
+def is_err[T, E](result: Result[T, E]) -> bool:
     """Return ``True`` if the ``Result`` is an :class:`Err` variant."""
     return isinstance(result, Err)
 
 
-def unwrap(result: Result[T, E]) -> T:
+def unwrap[T, E](result: Result[T, E]) -> T:
     """Return the value or raise :class:`UnwrapError` on :class:`Err`.
 
     Use only when the caller can statically prove the ``Result`` is
@@ -62,7 +63,7 @@ def unwrap(result: Result[T, E]) -> T:
             raise UnwrapError("called unwrap on Err")
 
 
-def unwrap_err(result: Result[T, E]) -> E:
+def unwrap_err[T, E](result: Result[T, E]) -> E:
     """Return the error or raise :class:`UnwrapError` on :class:`Ok`."""
     match result:
         case Err(error=e):
@@ -71,7 +72,7 @@ def unwrap_err(result: Result[T, E]) -> E:
             raise UnwrapError("called unwrap_err on Ok")
 
 
-def expect(result: Result[T, E], message: str) -> T:
+def expect[T, E](result: Result[T, E], message: str) -> T:
     """Like :func:`unwrap`.
 
     On :class:`Err`, raises :class:`UnwrapError` including ``message``.
@@ -83,7 +84,7 @@ def expect(result: Result[T, E], message: str) -> T:
             raise UnwrapError(f"{message}: {e!r}")
 
 
-def expect_err(result: Result[T, E], message: str) -> E:
+def expect_err[T, E](result: Result[T, E], message: str) -> E:
     """Like :func:`unwrap_err`.
 
     On :class:`Ok`, raises :class:`UnwrapError` including ``message``.
@@ -95,7 +96,7 @@ def expect_err(result: Result[T, E], message: str) -> E:
             raise UnwrapError(f"{message}: {v!r}")
 
 
-def result_map(result: Result[T, E], f: Callable[[T], U]) -> Result[U, E]:
+def result_map[T, E, U](result: Result[T, E], f: Callable[[T], U]) -> Result[U, E]:
     """Apply ``f`` to the success value, leaving an :class:`Err` untouched."""
     match result:
         case Ok(value=v):
@@ -104,7 +105,7 @@ def result_map(result: Result[T, E], f: Callable[[T], U]) -> Result[U, E]:
             return Err(e)
 
 
-def result_map_err(result: Result[T, E], f: Callable[[E], F]) -> Result[T, F]:
+def result_map_err[T, E, F](result: Result[T, E], f: Callable[[E], F]) -> Result[T, F]:
     """Apply ``f`` to the error value, leaving an :class:`Ok` untouched."""
     match result:
         case Ok(value=v):
@@ -113,7 +114,7 @@ def result_map_err(result: Result[T, E], f: Callable[[E], F]) -> Result[T, F]:
             return Err(f(e))
 
 
-def result_and_then(
+def result_and_then[T, E, U](
     result: Result[T, E],
     f: Callable[[T], Result[U, E]],
 ) -> Result[U, E]:
@@ -129,7 +130,7 @@ def result_and_then(
             return Err(e)
 
 
-def expect_ok(result: Result[T, E]) -> T:
+def expect_ok[T, E](result: Result[T, E]) -> T:
     """Return the success value or raise ``AssertionError`` on :class:`Err`.
 
     Intended for tests where an :class:`Err` always indicates a bug and
@@ -142,17 +143,17 @@ def expect_ok(result: Result[T, E]) -> T:
             raise AssertionError(e)
 
 
-def map(result: Result[T, E], f: Callable[[T], U]) -> Result[U, E]:
+def map[T, E, U](result: Result[T, E], f: Callable[[T], U]) -> Result[U, E]:
     """Alias for :func:`result_map` matching the Rust naming."""
     return result_map(result, f)
 
 
-def map_err(result: Result[T, E], f: Callable[[E], F]) -> Result[T, F]:
+def map_err[T, E, F](result: Result[T, E], f: Callable[[E], F]) -> Result[T, F]:
     """Alias for :func:`result_map_err` matching the Rust naming."""
     return result_map_err(result, f)
 
 
-def and_then(
+def and_then[T, E, U](
     result: Result[T, E],
     f: Callable[[T], Result[U, E]],
 ) -> Result[U, E]:

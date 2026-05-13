@@ -8,9 +8,9 @@ pools and Redis connections only exist while the app is serving.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import AsyncIterator
 
 import redis as redis_lib
 from fastapi import FastAPI

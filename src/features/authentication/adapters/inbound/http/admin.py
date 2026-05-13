@@ -52,3 +52,4 @@ def list_audit_log(
             return AuditLogRead(items=items, count=len(items), limit=limit)
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None

@@ -7,7 +7,7 @@ dependency, which calls the AuthorizationPort registered on app.state.
 
 from __future__ import annotations
 
-from typing import Annotated, TypeAlias
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -65,20 +65,21 @@ def get_current_principal(
             return principal
         case Err(error=exc):
             raise_http_from_auth_error(exc)
+    return None
 
 
-def get_current_user(principal: "CurrentPrincipalDep") -> Principal:
+def get_current_user(principal: CurrentPrincipalDep) -> Principal:
     """Alias for :func:`get_current_principal` kept for naming convenience."""
     return principal
 
 
-def require_active_user(principal: "CurrentPrincipalDep") -> Principal:
+def require_active_user(principal: CurrentPrincipalDep) -> Principal:
     """Resolve the principal and additionally require an active account."""
     if not principal.is_active:
         raise _forbidden("Inactive user")
     return principal
 
 
-CurrentPrincipalDep: TypeAlias = Annotated[Principal, Depends(get_current_principal)]
-CurrentUserDep: TypeAlias = Annotated[Principal, Depends(get_current_user)]
-ActiveUserDep: TypeAlias = Annotated[Principal, Depends(require_active_user)]
+type CurrentPrincipalDep = Annotated[Principal, Depends(get_current_principal)]
+type CurrentUserDep = Annotated[Principal, Depends(get_current_user)]
+type ActiveUserDep = Annotated[Principal, Depends(require_active_user)]

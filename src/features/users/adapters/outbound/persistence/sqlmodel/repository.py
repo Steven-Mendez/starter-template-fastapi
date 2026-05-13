@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.engine import Engine
@@ -29,13 +29,13 @@ def _ensure_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value
 
 
 def _to_domain(row: UserTable) -> User:
-    created = _ensure_utc(row.created_at) or datetime.now(timezone.utc)
-    updated = _ensure_utc(row.updated_at) or datetime.now(timezone.utc)
+    created = _ensure_utc(row.created_at) or datetime.now(UTC)
+    updated = _ensure_utc(row.updated_at) or datetime.now(UTC)
     return User(
         id=row.id,
         email=row.email,

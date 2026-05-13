@@ -19,12 +19,12 @@ if TYPE_CHECKING:
 
 
 def set_authorization_container(
-    app: FastAPI, container: "AuthorizationContainer"
+    app: FastAPI, container: AuthorizationContainer
 ) -> None:
     """Publish ``container`` on ``app.state.authorization_container``."""
     app.state.authorization_container = container
 
 
-def get_authorization_container(request: Request) -> "AuthorizationContainer":
+def get_authorization_container(request: Request) -> AuthorizationContainer:
     """Return the authorization container bound to ``request.app.state``."""
     return request.app.state.authorization_container  # type: ignore[no-any-return]

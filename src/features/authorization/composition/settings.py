@@ -21,7 +21,7 @@ class AuthorizationSettings:
     principal_cache_ttl_seconds: int
 
     @classmethod
-    def from_app_settings(cls, app: Any) -> "AuthorizationSettings":
+    def from_app_settings(cls, app: Any) -> AuthorizationSettings:
         return cls(
             rbac_enabled=app.auth_rbac_enabled,
             principal_cache_ttl_seconds=app.auth_principal_cache_ttl_seconds,

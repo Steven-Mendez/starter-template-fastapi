@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, TypeAlias
+from typing import Annotated
 
 import redis as redis_lib
 from fastapi import Depends, Request
@@ -18,6 +18,6 @@ def get_app_redis_client(request: Request) -> redis_lib.Redis | None:  # type: i
     return getattr(request.app.state, "redis_client", None)
 
 
-AppRedisClientDep: TypeAlias = Annotated[
+type AppRedisClientDep = Annotated[
     redis_lib.Redis | None, Depends(get_app_redis_client)  # type: ignore[type-arg]
 ]

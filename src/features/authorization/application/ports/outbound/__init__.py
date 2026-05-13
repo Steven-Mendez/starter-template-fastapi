@@ -21,7 +21,7 @@ from __future__ import annotations
 from features.authorization.application.ports.outbound.audit_port import (
     AuditPort,
 )
-from features.authorization.application.ports.outbound.user_authz_version_port import (  # noqa: E501
+from features.authorization.application.ports.outbound.user_authz_version_port import (
     UserAuthzVersionPort,
 )
 from features.authorization.application.ports.outbound.user_registrar_port import (

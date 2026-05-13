@@ -22,8 +22,8 @@ def test_bootstrap_creates_user_and_writes_system_admin_tuple(
     Inspect the persisted side effects: the user exists, an admin tuple was
     written on ``system:main``, and one audit event was recorded.
     """
-    from sqlalchemy import text  # noqa: PLC0415
-    from sqlmodel import Session  # noqa: PLC0415
+    from sqlalchemy import text
+    from sqlmodel import Session
 
     repo = auth_context.repository
     user = auth_context.user_repository.get_by_email("admin@example.com")
@@ -52,8 +52,8 @@ def test_bootstrap_is_idempotent_on_relationship_writes(
     auth_context: AuthTestContext,
 ) -> None:
     """Running bootstrap a second time produces no duplicate tuples."""
-    from sqlalchemy import text  # noqa: PLC0415
-    from sqlmodel import Session  # noqa: PLC0415
+    from sqlalchemy import text
+    from sqlmodel import Session
 
     repo = auth_context.repository
     container = auth_context.client.app.state.authorization_container  # type: ignore[attr-defined]
@@ -82,7 +82,7 @@ def test_admin_login_produces_token_with_no_roles_claim(
 ) -> None:
     """Tokens for the system admin are no different from any other user's
     tokens — authorization is engine-resolved, not encoded in the token."""
-    import jwt  # noqa: PLC0415
+    import jwt
 
     response = auth_context.client.post(
         "/auth/login",

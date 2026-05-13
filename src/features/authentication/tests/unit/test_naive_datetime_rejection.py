@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -16,12 +16,12 @@ from features.authentication.domain.models import (
 pytestmark = pytest.mark.unit
 
 
-_AWARE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_AWARE = datetime(2026, 1, 1, tzinfo=UTC)
 _NAIVE = datetime(2026, 1, 1)
 
 
 def test_refresh_token_rejects_naive_expires() -> None:
-    with pytest.raises(ValueError, match="RefreshToken.expires_at"):
+    with pytest.raises(ValueError, match=r"RefreshToken\.expires_at"):
         RefreshToken(
             id=uuid4(),
             user_id=uuid4(),
@@ -50,7 +50,7 @@ def test_internal_token_accepts_aware() -> None:
 
 
 def test_audit_event_rejects_naive() -> None:
-    with pytest.raises(ValueError, match="AuditEvent.created_at"):
+    with pytest.raises(ValueError, match=r"AuditEvent\.created_at"):
         AuditEvent(
             id=uuid4(),
             user_id=None,

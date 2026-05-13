@@ -10,7 +10,7 @@ the contract even without Docker.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -63,7 +63,7 @@ def test_naive_available_at_is_rejected() -> None:
 
 def test_future_available_at_is_preserved() -> None:
     adapter, _ = _fake()
-    future = datetime.now(timezone.utc) + timedelta(minutes=5)
+    future = datetime.now(UTC) + timedelta(minutes=5)
     adapter.enqueue(job_name="send_email", payload={}, available_at=future)
     assert isinstance(adapter, InMemoryOutboxAdapter)
     adapter.commit()

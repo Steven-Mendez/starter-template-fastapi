@@ -25,7 +25,7 @@ class _RecordingHandler:
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []
 
-    async def handle_DATA(self, server: Any, session: Any, envelope: Any) -> str:  # noqa: N802
+    async def handle_DATA(self, server: Any, session: Any, envelope: Any) -> str:
         self.messages.append(
             {
                 "from": envelope.mail_from,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 @dataclass(slots=True)
@@ -16,7 +16,7 @@ class FakeClock:
     """
 
     _now: datetime = field(
-        default_factory=lambda: datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        default_factory=lambda: datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
     )
 
     def now(self) -> datetime:

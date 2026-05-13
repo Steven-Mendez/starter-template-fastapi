@@ -34,7 +34,7 @@ class StorageSettings:
         local_path: str | None = None,
         s3_bucket: str | None = None,
         s3_region: str | None = None,
-    ) -> "StorageSettings":
+    ) -> StorageSettings:
         """Construct from either an :class:`AppSettings` or flat kwargs."""
         if app is not None:
             enabled = app.storage_enabled

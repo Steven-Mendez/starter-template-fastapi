@@ -45,7 +45,7 @@ def configure_tracing(settings: AppSettings) -> None:
     applied when ``auth_redis_url`` is set. FastAPI apps are instrumented with
     :func:`instrument_fastapi_app` once the app object exists.
     """
-    global _TRACING_CONFIGURED
+    global _TRACING_CONFIGURED  # noqa: PLW0603 — module-level singleton guard
 
     if not settings.otel_exporter_endpoint:
         _logger.info(

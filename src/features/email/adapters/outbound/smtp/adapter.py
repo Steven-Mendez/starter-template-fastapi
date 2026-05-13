@@ -76,11 +76,10 @@ class SmtpEmailAdapter:
         try:
             self._dispatch(envelope)
         except (smtplib.SMTPException, OSError) as exc:
-            _logger.error(
-                "event=email.smtp.failed to=%s template=%s reason=%s",
+            _logger.exception(
+                "event=email.smtp.failed to=%s template=%s",
                 to,
                 template_name,
-                exc,
             )
             return Err(DeliveryError(reason=str(exc)))
 

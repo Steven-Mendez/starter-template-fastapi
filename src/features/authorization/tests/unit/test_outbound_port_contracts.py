@@ -14,7 +14,7 @@ from features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
 from features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
 )
-from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
 from features.authorization.tests.contracts.fake_user_authz_version import (

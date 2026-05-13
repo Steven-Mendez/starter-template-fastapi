@@ -18,7 +18,7 @@ from features.authentication.adapters.outbound.persistence.sqlmodel.models impor
     CredentialTable,
     RefreshTokenTable,
 )
-from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
 from features.users.adapters.outbound.persistence.sqlmodel.models import (
@@ -57,9 +57,9 @@ def _docker_available() -> bool:
         import docker  # type: ignore[import-untyped]
 
         docker.from_env().ping()
-        return True
     except Exception:
         return False
+    return True
 
 
 @pytest.fixture

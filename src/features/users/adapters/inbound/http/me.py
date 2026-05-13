@@ -76,7 +76,7 @@ def delete_me(request: Request, principal: CurrentPrincipalDep) -> None:
     result = container.deactivate_user.execute(principal.user_id)
     match result:
         case Ok():
-            return None
+            return
         case Err(error=err):
             if err is UserError.NOT_FOUND:
                 raise HTTPException(

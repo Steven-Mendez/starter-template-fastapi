@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app_platform.shared.result import Err, Ok, Result
 from features.authentication.application.cache import PrincipalCachePort
@@ -34,7 +34,7 @@ class ConfirmEmailVerification:
         if (
             record is None
             or record.used_at is not None
-            or record.expires_at <= datetime.now(timezone.utc)
+            or record.expires_at <= datetime.now(UTC)
         ):
             return Err(InvalidTokenError("Invalid token"))
         if record.user_id is None:

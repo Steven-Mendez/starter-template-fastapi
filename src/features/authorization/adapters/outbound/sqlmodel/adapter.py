@@ -11,7 +11,7 @@ the parent's hierarchy.
 Scaling note
 ============
 Check-time resolution keeps writes cheap and the model easy to read,
-but the query cost is roughly ``O(walked_resources × hierarchy_size)``.
+but the query cost is roughly ``O(walked_resources * hierarchy_size)``.
 For high-throughput deployments where ``lookup_resources`` returns
 thousands of ids per request, switch to a real ReBAC engine
 (SpiceDB / OpenFGA / AuthZed Cloud) — they materialize implied tuples

@@ -12,7 +12,8 @@ event-loop — heavier than a unit test, but still no Docker required.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import fakeredis
 import fakeredis.aioredis
@@ -43,7 +44,7 @@ async def test_worker_processes_enqueued_job(
 
     registry = JobHandlerRegistry()
     received: list[dict[str, object]] = []
-    registry.register_handler("send_email", lambda payload: received.append(payload))
+    registry.register_handler("send_email", received.append)
 
     ArqJobQueueAdapter(registry=registry, redis_client=sync_client).enqueue(
         "send_email", {"to": "alice@example.com", "template_name": "x"}

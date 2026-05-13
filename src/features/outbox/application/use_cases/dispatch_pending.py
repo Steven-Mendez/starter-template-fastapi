@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from features.background_jobs.application.ports.job_queue_port import JobQueuePort
 from features.outbox.application.ports.outbound.outbox_repository_port import (
@@ -66,7 +66,7 @@ class DispatchPending:
     _retry_delay: timedelta = _RETRY_DELAY
 
     def execute(self) -> RelayTickReport:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         claimed = self._repository.claim_batch(
             now=now,
             batch_size=self._batch_size,
@@ -81,7 +81,7 @@ class DispatchPending:
         for row in claimed:
             try:
                 self._job_queue.enqueue(row.job_name, row.payload)
-            except Exception as exc:  # noqa: BLE001 - relay must not crash
+            except Exception as exc:
                 next_attempts = row.attempts + 1
                 if next_attempts >= self._max_attempts:
                     self._repository.mark_failed(
@@ -90,7 +90,7 @@ class DispatchPending:
                         last_error=repr(exc),
                     )
                     failed += 1
-                    _logger.error(
+                    _logger.exception(
                         "event=outbox.dispatch.failed id=%s job=%s attempts=%d",
                         row.id,
                         row.job_name,

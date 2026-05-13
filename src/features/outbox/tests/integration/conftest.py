@@ -41,9 +41,9 @@ def _docker_available() -> bool:
         import docker  # type: ignore[import-untyped]
 
         docker.from_env().ping()
-        return True
     except Exception:
         return False
+    return True
 
 
 @pytest.fixture(scope="session")

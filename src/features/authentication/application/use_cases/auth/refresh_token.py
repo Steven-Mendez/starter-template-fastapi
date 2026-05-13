@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app_platform.config.settings import AppSettings
 from app_platform.shared.principal import Principal
@@ -64,7 +64,7 @@ class RotateRefreshToken:
             if record is None:
                 return Err(InvalidTokenError("Invalid refresh token"))
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if record.revoked_at is not None:
                 tx.revoke_refresh_family(record.family_id)
                 tx.record_audit_event(
@@ -113,7 +113,7 @@ class RotateRefreshToken:
                 tokens = IssuedTokens(
                     access_token=access_token,
                     refresh_token=raw_refresh,
-                    token_type="bearer",
+                    token_type="bearer",  # noqa: S106 — OAuth token-type identifier
                     expires_in=expires_in,
                 )
 

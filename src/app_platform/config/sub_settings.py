@@ -28,7 +28,7 @@ class DatabaseSettings:
     pool_pre_ping: bool
 
     @classmethod
-    def from_app_settings(cls, app: Any) -> "DatabaseSettings":
+    def from_app_settings(cls, app: Any) -> DatabaseSettings:
         return cls(
             dsn=app.postgresql_dsn,
             pool_size=app.db_pool_size,
@@ -37,7 +37,7 @@ class DatabaseSettings:
             pool_pre_ping=app.db_pool_pre_ping,
         )
 
-    def validate_production(self, errors: list[str]) -> None:
+    def validate_production(self, errors: list[str]) -> None:  # noqa: ARG002
         """No production-only constraints today."""
         return
 
@@ -54,7 +54,7 @@ class ApiSettings:
     display_name: str
 
     @classmethod
-    def from_app_settings(cls, app: Any) -> "ApiSettings":
+    def from_app_settings(cls, app: Any) -> ApiSettings:
         return cls(
             enable_docs=app.enable_docs,
             cors_origins=list(app.cors_origins),
@@ -85,7 +85,7 @@ class ObservabilitySettings:
     metrics_enabled: bool
 
     @classmethod
-    def from_app_settings(cls, app: Any) -> "ObservabilitySettings":
+    def from_app_settings(cls, app: Any) -> ObservabilitySettings:
         return cls(
             log_level=app.log_level,
             otel_exporter_endpoint=app.otel_exporter_endpoint,
@@ -94,6 +94,6 @@ class ObservabilitySettings:
             metrics_enabled=app.metrics_enabled,
         )
 
-    def validate_production(self, errors: list[str]) -> None:
+    def validate_production(self, errors: list[str]) -> None:  # noqa: ARG002
         """No production-only constraints today."""
         return

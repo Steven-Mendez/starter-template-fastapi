@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -102,7 +102,8 @@ def test_rotate_refresh_token_success_marks_old_rotated(
 ) -> None:
     original_hash = hash_token(issued_refresh_token)
     original = repository.get_refresh_token_by_hash(original_hash)
-    assert original is not None and original.revoked_at is None
+    assert original is not None
+    assert original.revoked_at is None
 
     result = rotate.execute(refresh_token=issued_refresh_token)
 
@@ -110,7 +111,8 @@ def test_rotate_refresh_token_success_marks_old_rotated(
     tokens, _ = result.value
     assert tokens.refresh_token != issued_refresh_token
     after = repository.get_refresh_token_by_hash(original_hash)
-    assert after is not None and after.revoked_at is not None
+    assert after is not None
+    assert after.revoked_at is not None
 
 
 def test_reusing_revoked_token_revokes_entire_family(
@@ -150,7 +152,7 @@ def test_expired_refresh_token_returns_invalid_token_error(
         user_id=user.id,
         token_hash=hash_token(raw),
         family_id=uuid4(),
-        expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        expires_at=datetime.now(UTC) - timedelta(seconds=1),
         created_ip=None,
         user_agent=None,
     )
