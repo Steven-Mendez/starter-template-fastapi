@@ -16,11 +16,9 @@ from features.background_jobs.adapters.outbound.in_process import (
 )
 from features.background_jobs.application.registry import JobHandlerRegistry
 from features.email.adapters.outbound.console import ConsoleEmailAdapter
+from features.email.application.jobs import SEND_EMAIL_JOB
 from features.email.application.registry import EmailTemplateRegistry
-from features.email.composition.jobs import (
-    SEND_EMAIL_JOB,
-    register_send_email_handler,
-)
+from features.email.composition.jobs import register_send_email_handler
 from features.email.tests.fakes.fake_email_port import FakeEmailPort
 
 pytestmark = pytest.mark.unit

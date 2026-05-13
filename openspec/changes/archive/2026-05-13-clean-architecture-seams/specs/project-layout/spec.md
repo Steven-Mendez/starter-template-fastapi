@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Application layer does not import composition layers
 
@@ -42,8 +42,6 @@ The super-admin bootstrap CLI SHALL live at `src/cli/create_super_admin.py`. It 
 - **WHEN** the CLI invokes `BootstrapSystemAdmin`
 - **THEN** the registry's `sealed` flag is `True` at the moment of invocation
 - **AND** a unit test that calls the CLI's wiring helper on an already-sealed registry does not raise (sealing is idempotent or the helper checks first)
-
-## ADDED Requirements
 
 ### Requirement: OutboxPort exposes a transport-agnostic UnitOfWork seam
 

@@ -31,10 +31,10 @@ with self._repository.issue_internal_token_transaction() as tx:
 # together. A rollback drops all three.
 ```
 
-The `outbox` attribute on the transaction is a session-scoped
-`OutboxPort` already bound to the surrounding SQL session. You
-never call `commit()` on it; the repository's context manager owns
-the commit. That's what gives the pattern its atomic guarantee:
+The `outbox` attribute on the transaction is a session-scoped writer
+already bound to the surrounding SQL session. You never call
+`commit()` on it; the repository's context manager owns the commit.
+That's what gives the pattern its atomic guarantee:
 
 > A side effect is dispatched **if and only if** the surrounding
 > business transaction commits.
@@ -42,6 +42,41 @@ the commit. That's what gives the pattern its atomic guarantee:
 `available_at` is optional. When `None`, the row is eligible
 immediately; when set, it must be timezone-aware and the relay will
 not claim it until `now() >= available_at`.
+
+### Wiring producers through the unit-of-work port
+
+Producer composition takes an `OutboxUnitOfWorkPort`, not a session-
+typed factory — the port keeps SQLModel out of the producer's wiring
+surface so a future Mongo-backed outbox can satisfy the same seam.
+
+```python
+# features/outbox/application/ports/outbox_uow_port.py
+class OutboxUnitOfWorkPort(Protocol):
+    def transaction(self) -> AbstractContextManager[OutboxWriter]: ...
+
+class OutboxWriter(Protocol):
+    def enqueue(self, *, job_name, payload, available_at=None): ...
+```
+
+```python
+# main.py — produce the port from the outbox container and hand it
+# to the producer composition. Note the absence of ``sqlmodel.Session``
+# in the producer's signature.
+outbox = build_outbox_container(settings, engine=engine, job_queue=jobs.port)
+auth = build_auth_container(
+    settings=app_settings,
+    users=users.user_repository,
+    outbox_uow=outbox.unit_of_work,
+    repository=repository,
+)
+```
+
+The SQLModel implementation (`SQLModelOutboxUnitOfWork`) owns a
+`sessionmaker` internally and exposes the active session on its
+writer so SQLModel-aware producer adapters (the auth repository) can
+attach their token + audit writes to the same transaction. Producer
+*composition* depends only on the port; the Session never appears in
+the wiring layer.
 
 ## Consumer contract
 
@@ -107,8 +142,8 @@ into an outbox-backed flow:
    manager on the repository.
 2. The yielded transaction DTO needs to expose an `outbox`
    attribute. Follow `_SessionIssueTokenTransaction` as a
-   template: hold the session and the outbox-session adapter
-   built by the repository's registered factory.
+   template: hold the session and the writer yielded by the
+   repository's `OutboxUnitOfWorkPort.transaction()` context.
 3. Replace `self._jobs.enqueue(...)` with
    `tx.outbox.enqueue(job_name=..., payload=...)`.
 4. Drop the `_jobs: JobQueuePort` field from the use case if it

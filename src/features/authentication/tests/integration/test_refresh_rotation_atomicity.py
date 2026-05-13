@@ -17,7 +17,7 @@ from features.authentication.application.crypto import hash_token
 from features.authentication.application.errors import InvalidTokenError
 from features.authentication.application.types import IssuedTokens
 from features.authentication.composition.container import build_auth_container
-from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
+from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxUnitOfWork
 from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
@@ -40,9 +40,7 @@ def test_concurrent_refresh_serializes_on_presented_token_row(
     container = build_auth_container(
         settings=settings,
         users=users,
-        outbox_session_factory=lambda _s: InlineDispatchOutboxAdapter(
-            dispatcher=lambda _n, _p: None,
-        ),
+        outbox_uow=InlineDispatchOutboxUnitOfWork(dispatcher=lambda _n, _p: None),
         repository=postgres_auth_repository,
     )
     container.register_user.execute(

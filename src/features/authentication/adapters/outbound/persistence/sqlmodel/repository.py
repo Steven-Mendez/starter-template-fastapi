@@ -8,7 +8,7 @@ module never imports ``UserTable``.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import TracebackType
@@ -32,14 +32,7 @@ from features.authentication.domain.models import (
     RefreshToken,
 )
 from features.outbox.application.ports.outbox_port import OutboxPort
-
-# A factory the auth repository uses to construct a session-scoped
-# OutboxPort each time it opens a write transaction that needs the
-# outbox. Keeping this as a Callable type alias keeps the repository
-# decoupled from the concrete outbox adapter — it never imports
-# ``features.outbox.adapters`` (forbidden by the platform isolation
-# Import Linter contract for cross-feature adapters).
-OutboxSessionFactory = Callable[[Session], OutboxPort]
+from features.outbox.application.ports.outbox_uow_port import OutboxUnitOfWorkPort
 
 
 @overload
@@ -257,12 +250,14 @@ class _SessionIssueTokenTransaction:
     Used by request-path producer use cases (``RequestPasswordReset``,
     ``RequestEmailVerification``) so the token insert, the audit event,
     and the side-effect intent commit atomically. The ``outbox``
-    attribute is a session-scoped :class:`OutboxPort` bound to the
-    same session as the token write.
+    attribute is a session-scoped writer bound to the same session as
+    the token write.
     """
 
     def __init__(self, session: Session, outbox: OutboxPort) -> None:
         self._session = session
+        # The yielded writer satisfies ``OutboxPort.enqueue(...)``; we
+        # keep the typed attribute name producer code uses today.
         self.outbox = outbox
 
     def create_internal_token(
@@ -324,6 +319,7 @@ class SQLModelAuthRepository:
         max_overflow: int = 10,
         pool_recycle: int = 1800,
         pool_pre_ping: bool = True,
+        outbox_uow: OutboxUnitOfWorkPort | None = None,
     ) -> None:
         if not database_url.startswith("postgresql"):
             msg = "SQLModelAuthRepository supports PostgreSQL DSNs only"
@@ -336,38 +332,29 @@ class SQLModelAuthRepository:
             pool_recycle=pool_recycle,
         )
         self._closed = False
-        # ``set_outbox_session_factory`` must be called by the composition
-        # root before any caller invokes ``issue_internal_token_transaction``.
-        # Kept optional so the existing constructor signature stays
-        # backwards-compatible for tests that do not exercise the outbox path.
-        self._outbox_session_factory: OutboxSessionFactory | None = None
+        # The composition root passes ``outbox_uow`` so the repository can
+        # open atomic token-+-outbox transactions. Kept optional so
+        # existing tests that do not exercise the outbox path can still
+        # construct the repository with just a DSN.
+        self._outbox_uow: OutboxUnitOfWorkPort | None = outbox_uow
         if create_schema:
             SQLModel.metadata.create_all(self._engine)
 
     @classmethod
     def from_engine(
-        cls, engine: Engine, *, create_schema: bool = False
+        cls,
+        engine: Engine,
+        *,
+        create_schema: bool = False,
+        outbox_uow: OutboxUnitOfWorkPort | None = None,
     ) -> SQLModelAuthRepository:
         instance = cls.__new__(cls)
         instance._engine = engine
         instance._closed = False
-        instance._outbox_session_factory = None
+        instance._outbox_uow = outbox_uow
         if create_schema:
             SQLModel.metadata.create_all(engine)
         return instance
-
-    def set_outbox_session_factory(self, factory: OutboxSessionFactory) -> None:
-        """Register the factory the repository uses to build session-scoped outboxes.
-
-        The composition root calls this once during startup, passing in
-        the outbox container's ``session_scoped_factory``. The repository
-        constructor does not take it as a positional argument because
-        the auth and outbox containers are built in sequence and the
-        existing constructor signature is part of the migration test
-        suite — adding it inline would force a wider rewrite than this
-        change needs.
-        """
-        self._outbox_session_factory = factory
 
     @property
     def engine(self) -> Engine:
@@ -447,20 +434,36 @@ class SQLModelAuthRepository:
         outbox row is never visible to the relay if the use case fails.
         """
         self._ensure_open()
-        if self._outbox_session_factory is None:
+        if self._outbox_uow is None:
             raise RuntimeError(
                 "SQLModelAuthRepository.issue_internal_token_transaction was "
-                "called before set_outbox_session_factory(...). The composition "
-                "root must register the outbox factory during startup."
+                "called before an OutboxUnitOfWorkPort was registered. The "
+                "composition root must pass ``outbox_uow=`` to the constructor "
+                "or to ``from_engine(...)``."
             )
-        with Session(self._engine, expire_on_commit=False) as session:
-            outbox = self._outbox_session_factory(session)
-            try:
-                yield _SessionIssueTokenTransaction(session, outbox)
-                session.commit()
-            except Exception:
-                session.rollback()
-                raise
+        with self._outbox_uow.transaction() as writer:
+            # Outbox writers backed by SQLModel expose the active
+            # session so SQLModel-aware producer adapters (this one)
+            # can attach their own writes to the same transaction.
+            # Producer *composition* still depends only on the
+            # ``OutboxUnitOfWorkPort`` Protocol and never sees a
+            # ``Session`` type.
+            session = getattr(writer, "session", None)
+            if isinstance(session, Session):
+                yield _SessionIssueTokenTransaction(session, writer)
+                return
+            # Writers without a shared session (e.g. inline-dispatch
+            # fakes used in e2e tests) cannot satisfy the atomic
+            # contract; the repository falls back to opening its own
+            # session. Atomicity guarantees are exercised against the
+            # real SQLModel adapter by the integration suite.
+            with Session(self._engine, expire_on_commit=False) as fallback_session:
+                try:
+                    yield _SessionIssueTokenTransaction(fallback_session, writer)
+                    fallback_session.commit()
+                except Exception:
+                    fallback_session.rollback()
+                    raise
 
     def create_refresh_token(
         self,

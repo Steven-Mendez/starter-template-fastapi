@@ -12,10 +12,13 @@ production code).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+
+from features.outbox.application.ports.outbox_uow_port import OutboxWriter
 
 PendingEntry = tuple[str, dict[str, Any], datetime | None]
 
@@ -89,3 +92,26 @@ class InlineDispatchOutboxAdapter:
         copy = dict(payload)
         self.dispatched.append((job_name, copy, available_at))
         self.dispatcher(job_name, copy)
+
+
+@dataclass(slots=True)
+class InlineDispatchOutboxUnitOfWork:
+    """Fake :class:`OutboxUnitOfWorkPort` that yields an inline-dispatch writer.
+
+    Wraps :class:`InlineDispatchOutboxAdapter` so e2e tests can satisfy
+    the producer composition's ``OutboxUnitOfWorkPort`` parameter
+    without spinning up a real session lifecycle. The auth repository
+    detects the absence of a ``session`` attribute on the writer and
+    falls back to opening its own session for the token + audit
+    writes; atomicity guarantees are exercised against the real
+    SQLModel UoW by the integration suite.
+    """
+
+    dispatcher: Callable[[str, dict[str, Any]], None]
+    writers: list[InlineDispatchOutboxAdapter] = field(default_factory=list)
+
+    @contextmanager
+    def transaction(self) -> Iterator[OutboxWriter]:
+        writer = InlineDispatchOutboxAdapter(dispatcher=self.dispatcher)
+        self.writers.append(writer)
+        yield writer

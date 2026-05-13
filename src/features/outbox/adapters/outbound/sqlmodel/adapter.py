@@ -27,9 +27,25 @@ class SessionSQLModelOutboxAdapter:
     those are the outer unit-of-work's responsibility. The contract
     requires the row to become visible to the relay only if and only
     if the surrounding transaction commits.
+
+    SQLModel-aware producer adapters (e.g. the auth repository) may
+    read :attr:`session` to attach their own writes to the same
+    transaction. Producer *composition* still depends only on the
+    abstract ``OutboxUnitOfWorkPort`` — the ``Session`` never leaks
+    above the outbound-adapter ring.
     """
 
     _session: Session
+
+    @property
+    def session(self) -> Session:
+        """Return the session backing the writer.
+
+        Exposed for SQLModel-aware producer adapters that need to
+        attach their own writes to the same transaction; producer
+        composition still depends only on ``OutboxUnitOfWorkPort``.
+        """
+        return self._session
 
     def enqueue(
         self,

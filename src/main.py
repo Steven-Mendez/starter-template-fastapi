@@ -163,7 +163,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         jobs.registry.seal()
         # Outbox sits between jobs and auth: it depends on the engine and
         # the JobQueuePort, and authentication's request-path consumers
-        # take the session-scoped outbox factory so their writes commit
+        # consume the outbox unit-of-work port so their writes commit
         # atomically with the outbox row.
         outbox = build_outbox_container(
             OutboxSettings.from_app_settings(app_settings),
@@ -173,7 +173,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         auth = build_auth_container(
             settings=app_settings,
             users=users.user_repository,
-            outbox_session_factory=outbox.session_scoped_factory,
+            outbox_uow=outbox.unit_of_work,
             repository=repository,
         )
         user_registrar = build_user_registrar_adapter(

@@ -1,16 +1,22 @@
-"""Management CLI for the auth feature.
+"""CLI: create or promote the first ``system:main#admin``.
 
-Exposes one-shot operations that should not be reachable from the public
-API. Currently a single subcommand: ``create-super-admin`` writes the
-``system:main#admin`` relationship tuple for the configured account.
+This module is a project-level composition root (a peer of
+``main.py`` and ``worker.py``). It assembles the same feature
+containers the web app uses so the bootstrap path exercises the
+exact wiring the production processes do, without duplicating the
+wiring code.
+
 Running as a CLI avoids a chicken-and-egg situation where creating
-the first admin would otherwise require an admin JWT to already exist.
+the first admin would otherwise require an admin JWT to already
+exist. Configuration is read from the standard ``APP_*`` environment
+variables; the password is read from a named environment variable
+to keep it out of shell history and process listings.
 
-Even though the entry point lives under ``features/auth/``, the
-``create-super-admin`` operation now belongs to the authorization
-feature (it writes a relationship tuple). The CLI assembles both
-containers exactly as ``main.py`` does so the bootstrap calls the same
-use case the live app would.
+Invocation::
+
+    uv run python -m cli.create_super_admin create-super-admin \\
+        --email admin@example.com \\
+        --password-env AUTH_BOOTSTRAP_PASSWORD
 """
 
 from __future__ import annotations
@@ -19,6 +25,9 @@ import argparse
 import os
 
 from app_platform.config.settings import AppSettings
+from features.authentication.adapters.outbound.persistence.sqlmodel import (
+    SQLModelAuthRepository,
+)
 from features.authentication.composition.container import (
     AuthContainer,
     build_auth_container,
@@ -57,11 +66,14 @@ def _build_containers() -> tuple[
     EmailContainer,
     JobsContainer,
 ]:
-    """Construct auth + users + authorization + email + jobs containers from env."""
-    from features.authentication.adapters.outbound.persistence.sqlmodel import (
-        SQLModelAuthRepository,
-    )
+    """Construct auth + users + authorization + email + jobs containers from env.
 
+    Wiring mirrors ``main.py``: each feature is assembled through its
+    public ``composition/container.py`` API so the CLI exercises the
+    same dependency graph the web app does. The authorization
+    registry is sealed before the bootstrap use case runs so a stray
+    runtime ``register_*`` call surfaces as a clear error.
+    """
     settings = AppSettings()
     repository = SQLModelAuthRepository(
         settings.postgresql_dsn,
@@ -104,7 +116,7 @@ def _build_containers() -> tuple[
     auth = build_auth_container(
         settings=settings,
         users=users.user_repository,
-        outbox_session_factory=outbox.session_scoped_factory,
+        outbox_uow=outbox.unit_of_work,
         repository=repository,
     )
     user_registrar = build_user_registrar_adapter(
@@ -116,6 +128,13 @@ def _build_containers() -> tuple[
         user_registrar=user_registrar,
         audit=auth.audit_adapter,
     )
+    # Seal the authorization registry so the bootstrap use case runs
+    # against the exact same frozen graph that the live application
+    # sees. The previous ``management.py`` never sealed the registry —
+    # the live app catches stray registrations only because it seals
+    # in its lifespan. ``seal()`` is idempotent, so calling it here is
+    # safe even if a caller (or a test) has already sealed.
+    authorization.registry.seal()
     return auth, users, authorization, email, jobs
 
 
@@ -146,14 +165,17 @@ def create_super_admin(email: str, password_env: str) -> None:
 
 
 def main() -> None:
-    """Entry point for the auth management CLI."""
-    parser = argparse.ArgumentParser(description="Auth management commands")
+    """Entry point for the bootstrap-admin CLI."""
+    parser = argparse.ArgumentParser(
+        description="Project-level CLI for one-shot bootstrap operations",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     super_admin = subparsers.add_parser(
         "create-super-admin",
-        # Kept as a management command rather than an API endpoint so that
-        # creating the first admin does not require an admin token to exist yet.
+        # Kept as a CLI command rather than an API endpoint so that
+        # creating the first admin does not require an admin token to
+        # exist yet.
         help="Create or promote the first system admin via a non-public command",
     )
     super_admin.add_argument("--email", required=True)

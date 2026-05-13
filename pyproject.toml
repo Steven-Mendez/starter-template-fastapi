@@ -176,7 +176,7 @@ check_untyped_defs = true
 no_implicit_optional = true
 
 [tool.importlinter]
-root_packages = ["app_platform", "features"]
+root_packages = ["app_platform", "features", "cli"]
 include_external_packages = true
 
 # Platform must never depend on a feature.
@@ -514,3 +514,85 @@ source_modules = [
     "features.outbox.domain",
 ]
 forbidden_modules = ["features.background_jobs.adapters"]
+
+# === Application ↛ Composition (any feature) ===
+#
+# Composition is the outermost ring; application is the inner ring that
+# contains use cases and ports. An application-layer module importing a
+# composition-layer module — even its own feature's — inverts the
+# layering. Cross-feature constants needed by application code (job
+# names, template names, registry keys) live in the producing feature's
+# application layer, never in its composition layer.
+#
+# ``allow_indirect_imports = true`` because every application module
+# transitively reaches ``app_platform.config.settings``, which by design
+# aggregates per-feature ``composition.settings`` projections (see the
+# explicit ignore on "Platform isolation: no feature imports"). The
+# transitive ``application -> platform.config.settings -> *.composition.settings``
+# edge is the same well-understood exception, not a real layering
+# violation.
+[[tool.importlinter.contracts]]
+name = "Application does not import composition (any feature)"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = [
+    "features.authentication.application",
+    "features.authorization.application",
+    "features.background_jobs.application",
+    "features.email.application",
+    "features.file_storage.application",
+    "features.outbox.application",
+    "features.users.application",
+]
+forbidden_modules = [
+    "features.authentication.composition",
+    "features.authorization.composition",
+    "features.background_jobs.composition",
+    "features.email.composition",
+    "features.file_storage.composition",
+    "features.outbox.composition",
+    "features.users.composition",
+]
+
+# === Outbox port consumers do not import sqlmodel ===
+#
+# Producer features depend on the abstract ``OutboxUnitOfWorkPort``
+# rather than on a ``Callable[[Session], OutboxPort]``-shaped factory.
+# This contract prevents future producer composition modules from
+# accidentally re-introducing the ``sqlmodel.Session`` leak through the
+# auth feature's seam.
+[[tool.importlinter.contracts]]
+name = "Outbox port consumers do not import sqlmodel"
+type = "forbidden"
+source_modules = [
+    "features.authentication.application",
+    "features.authentication.composition",
+]
+forbidden_modules = ["sqlmodel"]
+ignore_imports = [
+    # The auth composition root constructs the engine-owning
+    # SQLModelAuthRepository, which legitimately re-exports the
+    # adapters package whose modules import sqlmodel. The Session leak
+    # this contract guards against would be a direct ``from sqlmodel
+    # import Session`` in composition.container itself.
+    "features.authentication.composition.container -> features.authentication.adapters.outbound.persistence.sqlmodel",
+]
+
+# === Features must not import the CLI composition root ===
+#
+# ``src/cli/`` is a top-level composition root (peer of ``main.py`` and
+# ``worker.py``). It is permitted to import every feature's composition
+# layer; features must not import the CLI.
+[[tool.importlinter.contracts]]
+name = "Features do not import the CLI composition root"
+type = "forbidden"
+source_modules = [
+    "features.authentication",
+    "features.authorization",
+    "features.background_jobs",
+    "features.email",
+    "features.file_storage",
+    "features.outbox",
+    "features.users",
+]
+forbidden_modules = ["cli"]

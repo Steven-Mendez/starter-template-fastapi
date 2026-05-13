@@ -17,9 +17,8 @@ from typing import Any
 
 from app_platform.shared.result import Err
 from features.background_jobs.application.registry import JobHandlerRegistry
+from features.email.application.jobs import SEND_EMAIL_JOB
 from features.email.application.ports.email_port import EmailPort
-
-SEND_EMAIL_JOB = "send_email"
 
 _logger = logging.getLogger("features.email.jobs")
 

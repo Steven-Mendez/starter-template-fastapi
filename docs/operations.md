@@ -193,9 +193,8 @@ For local Docker Compose, those defaults are already provided unless overridden.
 The management commands remain available for manual/one-off operations:
 
 ```bash
-uv run python -m features.auth.management seed
 export AUTH_BOOTSTRAP_PASSWORD="set-a-temporary-password-outside-git"
-uv run python -m features.auth.management create-super-admin \
+uv run python -m cli.create_super_admin create-super-admin \
   --email admin@example.com \
   --password-env AUTH_BOOTSTRAP_PASSWORD
 unset AUTH_BOOTSTRAP_PASSWORD

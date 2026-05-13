@@ -1,15 +1,15 @@
 """Composition root for the outbox feature.
 
 Builds the engine-scoped repository (used by the relay), exposes a
-factory for the session-scoped :class:`OutboxPort` (used by producer
+session-aware :class:`OutboxUnitOfWorkPort` (used by producer
 transactions), and constructs the :class:`DispatchPending` use case
 the worker schedules on a cron.
 
 The container deliberately does **not** start the relay loop itself —
 the web process never runs the relay, only the worker does. The web
-process needs only the session-scoped factory so its use cases can
-write to ``outbox_messages``; the dispatch use case is built either
-way so tests and the worker can drive it without re-instantiating.
+process needs only the unit-of-work port so its use cases can write
+to ``outbox_messages``; the dispatch use case is built either way so
+tests and the worker can drive it without re-instantiating.
 """
 
 from __future__ import annotations
@@ -18,24 +18,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy.engine import Engine
-from sqlmodel import Session
 
 from features.background_jobs.application.ports.job_queue_port import JobQueuePort
-from features.outbox.adapters.outbound.sqlmodel.adapter import (
-    SessionSQLModelOutboxAdapter,
-)
 from features.outbox.adapters.outbound.sqlmodel.repository import (
     SQLModelOutboxRepository,
 )
-from features.outbox.application.ports.outbox_port import OutboxPort
+from features.outbox.adapters.outbound.sqlmodel.unit_of_work import (
+    SQLModelOutboxUnitOfWork,
+)
+from features.outbox.application.ports.outbox_uow_port import OutboxUnitOfWorkPort
 from features.outbox.application.use_cases.dispatch_pending import DispatchPending
 from features.outbox.composition.settings import OutboxSettings
-
-# A callable producers use to construct an outbox port bound to *their*
-# session. Keeping it as a Callable (not the adapter type) lets a future
-# adapter (e.g. an in-memory test double for an integration test) plug
-# in without changing producer code.
-SessionScopedOutboxFactory = Callable[[Session], OutboxPort]
 
 
 @dataclass(slots=True)
@@ -43,7 +36,7 @@ class OutboxContainer:
     """Bundle of the outbox feature's wired components."""
 
     settings: OutboxSettings
-    session_scoped_factory: SessionScopedOutboxFactory
+    unit_of_work: OutboxUnitOfWorkPort
     dispatch_pending: DispatchPending
     shutdown: Callable[[], None]
 
@@ -58,13 +51,13 @@ def build_outbox_container(
 
     ``engine`` is the shared SQLModel engine — the relay's repository
     opens short transactions against it for the claim and the mark
-    operations. ``job_queue`` is the destination: the dispatch use
-    case hands each claimed payload to ``job_queue.enqueue``.
+    operations, and the unit-of-work opens producer transactions
+    against the same pool. ``job_queue`` is the destination: the
+    dispatch use case hands each claimed payload to
+    ``job_queue.enqueue``.
     """
     repository = SQLModelOutboxRepository(_engine=engine)
-
-    def _session_scoped_factory(session: Session) -> OutboxPort:
-        return SessionSQLModelOutboxAdapter(_session=session)
+    unit_of_work = SQLModelOutboxUnitOfWork.from_engine(engine)
 
     dispatch_pending = DispatchPending(
         _repository=repository,
@@ -83,7 +76,7 @@ def build_outbox_container(
 
     return OutboxContainer(
         settings=settings,
-        session_scoped_factory=_session_scoped_factory,
+        unit_of_work=unit_of_work,
         dispatch_pending=dispatch_pending,
         shutdown=_shutdown,
     )

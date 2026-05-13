@@ -54,7 +54,7 @@ from features.email.composition.jobs import register_send_email_handler
 from features.email.composition.settings import EmailSettings
 from features.email.composition.wiring import attach_email_container
 from features.email.tests.fakes.fake_email_port import FakeEmailPort
-from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
+from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxUnitOfWork
 from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
 )
@@ -185,15 +185,12 @@ def _build_app(
     # relay (Postgres-only). Atomicity guarantees are exercised by
     # ``tests/integration/test_password_reset_atomicity.py`` against a
     # real Postgres via testcontainers.
-    def _outbox_session_factory(_session: Any) -> Any:
-        return InlineDispatchOutboxAdapter(
-            dispatcher=jobs_port.enqueue,
-        )
+    outbox_uow = InlineDispatchOutboxUnitOfWork(dispatcher=jobs_port.enqueue)
 
     auth = build_auth_container(
         settings=settings,
         users=users.user_repository,
-        outbox_session_factory=_outbox_session_factory,
+        outbox_uow=outbox_uow,
         repository=repository,
     )
     user_registrar = build_user_registrar_adapter(

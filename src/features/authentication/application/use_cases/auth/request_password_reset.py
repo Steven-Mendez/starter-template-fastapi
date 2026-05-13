@@ -17,7 +17,7 @@ from features.authentication.application.ports.outbound.auth_repository import (
 )
 from features.authentication.application.types import InternalTokenResult
 from features.authentication.email_templates import PASSWORD_RESET_TEMPLATE
-from features.email.composition.jobs import SEND_EMAIL_JOB
+from features.email.application.jobs import SEND_EMAIL_JOB
 from features.users.application.ports.user_port import UserPort
 
 _logger = logging.getLogger(__name__)

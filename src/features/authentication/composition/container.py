@@ -66,7 +66,7 @@ from features.authentication.application.use_cases.auth.request_password_reset i
 from features.authentication.application.use_cases.auth.resolve_principal import (
     ResolvePrincipalFromAccessToken,
 )
-from features.outbox.composition.container import SessionScopedOutboxFactory
+from features.outbox.application.ports.outbox_uow_port import OutboxUnitOfWorkPort
 from features.users.application.ports.user_port import UserPort
 
 _logger = logging.getLogger(__name__)
@@ -107,17 +107,16 @@ def build_auth_container(
     *,
     settings: AppSettings,
     users: UserPort,
-    outbox_session_factory: SessionScopedOutboxFactory,
+    outbox_uow: OutboxUnitOfWorkPort,
     repository: SQLModelAuthRepository | None = None,
 ) -> AuthContainer:
     """Wire all auth dependencies and return a ready-to-use container.
 
-    ``outbox_session_factory`` is registered on the repository so that
-    ``issue_internal_token_transaction`` can build a session-scoped
-    :class:`OutboxPort` bound to the same SQL transaction as the token
-    and audit writes. Without it, the request-path consumers
-    (``RequestPasswordReset`` / ``RequestEmailVerification``) cannot
-    open their transaction.
+    ``outbox_uow`` is the transport-agnostic unit-of-work the
+    repository uses inside ``issue_internal_token_transaction`` so the
+    token write, audit event, and outbox row commit atomically. The
+    Protocol-shaped seam keeps the producer wiring free of
+    ``sqlmodel.Session`` (enforced by an Import Linter contract).
     """
     repo = repository or SQLModelAuthRepository(
         settings.postgresql_dsn,
@@ -126,8 +125,16 @@ def build_auth_container(
         max_overflow=settings.db_max_overflow,
         pool_recycle=settings.db_pool_recycle_seconds,
         pool_pre_ping=settings.db_pool_pre_ping,
+        outbox_uow=outbox_uow,
     )
-    repo.set_outbox_session_factory(outbox_session_factory)
+    # When the caller passes a pre-constructed repository (the typical
+    # case: ``main.py`` builds the engine via the auth repo to share
+    # one pool across features), the repository may not yet know about
+    # the outbox UoW. Attach it now via the private slot — the
+    # attribute is owned by this composition layer, not the test
+    # surface, so there is no setter on the public API.
+    if repository is not None:
+        repo._outbox_uow = outbox_uow
     password_service = PasswordService()
 
     if not settings.auth_jwt_secret_key:
