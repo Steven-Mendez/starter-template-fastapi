@@ -21,7 +21,9 @@ from features.background_jobs.application.registry import (
 _logger = logging.getLogger("features.background_jobs.arq.worker")
 
 
-def _wrap(name: str, handler: JobHandler) -> Function:
+def _wrap(
+    name: str, handler: JobHandler, *, keep_result_seconds: int | None
+) -> Function:
     """Wrap a sync :data:`JobHandler` as an arq :class:`Function`.
 
     arq's :class:`WorkerCoroutine` is a structural protocol with a
@@ -37,19 +39,30 @@ def _wrap(name: str, handler: JobHandler) -> Function:
         handler(args[0])
 
     _runner.__name__ = name
-    return func(_runner, name=name)
+    return func(_runner, name=name, keep_result=keep_result_seconds)
 
 
-def build_arq_functions(registry: JobHandlerRegistry) -> list[Function]:
+def build_arq_functions(
+    registry: JobHandlerRegistry,
+    *,
+    keep_result_seconds_default: int = 300,
+) -> list[Function]:
     """Return the arq :class:`Function` list for every registered handler.
 
     The list is computed *after* every feature has registered its
     handlers (and the registry has been sealed) so the worker sees the
     same set of jobs the web process can enqueue.
     """
-    return [
-        _wrap(name, registry.get(name)) for name in sorted(registry.registered_jobs())
-    ]
+    functions: list[Function] = []
+    for name in sorted(registry.registered_jobs()):
+        entry = registry.get_entry(name)
+        keep = (
+            entry.keep_result_seconds
+            if entry.keep_result_seconds is not None
+            else keep_result_seconds_default
+        )
+        functions.append(_wrap(name, entry.handler, keep_result_seconds=keep))
+    return functions
 
 
 async def job_handler_logging_startup(ctx: dict[str, Any]) -> None:

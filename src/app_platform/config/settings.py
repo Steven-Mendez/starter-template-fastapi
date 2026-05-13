@@ -163,6 +163,12 @@ class AppSettings(BaseSettings):
     # lets the queue and the rate limiter use different Redis instances.
     jobs_redis_url: str | None = None
     jobs_queue_name: str = "arq:queue"
+    # arq worker tunables. ``keep_result_seconds_default`` bounds Redis memory
+    # for ``arq:queue:result:*`` keys; handlers that need longer retention
+    # (e.g. payment-idempotency replay windows) override this per-handler.
+    jobs_keep_result_seconds_default: int = 300
+    jobs_max_jobs: int = 16
+    jobs_job_timeout_seconds: int = 600
     # ---------------------------------------------------------------------------
     # Transactional outbox
     # ---------------------------------------------------------------------------

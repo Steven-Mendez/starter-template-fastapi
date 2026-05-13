@@ -588,6 +588,9 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_JOBS_BACKEND` | `in_process` | One of `in_process`, `arq`. **Must be `arq` in production.** |
 | `APP_JOBS_REDIS_URL` | unset | Required when `APP_JOBS_BACKEND=arq`; falls back to `APP_AUTH_REDIS_URL`. |
 | `APP_JOBS_QUEUE_NAME` | `arq:queue` | `arq` queue name. |
+| `APP_JOBS_KEEP_RESULT_SECONDS_DEFAULT` | `300` | TTL for `arq:queue:result:*` keys when a handler does not override `keep_result_seconds`. Bounds Redis memory. See `docs/background-jobs.md#redis-operational-guidance`. |
+| `APP_JOBS_MAX_JOBS` | `16` | Max concurrent jobs per arq worker. Tune to deployment CPU/memory. |
+| `APP_JOBS_JOB_TIMEOUT_SECONDS` | `600` | Hard kill for a single job. A handler that overruns is terminated rather than pinning a worker. |
 
 ### Transactional outbox (`OutboxSettings`)
 

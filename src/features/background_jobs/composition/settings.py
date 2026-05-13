@@ -20,6 +20,9 @@ class JobsSettings:
     backend: JobsBackend
     redis_url: str | None
     queue_name: str
+    keep_result_seconds_default: int = 300
+    max_jobs: int = 16
+    job_timeout_seconds: int = 600
 
     @classmethod
     def from_app_settings(
@@ -29,6 +32,9 @@ class JobsSettings:
         backend: str | None = None,
         redis_url: str | None = None,
         queue_name: str | None = None,
+        keep_result_seconds_default: int = 300,
+        max_jobs: int = 16,
+        job_timeout_seconds: int = 600,
     ) -> JobsSettings:
         """Construct from either an :class:`AppSettings` or flat kwargs."""
         if app is not None:
@@ -37,6 +43,9 @@ class JobsSettings:
             # deployments don't need both env vars set.
             redis_url = app.jobs_redis_url or app.auth_redis_url
             queue_name = app.jobs_queue_name
+            keep_result_seconds_default = app.jobs_keep_result_seconds_default
+            max_jobs = app.jobs_max_jobs
+            job_timeout_seconds = app.jobs_job_timeout_seconds
         if backend not in ("in_process", "arq"):
             raise ValueError(
                 f"APP_JOBS_BACKEND must be 'in_process' or 'arq'; got {backend!r}"
@@ -45,6 +54,9 @@ class JobsSettings:
             backend=backend,  # type: ignore[arg-type]
             redis_url=redis_url,
             queue_name=queue_name or "arq:queue",
+            keep_result_seconds_default=keep_result_seconds_default,
+            max_jobs=max_jobs,
+            job_timeout_seconds=job_timeout_seconds,
         )
 
     def validate(self, errors: list[str]) -> None:

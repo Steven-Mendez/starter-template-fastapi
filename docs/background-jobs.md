@@ -130,3 +130,47 @@ worker boot → handler invocation → completion.
 - **Different queue backend** (e.g. SQS, dramatiq): implement `JobQueuePort`
   with the new adapter and wire it in `build_jobs_container`. Contract tests
   should pass without modification.
+
+## Redis Operational Guidance
+
+The arq worker stores per-job result records under `arq:queue:result:*` in
+Redis. Left at arq's defaults, those records persist indefinitely; on a
+stressed deploy the keys accumulate until Redis evicts under pressure or
+runs out of memory. Three knobs bound that behaviour:
+
+| Setting | Env var | Default | Purpose |
+|---|---|---|---|
+| `keep_result_seconds_default` | `APP_JOBS_KEEP_RESULT_SECONDS_DEFAULT` | `300` (5 min) | TTL for every `arq:queue:result:*` key unless the handler overrides it. Long enough to correlate a job ID with a log line; short enough to keep Redis memory bounded. |
+| `max_jobs` | `APP_JOBS_MAX_JOBS` | `16` | Max concurrent jobs per worker. Tune to deployment CPU/memory. |
+| `job_timeout_seconds` | `APP_JOBS_JOB_TIMEOUT_SECONDS` | `600` (10 min) | Hard kill so a hung handler doesn't pin a worker forever. |
+
+### Per-handler override
+
+When you register a job whose result must outlive the global default (e.g.
+a payment-idempotency replay window), pass `keep_result_seconds=<seconds>`
+to `JobHandlerRegistry.register_handler(...)`. The arq adapter materializes
+each handler's value onto its `Function.keep_result`.
+
+```python
+registry.register_handler(
+    "process_payment",
+    _process_payment,
+    keep_result_seconds=86_400,  # one full day for idempotency replay
+)
+```
+
+### Redis sizing
+
+For the default 5-minute retention, a worker doing ~10 jobs/second carries
+on the order of 3,000 active result keys; even at a few KB per record that
+fits comfortably in tens of megabytes. Set Redis with:
+
+```
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+```
+
+`allkeys-lru` is the right policy because every key in the queue's keyspace
+is short-lived: under sustained backpressure Redis will evict the
+oldest-touched result records first, which is the same data that the TTL
+would expire anyway.

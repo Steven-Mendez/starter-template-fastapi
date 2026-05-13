@@ -25,6 +25,14 @@ from features.background_jobs.application.errors import (
 JobHandler = Callable[[dict[str, Any]], None]
 
 
+@dataclass(frozen=True, slots=True)
+class JobHandlerEntry:
+    """Registered handler plus its per-handler arq tunables."""
+
+    handler: JobHandler
+    keep_result_seconds: int | None = None
+
+
 @dataclass(slots=True)
 class JobHandlerRegistry:
     """Mutable registry of job handlers owned by the background-jobs feature.
@@ -34,11 +42,20 @@ class JobHandlerRegistry:
     after every feature has contributed.
     """
 
-    _handlers: dict[str, JobHandler] = field(default_factory=dict)
+    _handlers: dict[str, JobHandlerEntry] = field(default_factory=dict)
     _sealed: bool = False
 
-    def register_handler(self, name: str, handler: JobHandler) -> None:
+    def register_handler(
+        self,
+        name: str,
+        handler: JobHandler,
+        *,
+        keep_result_seconds: int | None = None,
+    ) -> None:
         """Register ``handler`` under ``name``.
+
+        Pass ``keep_result_seconds`` only when the job's result must outlive
+        the registry-wide default (e.g. a payment-idempotency replay window).
 
         Raises:
             RuntimeError: the registry has already been sealed.
@@ -47,7 +64,9 @@ class JobHandlerRegistry:
         self._guard_unsealed()
         if name in self._handlers:
             raise HandlerAlreadyRegisteredError(job_name=name)
-        self._handlers[name] = handler
+        self._handlers[name] = JobHandlerEntry(
+            handler=handler, keep_result_seconds=keep_result_seconds
+        )
 
     def seal(self) -> None:
         """Freeze the registry; further registrations raise ``RuntimeError``."""
@@ -67,10 +86,25 @@ class JobHandlerRegistry:
         Raises:
             UnknownJobError: no handler is registered for ``name``.
         """
-        handler = self._handlers.get(name)
-        if handler is None:
+        entry = self._handlers.get(name)
+        if entry is None:
             raise UnknownJobError(job_name=name)
-        return handler
+        return entry.handler
+
+    def get_entry(self, name: str) -> JobHandlerEntry:
+        """Return the full registry entry (handler + tunables) for ``name``.
+
+        Raises:
+            UnknownJobError: no handler is registered for ``name``.
+        """
+        entry = self._handlers.get(name)
+        if entry is None:
+            raise UnknownJobError(job_name=name)
+        return entry
+
+    def entries(self) -> dict[str, JobHandlerEntry]:
+        """Return a copy of the registered (name -> entry) mapping."""
+        return dict(self._handlers)
 
     def has(self, name: str) -> bool:
         """Return whether a handler is registered under ``name``."""

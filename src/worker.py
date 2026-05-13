@@ -123,7 +123,10 @@ def build_worker_settings() -> type:
     )
     cron_jobs = build_relay_cron_jobs(outbox)
 
-    functions = build_arq_functions(jobs.registry)
+    functions = build_arq_functions(
+        jobs.registry,
+        keep_result_seconds_default=jobs_settings.keep_result_seconds_default,
+    )
     redis_settings = RedisSettings.from_dsn(jobs_settings.redis_url)
 
     class WorkerSettings:
@@ -133,6 +136,9 @@ def build_worker_settings() -> type:
     WorkerSettings.cron_jobs = list(cron_jobs)  # type: ignore[attr-defined]
     WorkerSettings.redis_settings = redis_settings  # type: ignore[attr-defined]
     WorkerSettings.queue_name = jobs_settings.queue_name  # type: ignore[attr-defined]
+    WorkerSettings.max_jobs = jobs_settings.max_jobs  # type: ignore[attr-defined]
+    WorkerSettings.job_timeout = jobs_settings.job_timeout_seconds  # type: ignore[attr-defined]
+    WorkerSettings.keep_result = jobs_settings.keep_result_seconds_default  # type: ignore[attr-defined]
     WorkerSettings.on_startup = staticmethod(job_handler_logging_startup)  # type: ignore[attr-defined]
     return WorkerSettings
 
