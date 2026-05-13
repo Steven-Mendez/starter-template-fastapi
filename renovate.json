@@ -10,7 +10,18 @@
   "prHourlyLimit": 2,
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 5am on monday"]
+    "schedule": ["before 9am on monday"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "schedule": ["at any time"],
+    "prCreation": "immediate",
+    "automerge": true,
+    "automergeType": "pr"
+  },
+  "pre-commit": {
+    "enabled": true
   },
   "github-actions": {
     "enabled": true,
@@ -46,6 +57,28 @@
       "groupName": "dev-tooling",
       "matchManagers": ["pep621"],
       "matchPackageNames": ["ruff", "mypy", "import-linter", "pre-commit", "pip-audit"]
+    },
+    {
+      "groupName": "production-deps",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["dependencies", "optional-dependencies"],
+      "schedule": ["before 5am on monday"]
+    },
+    {
+      "groupName": "dev-deps",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["dependency-groups"],
+      "schedule": ["before 5am on monday"]
+    },
+    {
+      "groupName": "pre-commit-hooks",
+      "matchManagers": ["pre-commit"],
+      "schedule": ["before 5am on monday"]
+    },
+    {
+      "description": "Major-version bumps (including security advisories whose fix is a major) require human review.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
     },
     {
       "matchManagers": ["github-actions"],

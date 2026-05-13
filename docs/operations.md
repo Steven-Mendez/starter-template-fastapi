@@ -72,6 +72,20 @@ The runtime image default command starts Uvicorn and does not run migrations.
 - Configure observability sinks as needed: `/metrics` for Prometheus and
   `APP_OTEL_EXPORTER_ENDPOINT` for OpenTelemetry traces.
 
+## Dependency Updates (Renovate)
+
+`renovate.json` configures the bot. Two policies worth knowing about:
+
+- **Security PRs are on a fast lane.** `vulnerabilityAlerts` is enabled with
+  `prCreation: immediate` and `schedule: ["at any time"]`, so security
+  advisories bypass the weekly cadence and `prHourlyLimit`. Patch and minor
+  security bumps auto-merge once CI is green; **major-version security bumps
+  require human review** (a `packageRules` entry forces `automerge: false` on
+  `updateType: "major"`).
+- **Routine bumps batch weekly.** The `production-deps`, `dev-deps`, and
+  `pre-commit-hooks` groups are scheduled for `before 5am on monday`;
+  `lockFileMaintenance` runs `before 9am on monday`.
+
 ## Migrations
 
 Apply all migrations:
