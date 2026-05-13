@@ -160,7 +160,35 @@ jobs:
       - name: Verify downgrade runs cleanly
         env:
           APP_POSTGRESQL_DSN: postgresql+psycopg://postgres:postgres@localhost:5432/kanban_ci
-        run: uv run alembic downgrade base
+        # The one-way migration policy (docs/operations.md#migration-policy)
+        # makes destructive downgrades raise NotImplementedError. Round-trip
+        # only the reversible tail — every revision newer than the most
+        # recent one-way migration — by downgrading to that floor.
+        run: |
+          floor_rev="$(uv run python <<'PY'
+          import re
+          from pathlib import Path
+
+          versions = Path("alembic/versions")
+          one_way: list[str] = []
+          for path in sorted(versions.glob("*.py")):
+              text = path.read_text()
+              if re.search(
+                  r"def downgrade\(\)[^\n]*:\s*\n(?:[^\n]*\n){0,10}\s*raise NotImplementedError",
+                  text,
+              ):
+                  m = re.search(r"^revision\s*[:=].*?['\"]([^'\"]+)['\"]", text, re.M)
+                  if m:
+                      one_way.append(m.group(1))
+          print(one_way[-1] if one_way else "base")
+          PY
+          )"
+          if [ "$floor_rev" = "base" ]; then
+            uv run alembic downgrade base
+          else
+            echo "Round-tripping reversible migrations newer than ${floor_rev} (one-way floor)."
+            uv run alembic downgrade "$floor_rev"
+          fi
 
       - name: Re-apply after downgrade (idempotency)
         env:
