@@ -83,6 +83,12 @@
     {
       "matchManagers": ["github-actions"],
       "pinDigests": true
+    },
+    {
+      "description": "Track digest bumps for the production Dockerfile's pinned base images.",
+      "matchManagers": ["dockerfile"],
+      "pinDigests": true,
+      "updatePinnedDependencies": true
     }
   ]
 }

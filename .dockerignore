@@ -17,3 +17,10 @@ reports/
 docs/
 *.md
 !README.md
+var/
+.github/
+openspec/
+scripts/
+tmp/
+.DS_Store
+*.log

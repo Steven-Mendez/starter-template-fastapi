@@ -470,6 +470,32 @@ The same handler must be registered in both processes; the
 `JobHandlerRegistry` raises `UnknownJobError` if the web app tries to
 enqueue a name the worker does not know about.
 
+## Runtime Image Contract
+
+The production `Dockerfile` is hardened for least-privilege execution:
+
+- **Base images are pinned by `@sha256:<digest>`** for both `python:3.12-slim`
+  and the `ghcr.io/astral-sh/uv` builder source. Renovate (`renovate.json`
+  `packageRules` for `dockerfile`) keeps the digests current.
+- **The runtime user is `app` with explicit `UID=10001` and `GID=10001`.**
+  Kubernetes manifests deploying this image SHOULD set:
+
+  ```yaml
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+  ```
+
+  Volume mounts that need to be written by the app must be owned by
+  `10001:10001` (or use the `fsGroup` so the kubelet `chown`s them).
+- **PID 1 is `tini`** (set via `ENTRYPOINT ["tini", "--"]`). It forwards
+  SIGTERM/SIGINT to `uvicorn` and reaps zombie children spawned by the
+  `HEALTHCHECK` `python -c` probe (and any other subprocesses).
+- **`uvicorn` runs with `--timeout-graceful-shutdown 30`**, giving in-flight
+  requests up to 30 seconds to drain before the process exits.
+
 ## Operational Limitations
 
 - The runtime Docker image starts only the API server. Migrations are separate.

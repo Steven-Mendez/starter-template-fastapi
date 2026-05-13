@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.12-slim AS base
+FROM python:3.12-slim@sha256:401f6e1a67dad31a1bd78e9ad22d0ee0a3b52154e6bd30e90be696bb6a3d7461 AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.8@sha256:3b7b60a81d3c57ef471703e5c83fd4aaa33abcd403596fb22ab07db85ae91347 /uv /uvx /bin/
 COPY pyproject.toml uv.lock README.md ./
 
 FROM base AS builder
@@ -44,7 +44,7 @@ EXPOSE 8000
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/src", "--reload-exclude", "**/tests/**"]
 
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim@sha256:401f6e1a67dad31a1bd78e9ad22d0ee0a3b52154e6bd30e90be696bb6a3d7461 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -53,7 +53,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN addgroup --system app && adduser --system --ingroup app app
+# tini is the PID-1 signal forwarder + zombie reaper. The HEALTHCHECK below
+# spawns a `python -c` subprocess; without tini, defunct children accumulate.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# Explicit UID/GID 10001 — the contract for K8s securityContext.runAsUser /
+# fsGroup. Well above default system UIDs so it won't collide with the base
+# image's reserved users.
+RUN addgroup --system --gid 10001 app \
+    && adduser --system --uid 10001 --ingroup app app
 
 COPY --chown=app:app --from=builder /app /app
 
@@ -65,5 +75,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c \
     "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live').read()" \
     || exit 1
+
+ENTRYPOINT ["tini", "--"]
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
