@@ -89,8 +89,8 @@ def test_json_formatter_includes_service_context() -> None:
 def test_json_formatter_includes_extra_fields() -> None:
     fmt = JsonFormatter()
     record = _record("event")
-    record.method = "POST"  # type: ignore[attr-defined]
-    record.path = "/auth/login"  # type: ignore[attr-defined]
+    record.method = "POST"
+    record.path = "/auth/login"
     payload = json.loads(fmt.format(record))
     assert payload["method"] == "POST"
     assert payload["path"] == "/auth/login"

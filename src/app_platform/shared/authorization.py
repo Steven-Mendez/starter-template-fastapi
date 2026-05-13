@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from app_platform.shared.principal import Principal
+from app_platform.shared.result import Result
 
 
 class ResolvePrincipalCallable(Protocol):
@@ -14,7 +15,7 @@ class ResolvePrincipalCallable(Protocol):
     match on ``Ok`` / ``Err`` without importing concrete error types.
     """
 
-    def __call__(self, token: str) -> Any: ...
+    def __call__(self, token: str) -> Result[Principal, Any]: ...
 
 
 __all__ = ["Principal", "ResolvePrincipalCallable"]

@@ -115,7 +115,7 @@ class RedisRateLimiter:
 
     def __init__(
         self,
-        client: redis_lib.Redis,  # type: ignore[type-arg]
+        client: redis_lib.Redis,
         *,
         max_attempts: int = 5,
         window_seconds: int = 60,
@@ -155,7 +155,7 @@ class RedisRateLimiter:
         Raises:
             redis.exceptions.ConnectionError: If the Redis server is not reachable.
         """
-        client: redis_lib.Redis = redis_lib.Redis.from_url(url, decode_responses=False)  # type: ignore[type-arg]
+        client: redis_lib.Redis = redis_lib.Redis.from_url(url, decode_responses=False)
         # Ping at construction so a misconfigured URL fails loudly at startup
         # rather than silently on the first auth request.
         client.ping()

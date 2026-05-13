@@ -46,7 +46,8 @@ def _free_port() -> int:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+        port: int = sock.getsockname()[1]
+        return port
     finally:
         sock.close()
 

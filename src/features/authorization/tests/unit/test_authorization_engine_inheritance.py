@@ -206,7 +206,7 @@ def test_no_tuples_are_written_for_card_or_column_inheritance(
     child_index.cards_to_columns[card_id] = column_id
     _grant(adapter, user_id=user_id, board_id=board_id, relation="writer")
 
-    engine = adapter._engine  # type: ignore[attr-defined]
+    engine = adapter._engine
     with Session(engine) as session:
         rows = list(
             session.execute(text("SELECT resource_type, relation FROM relationships"))

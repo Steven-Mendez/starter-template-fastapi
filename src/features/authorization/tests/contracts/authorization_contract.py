@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
+from features.authorization.application.ports.authorization_port import (
+    AuthorizationPort,
+)
 from features.authorization.application.types import Relationship
 
 
@@ -30,7 +33,7 @@ class AuthorizationContract:
     Pytest collects the public ``test_*`` methods on the subclass.
     """
 
-    def _make_adapter(self):  # type: ignore[no-untyped-def]
+    def _make_adapter(self) -> AuthorizationPort:
         raise NotImplementedError
 
     # ── Hierarchy ─────────────────────────────────────────────────────────────

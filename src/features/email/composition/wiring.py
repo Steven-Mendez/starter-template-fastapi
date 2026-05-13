@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import FastAPI
 
 from features.email.composition.container import EmailContainer
@@ -17,4 +19,4 @@ def get_email_container(app: FastAPI) -> EmailContainer:
     container = getattr(app.state, "email_container", None)
     if container is None:
         raise RuntimeError("EmailContainer has not been attached to app.state")
-    return container
+    return cast(EmailContainer, container)

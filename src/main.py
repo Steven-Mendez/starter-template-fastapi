@@ -209,7 +209,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
         # Shared Redis client used by health probes and other platform consumers.
         # Stored on app.state so it can be injected without coupling features.
-        redis_client: redis_lib.Redis | None = None  # type: ignore[type-arg]
+        redis_client: redis_lib.Redis | None = None
         if app_settings.auth_redis_url:
             # Bound socket waits so a slow or unreachable Redis cannot stall
             # health probes or rate-limit checks indefinitely. Liveness will

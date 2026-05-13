@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -10,13 +12,14 @@ from features.authentication.tests.e2e.conftest import AuthTestContext
 pytestmark = pytest.mark.e2e
 
 
-def _register(client: TestClient, email: str) -> dict:
+def _register(client: TestClient, email: str) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
         json={"email": email, "password": "UserPassword123!"},
     )
     assert response.status_code == 201
-    return response.json()
+    body: dict[str, Any] = response.json()
+    return body
 
 
 def _login(client: TestClient, email: str, password: str) -> str:

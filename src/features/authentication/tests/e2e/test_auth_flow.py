@@ -8,6 +8,7 @@ any layer (router, service, repository) surfaces here.
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -20,14 +21,15 @@ pytestmark = pytest.mark.e2e
 _RATE_LIMIT_ATTEMPTS_BEFORE_429 = 5
 
 
-def _register(client: TestClient, email: str = "user@example.com") -> dict:
+def _register(client: TestClient, email: str = "user@example.com") -> dict[str, Any]:
     """Register a regular user with a known password and return the response body."""
     response = client.post(
         "/auth/register",
         json={"email": email, "password": "UserPassword123!"},
     )
     assert response.status_code == 201
-    return response.json()
+    body: dict[str, Any] = response.json()
+    return body
 
 
 def _login(

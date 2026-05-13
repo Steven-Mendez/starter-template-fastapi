@@ -8,8 +8,6 @@ and re-apply this migration finds a clean, usable state.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 import pytest
 from alembic.config import Config
 from sqlalchemy import inspect, text
@@ -24,7 +22,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def alembic_config(_auth_postgres_url: str) -> Iterator[Config]:
+def alembic_config(_auth_postgres_url: str) -> Config:
     cfg = Config("alembic.ini")
     cfg.set_main_option("sqlalchemy.url", _auth_postgres_url)
     return cfg

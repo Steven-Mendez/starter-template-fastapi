@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import FastAPI
 
 from features.background_jobs.composition.container import JobsContainer
@@ -17,4 +19,4 @@ def get_jobs_container(app: FastAPI) -> JobsContainer:
     container = getattr(app.state, "jobs_container", None)
     if container is None:
         raise RuntimeError("JobsContainer has not been attached to app.state")
-    return container
+    return cast(JobsContainer, container)

@@ -19,7 +19,7 @@ credentials return 401.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -58,7 +58,7 @@ def _get_resolver(request: Request) -> ResolvePrincipalCallable:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Principal resolver not configured",
         )
-    return resolver  # type: ignore[return-value]
+    return cast(ResolvePrincipalCallable, resolver)
 
 
 def _get_authorization(request: Request) -> Any:

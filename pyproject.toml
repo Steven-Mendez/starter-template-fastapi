@@ -169,6 +169,7 @@ extend-ignore = [
 python_version = "3.12"
 files = ["."]
 exclude = ["^openspec/", "^\\.cursor/"]
+strict = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 check_untyped_defs = true

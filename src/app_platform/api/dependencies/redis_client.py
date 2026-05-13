@@ -8,7 +8,7 @@ import redis as redis_lib
 from fastapi import Depends, Request
 
 
-def get_app_redis_client(request: Request) -> redis_lib.Redis | None:  # type: ignore[type-arg]
+def get_app_redis_client(request: Request) -> redis_lib.Redis | None:
     """Return the long-lived Redis client from ``app.state``, or ``None``.
 
     The client is created during lifespan startup when ``APP_AUTH_REDIS_URL``
@@ -19,5 +19,5 @@ def get_app_redis_client(request: Request) -> redis_lib.Redis | None:  # type: i
 
 
 type AppRedisClientDep = Annotated[
-    redis_lib.Redis | None, Depends(get_app_redis_client)  # type: ignore[type-arg]
+    redis_lib.Redis | None, Depends(get_app_redis_client)
 ]

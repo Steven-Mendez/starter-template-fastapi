@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import FastAPI
 
 from features.outbox.composition.container import OutboxContainer
@@ -17,4 +19,4 @@ def get_outbox_container(app: FastAPI) -> OutboxContainer:
     container = getattr(app.state, "outbox_container", None)
     if container is None:
         raise RuntimeError("OutboxContainer has not been attached to app.state")
-    return container
+    return cast(OutboxContainer, container)

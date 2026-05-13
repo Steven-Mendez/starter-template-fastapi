@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import FastAPI
 
 from features.file_storage.composition.container import FileStorageContainer
@@ -19,4 +21,4 @@ def get_file_storage_container(app: FastAPI) -> FileStorageContainer:
     container = getattr(app.state, "file_storage_container", None)
     if container is None:
         raise RuntimeError("FileStorageContainer has not been attached to app.state")
-    return container
+    return cast(FileStorageContainer, container)

@@ -7,7 +7,6 @@ real query plans.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from uuid import UUID, uuid4
 
 import pytest
@@ -35,7 +34,7 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def adapter(
     postgres_auth_repository: SQLModelAuthRepository,
-) -> Iterator[SQLModelAuthorizationAdapter]:
+) -> SQLModelAuthorizationAdapter:
     from features.users.adapters.outbound.authz_version import (
         SQLModelUserAuthzVersionAdapter,
     )
