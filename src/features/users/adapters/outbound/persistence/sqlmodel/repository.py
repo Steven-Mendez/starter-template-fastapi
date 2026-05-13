@@ -15,7 +15,11 @@ from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
 )
-from features.users.application.errors import UserError
+from features.users.application.errors import (
+    UserAlreadyExistsError,
+    UserError,
+    UserNotFoundError,
+)
 from features.users.domain.user import User
 
 
@@ -73,7 +77,7 @@ class SQLModelUserRepository:
                 session.commit()
             except IntegrityError:
                 session.rollback()
-                return Err(UserError.DUPLICATE_EMAIL)
+                return Err(UserAlreadyExistsError())
             session.refresh(row)
             return Ok(_to_domain(row))
 
@@ -112,7 +116,7 @@ class SQLModelUserRepository:
         with Session(self.engine, expire_on_commit=False) as session:
             row = session.get(UserTable, user_id)
             if row is None:
-                return Err(UserError.NOT_FOUND)
+                return Err(UserNotFoundError())
             row.email = normalized
             row.updated_at = utc_now()
             session.add(row)
@@ -120,7 +124,7 @@ class SQLModelUserRepository:
                 session.commit()
             except IntegrityError:
                 session.rollback()
-                return Err(UserError.DUPLICATE_EMAIL)
+                return Err(UserAlreadyExistsError())
             session.refresh(row)
             return Ok(_to_domain(row))
 
@@ -172,7 +176,7 @@ class SessionSQLModelUserRepository:
         try:
             self.session.flush()
         except IntegrityError:
-            return Err(UserError.DUPLICATE_EMAIL)
+            return Err(UserAlreadyExistsError())
         return Ok(_to_domain(row))
 
     def list_paginated(self, *, offset: int = 0, limit: int = 50) -> list[User]:
@@ -204,14 +208,14 @@ class SessionSQLModelUserRepository:
         normalized = new_email.strip().lower()
         row = self.session.get(UserTable, user_id)
         if row is None:
-            return Err(UserError.NOT_FOUND)
+            return Err(UserNotFoundError())
         row.email = normalized
         row.updated_at = utc_now()
         self.session.add(row)
         try:
             self.session.flush()
         except IntegrityError:
-            return Err(UserError.DUPLICATE_EMAIL)
+            return Err(UserAlreadyExistsError())
         return Ok(_to_domain(row))
 
     def set_active(self, user_id: UUID, *, is_active: bool) -> None:

@@ -7,8 +7,10 @@ keeping internal error classes from leaking into routers.
 
 from __future__ import annotations
 
+from app_platform.shared.errors import ApplicationError
 
-class AuthError(RuntimeError):
+
+class AuthError(ApplicationError):
     """Base class for every expected auth or RBAC failure."""
 
 

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app_platform.shared.errors import ApplicationError
 
-class EmailError(Exception):
+
+class EmailError(ApplicationError):
     """Base class for email-feature errors returned as ``Err`` values."""
 
 

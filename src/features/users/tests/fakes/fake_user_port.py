@@ -7,7 +7,11 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from app_platform.shared.result import Err, Ok, Result
-from features.users.application.errors import UserError
+from features.users.application.errors import (
+    UserAlreadyExistsError,
+    UserError,
+    UserNotFoundError,
+)
 from features.users.domain.user import User
 
 
@@ -40,7 +44,7 @@ class FakeUserPort:
     def create(self, *, email: str) -> Result[User, UserError]:
         normalized = email.lower()
         if normalized in self._s.users_by_email:
-            return Err(UserError.DUPLICATE_EMAIL)
+            return Err(UserAlreadyExistsError())
         now = _aware_now()
         user = User(
             id=uuid4(),
@@ -81,13 +85,13 @@ class FakeUserPort:
     def update_email(self, user_id: UUID, new_email: str) -> Result[User, UserError]:
         existing = self._s.users.get(user_id)
         if existing is None:
-            return Err(UserError.NOT_FOUND)
+            return Err(UserNotFoundError())
         normalized = new_email.lower()
         if (
             normalized in self._s.users_by_email
             and self._s.users_by_email[normalized] != user_id
         ):
-            return Err(UserError.DUPLICATE_EMAIL)
+            return Err(UserAlreadyExistsError())
         del self._s.users_by_email[existing.email]
         updated = replace(existing, email=normalized, updated_at=_aware_now())
         self._s.users[user_id] = updated

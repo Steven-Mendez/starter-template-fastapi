@@ -14,7 +14,7 @@ from features.authentication.application.ports.outbound.auth_repository import (
     AuditRepositoryPort,
     CredentialRepositoryPort,
 )
-from features.users.application.errors import UserError
+from features.users.application.errors import UserAlreadyExistsError
 from features.users.application.ports.user_port import UserPort
 from features.users.domain.user import User
 
@@ -52,7 +52,7 @@ class RegisterUser:
         result = self._users.create(email=normalized_email)
         match result:
             case Err(error=err):
-                if err is UserError.DUPLICATE_EMAIL:
+                if isinstance(err, UserAlreadyExistsError):
                     return Err(DuplicateEmailError("Email already registered"))
                 return Err(NotFoundError("User not found after registration"))
             case Ok(value=user):

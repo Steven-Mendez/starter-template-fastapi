@@ -29,7 +29,7 @@ class UserPort(Protocol):
         ...
 
     def create(self, *, email: str) -> Result[User, UserError]:
-        """Persist a new user. Returns ``Err(DUPLICATE_EMAIL)`` on conflict."""
+        """Persist a new user. Returns ``Err(UserAlreadyExistsError())`` on conflict."""
         ...
 
     def list_paginated(self, *, offset: int = 0, limit: int = 50) -> list[User]:

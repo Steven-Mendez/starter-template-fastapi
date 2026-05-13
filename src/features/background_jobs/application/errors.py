@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app_platform.shared.errors import ApplicationError
 
-class JobError(Exception):
+
+class JobError(ApplicationError):
     """Base class for background-jobs-feature errors."""
 
 

@@ -8,8 +8,10 @@ exception handler registered from the authorization feature's wiring.
 
 from __future__ import annotations
 
+from app_platform.shared.errors import ApplicationError
 
-class AuthorizationError(RuntimeError):
+
+class AuthorizationError(ApplicationError):
     """Base class for every expected authorization failure."""
 
 

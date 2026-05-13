@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from app_platform.shared.errors import ApplicationError
 
 
-class UserError(Enum):
-    """Closed enumeration of user-related failures returned via :class:`Result`."""
+class UserError(ApplicationError):
+    """Base class for user-feature errors returned as ``Err`` values."""
 
-    DUPLICATE_EMAIL = "duplicate_email"
-    NOT_FOUND = "not_found"
+
+class UserNotFoundError(UserError):
+    """Raised when a referenced user does not exist."""
+
+
+class UserAlreadyExistsError(UserError):
+    """Raised when a registration or profile-update conflicts with an existing user."""

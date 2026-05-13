@@ -16,7 +16,10 @@ from features.users.adapters.inbound.http.schemas import (
     UpdateProfileRequest,
     UserPublic,
 )
-from features.users.application.errors import UserError
+from features.users.application.errors import (
+    UserAlreadyExistsError,
+    UserNotFoundError,
+)
 from features.users.composition.app_state import get_users_container
 
 me_router = APIRouter(tags=["me"])
@@ -31,7 +34,7 @@ def get_me(request: Request, principal: CurrentPrincipalDep) -> UserPublic:
         case Ok(value=user):
             return UserPublic.model_validate(user)
         case Err(error=err):
-            if err is UserError.NOT_FOUND:
+            if isinstance(err, UserNotFoundError):
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
                 )
@@ -56,11 +59,11 @@ def update_me(
         case Ok(value=user):
             return UserPublic.model_validate(user)
         case Err(error=err):
-            if err is UserError.DUPLICATE_EMAIL:
+            if isinstance(err, UserAlreadyExistsError):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT, detail="Email already in use"
                 )
-            if err is UserError.NOT_FOUND:
+            if isinstance(err, UserNotFoundError):
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
                 )
@@ -78,7 +81,7 @@ def delete_me(request: Request, principal: CurrentPrincipalDep) -> None:
         case Ok():
             return
         case Err(error=err):
-            if err is UserError.NOT_FOUND:
+            if isinstance(err, UserNotFoundError):
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
                 )

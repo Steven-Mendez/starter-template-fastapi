@@ -8,8 +8,10 @@ exception.
 
 from __future__ import annotations
 
+from app_platform.shared.errors import ApplicationError
 
-class OutboxError(Exception):
+
+class OutboxError(ApplicationError):
     """Base class for outbox application errors."""
 
 

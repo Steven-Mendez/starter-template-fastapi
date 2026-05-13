@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app_platform.shared.errors import ApplicationError
 
-class FileStorageError(Exception):
+
+class FileStorageError(ApplicationError):
     """Base class for file-storage errors returned as ``Err`` values."""
 
 

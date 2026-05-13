@@ -12,7 +12,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from app_platform.shared.result import Err, Ok
-from features.users.application.errors import UserError
+from features.users.application.errors import UserAlreadyExistsError
 from features.users.application.ports.credential_writer_port import (
     CredentialWriterPort,
 )
@@ -52,7 +52,7 @@ class SQLModelUserRegistrarAdapter:
                 )
                 return created.id
             case Err(error=err):
-                if err is UserError.DUPLICATE_EMAIL:
+                if isinstance(err, UserAlreadyExistsError):
                     racer = self._users.get_by_email(normalized)
                     if racer is not None:
                         return racer.id

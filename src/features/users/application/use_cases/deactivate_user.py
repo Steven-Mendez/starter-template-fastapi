@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app_platform.shared.result import Err, Ok, Result
-from features.users.application.errors import UserError
+from features.users.application.errors import UserError, UserNotFoundError
 from features.users.application.ports.user_port import UserPort
 
 
@@ -23,6 +23,6 @@ class DeactivateUser:
     def execute(self, user_id: UUID) -> Result[None, UserError]:
         existing = self._users.get_by_id(user_id)
         if existing is None:
-            return Err(UserError.NOT_FOUND)
+            return Err(UserNotFoundError())
         self._users.set_active(user_id, is_active=False)
         return Ok(None)

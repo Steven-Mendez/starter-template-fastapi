@@ -229,7 +229,7 @@ Coverage gate: `make ci` enforces an 80% line-coverage floor (`pyproject.toml [t
 
 ## Coding conventions
 
-- Use cases return `Result[T, ApplicationError]`, never raise through the application layer.
+- Use cases return `Result[T, ApplicationError]`, never raise through the application layer. Every feature's base error (`AuthError`, `AuthorizationError`, `EmailError`, `JobError`, `OutboxError`, `FileStorageError`, `UserError`) inherits from `ApplicationError` defined in `src/app_platform/shared/errors.py`. Concrete subclasses MUST be picklable so they round-trip across the arq Redis boundary — if a class requires non-positional constructor arguments, implement `__reduce__` returning `(cls, (positional_args,))` (see `src/app_platform/shared/tests/unit/test_application_error_pickling.py`).
 - `@dataclass(slots=True)` for use cases and mutable domain entities; `@dataclass(frozen=True, slots=True)` for immutable commands/queries/contracts.
 - FastAPI dependencies are declared as `Annotated` type aliases (see existing `*Dep` names in `adapters/inbound/http/dependencies.py`).
 - Feature HTTP errors map application errors to HTTP status codes in `adapters/inbound/http/errors.py`; the platform renders the final Problem Details response.
