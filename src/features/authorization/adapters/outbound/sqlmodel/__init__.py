@@ -1,6 +1,6 @@
 """Default in-repo authorization adapter (SQLModel-backed)."""
 
-from features.authorization.adapters.outbound.sqlmodel.repository import (
+from features.authorization.adapters.outbound.sqlmodel.adapter import (
     SessionSQLModelAuthorizationAdapter,
     SQLModelAuthorizationAdapter,
 )
