@@ -29,6 +29,30 @@ The Makefile sets `PORT ?= 8000`. Override it when needed:
 make dev PORT=8080
 ```
 
+## Local Email With Mailpit
+
+`docker-compose.yml` ships a `mailpit` service that exposes an SMTP server
+on `1025` and a web UI on `8025`. Point the SMTP backend at it to exercise
+real SMTP wiring (auth flows, retries, large bodies) before code reaches
+staging.
+
+```bash
+docker compose up -d mailpit
+# in .env or shell env:
+export APP_EMAIL_BACKEND=smtp
+export APP_EMAIL_SMTP_HOST=mailpit       # use "localhost" when running outside compose
+export APP_EMAIL_SMTP_PORT=1025
+export APP_EMAIL_SMTP_USE_STARTTLS=false
+export APP_EMAIL_SMTP_USE_SSL=false
+```
+
+Open <http://localhost:8025> to see captured messages from password-reset,
+email-verify, or any other dispatch flow.
+
+The compose `app` service runs with `restart: unless-stopped` and a
+container-level `healthcheck` against `/health/live`, so a crashed dev app
+surfaces in `docker compose ps` instead of disappearing silently.
+
 ## Local Workflow
 
 1. Create or update code under `src/`.

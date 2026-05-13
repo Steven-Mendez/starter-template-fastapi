@@ -58,6 +58,14 @@ services:
     environment: *app-environment
     volumes: *app-volumes
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: starter-template-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+
   app:
     build: *app-build
     container_name: starter-template-app
@@ -74,6 +82,17 @@ services:
     ports:
       - "8000:8000"
     volumes: *app-volumes
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live', timeout=2).status==200 else 1)"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
 
 volumes:
   postgres-data:
