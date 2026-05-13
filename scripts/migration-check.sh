@@ -44,5 +44,36 @@ dsn="postgresql+psycopg://${username}:${password}@127.0.0.1:${port}/${database}"
 
 APP_POSTGRESQL_DSN="$dsn" uv run alembic upgrade head
 APP_POSTGRESQL_DSN="$dsn" uv run alembic check
-APP_POSTGRESQL_DSN="$dsn" uv run alembic downgrade base
+
+# Per the one-way migration policy (docs/operations.md#migration-policy),
+# destructive migrations raise NotImplementedError in downgrade(). A full
+# unwind to ``base`` would hit them, so we round-trip only the reversible
+# tail — every migration newer than the most recent NotImplementedError
+# downgrade — then re-upgrade to head.
+floor_rev="$(
+  uv run python <<'PY'
+import re
+from pathlib import Path
+
+versions = Path("alembic/versions")
+files = sorted(versions.glob("*.py"))
+one_way: list[str] = []
+for path in files:
+    text = path.read_text()
+    # Naive but sufficient: the downgrade body contains NotImplementedError.
+    if re.search(r"def downgrade\(\)[^\n]*:\s*\n(?:[^\n]*\n){0,10}\s*raise NotImplementedError", text):
+        m = re.search(r"^revision\s*[:=].*?['\"]([^'\"]+)['\"]", text, re.M)
+        if m:
+            one_way.append(m.group(1))
+# Filenames are timestamp-ordered, so the last entry is the most recent.
+print(one_way[-1] if one_way else "base")
+PY
+)"
+
+if [ "$floor_rev" = "base" ]; then
+  APP_POSTGRESQL_DSN="$dsn" uv run alembic downgrade base
+else
+  echo "Round-tripping reversible migrations newer than ${floor_rev} (one-way floor)."
+  APP_POSTGRESQL_DSN="$dsn" uv run alembic downgrade "$floor_rev"
+fi
 APP_POSTGRESQL_DSN="$dsn" uv run alembic upgrade head
