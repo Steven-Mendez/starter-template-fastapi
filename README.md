@@ -9,14 +9,13 @@ hexagonal layout enforced by Import Linter.
 The intended first move on a new project is **clone, recover the scaffold
 from git history, run**. The starter previously shipped an in-tree
 `_template` feature; it was removed (see the `remove-template-feature`
-OpenSpec change). Restore it from the pre-removal commit or copy from the
-`examples/kanban` branch — both keep the same architecture so the routes,
-persistence, and authorization wiring come along.
+OpenSpec change). Restore it from the pre-removal commit — it keeps the
+same architecture so the routes, persistence, and authorization wiring
+come along.
 
 ## What's New
 
 The `starter-template-foundation` change reshaped the repository: the
-domain-specific `kanban` demo moved to an `examples/kanban` branch, the
 `auth` feature split into `authentication` + `users`, and three
 infrastructure features (`email`, `background_jobs`, `file_storage`) were
 added. See
@@ -143,8 +142,8 @@ curl -s -X POST http://localhost:8000/auth/register \
 
 1. Clone this repository and rename the remote/origin to your project.
 2. Recover the feature scaffold from git history
-   (`git checkout <pre-removal-sha>^ -- src/features/_template`) or the
-   `examples/kanban` branch, then move it to `src/features/<your-feature>/`.
+   (`git checkout <pre-removal-sha>^ -- src/features/_template`), then
+   move it to `src/features/<your-feature>/`.
 3. Rename the entity, the table, the routes, and the tests inside the copy
    — see [`docs/feature-template.md`](docs/feature-template.md) for the
    walk-through.
@@ -245,6 +244,11 @@ Generate a coverage report:
 make cov-html
 ```
 
+`make ci` enforces a **line-coverage floor of 80%** and a separate
+**branch-coverage floor of 60%** (the latter via `BRANCH_COVERAGE_FLOOR` in
+the Makefile). See [Quality Gates](docs/development.md#quality-gates) for the
+full breakdown.
+
 ## Building For Production
 
 Build the runtime image:
@@ -305,7 +309,7 @@ migrations or the worker.
 | `make test-integration` | Run Docker-backed integration tests. |
 | `make test-e2e` | Run end-to-end HTTP tests. |
 | `make test-feature FEATURE=authentication` | Run tests for one feature. |
-| `make cov` | Run tests with terminal coverage. |
+| `make cov` | Run tests with terminal coverage (gates line 80% + branch 60%). |
 | `make report` | Generate HTML test and coverage reports under `reports/`. |
 | `make clean-reports` | Remove generated report artifacts. |
 | `make ci` | Run the full local gate. |

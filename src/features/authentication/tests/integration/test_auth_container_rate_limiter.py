@@ -18,13 +18,17 @@ from src.features.authentication.application.rate_limit import (
     RedisRateLimiter,
 )
 from src.features.authentication.composition.container import build_auth_container
-from src.features.background_jobs.tests.fakes.fake_job_queue import FakeJobQueue
+from src.features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
 from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
 from src.platform.config.settings import AppSettings
 
 pytestmark = pytest.mark.unit
+
+
+def _noop_outbox_factory(_session: object) -> InlineDispatchOutboxAdapter:
+    return InlineDispatchOutboxAdapter(dispatcher=lambda _n, _p: None)
 
 
 def test_build_auth_container_requires_jwt_secret(
@@ -38,7 +42,7 @@ def test_build_auth_container_requires_jwt_secret(
         build_auth_container(
             settings=settings,
             users=users_for_auth,
-            jobs=FakeJobQueue(),
+            outbox_session_factory=_noop_outbox_factory,
             repository=sqlite_auth_repository,
         )
 
@@ -54,7 +58,7 @@ def test_build_auth_container_rejects_invalid_jwt_algorithm(
         build_auth_container(
             settings=settings,
             users=users_for_auth,
-            jobs=FakeJobQueue(),
+            outbox_session_factory=_noop_outbox_factory,
             repository=sqlite_auth_repository,
         )
 
@@ -73,7 +77,7 @@ def test_build_auth_container_warns_for_unimplemented_oauth_settings(
     container = build_auth_container(
         settings=settings,
         users=users_for_auth,
-        jobs=FakeJobQueue(),
+        outbox_session_factory=_noop_outbox_factory,
         repository=sqlite_auth_repository,
     )
 
@@ -95,7 +99,7 @@ def test_build_auth_container_uses_fixed_limiter_without_redis_url(
     container = build_auth_container(
         settings=settings,
         users=users_for_auth,
-        jobs=FakeJobQueue(),
+        outbox_session_factory=_noop_outbox_factory,
         repository=sqlite_auth_repository,
     )
     assert isinstance(container.rate_limiter, FixedWindowRateLimiter)
@@ -114,7 +118,7 @@ def test_build_auth_container_uses_configured_principal_cache_ttl(
     container = build_auth_container(
         settings=settings,
         users=users_for_auth,
-        jobs=FakeJobQueue(),
+        outbox_session_factory=_noop_outbox_factory,
         repository=sqlite_auth_repository,
     )
 
@@ -138,7 +142,7 @@ def test_build_auth_container_can_require_distributed_rate_limit(
         build_auth_container(
             settings=settings,
             users=users_for_auth,
-            jobs=FakeJobQueue(),
+            outbox_session_factory=_noop_outbox_factory,
             repository=sqlite_auth_repository,
         )
 
@@ -160,7 +164,7 @@ def test_build_auth_container_uses_redis_limiter_when_url_configured(
         container = build_auth_container(
             settings=settings,
             users=users_for_auth,
-            jobs=FakeJobQueue(),
+            outbox_session_factory=_noop_outbox_factory,
             repository=sqlite_auth_repository,
         )
     assert isinstance(container.rate_limiter, RedisRateLimiter)
@@ -186,6 +190,6 @@ def test_build_auth_container_propagates_redis_connection_failure(
         build_auth_container(
             settings=settings,
             users=users_for_auth,
-            jobs=FakeJobQueue(),
+            outbox_session_factory=_noop_outbox_factory,
             repository=sqlite_auth_repository,
         )

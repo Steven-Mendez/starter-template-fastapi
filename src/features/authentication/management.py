@@ -40,6 +40,8 @@ from src.features.email.composition.container import (
 )
 from src.features.email.composition.jobs import register_send_email_handler
 from src.features.email.composition.settings import EmailSettings
+from src.features.outbox.composition.container import build_outbox_container
+from src.features.outbox.composition.settings import OutboxSettings
 from src.features.users.composition.container import (
     UsersContainer,
     build_user_registrar_adapter,
@@ -94,10 +96,15 @@ def _build_containers() -> tuple[
     )
     register_send_email_handler(jobs.registry, email.port)
     jobs.registry.seal()
+    outbox = build_outbox_container(
+        OutboxSettings.from_app_settings(settings),
+        engine=repository.engine,
+        job_queue=jobs.port,
+    )
     auth = build_auth_container(
         settings=settings,
         users=users.user_repository,
-        jobs=jobs.port,
+        outbox_session_factory=outbox.session_scoped_factory,
         repository=repository,
     )
     user_registrar = build_user_registrar_adapter(

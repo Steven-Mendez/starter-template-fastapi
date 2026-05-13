@@ -16,8 +16,10 @@ import logging
 import sys
 from typing import Any
 
+import redis as redis_lib
 from arq import run_worker
 from arq.connections import RedisSettings
+from sqlalchemy import create_engine
 
 from src.features.authentication.email_templates import (
     register_authentication_email_templates,
@@ -31,6 +33,9 @@ from src.features.background_jobs.composition.settings import JobsSettings
 from src.features.email.composition.container import build_email_container
 from src.features.email.composition.jobs import register_send_email_handler
 from src.features.email.composition.settings import EmailSettings
+from src.features.outbox.composition.container import build_outbox_container
+from src.features.outbox.composition.settings import OutboxSettings
+from src.features.outbox.composition.worker import build_relay_cron_jobs
 from src.platform.config.settings import AppSettings, get_settings
 from src.platform.observability import configure_logging
 
@@ -89,9 +94,34 @@ def build_worker_settings() -> type:
             "APP_JOBS_REDIS_URL (or APP_AUTH_REDIS_URL) must be set for the worker"
         )
 
-    jobs = build_jobs_container(jobs_settings)
+    # Share a Redis client between the rate-limit/cache layer and the
+    # job-queue adapter so the worker holds exactly one connection pool.
+    redis_client = redis_lib.Redis.from_url(
+        jobs_settings.redis_url,
+        socket_timeout=2.0,
+        socket_connect_timeout=2.0,
+    )
+    jobs = build_jobs_container(jobs_settings, redis_client=redis_client)
     register_send_email_handler(jobs.registry, email.port)
     jobs.registry.seal()
+
+    # Outbox relay: builds its own short-lived sessions against the
+    # shared SQLModel engine, so we construct an engine pinned to the
+    # configured DSN. The web process owns its engine through the auth
+    # repository; the worker is a separate process with its own pool.
+    engine = create_engine(
+        app_settings.postgresql_dsn,
+        pool_pre_ping=app_settings.db_pool_pre_ping,
+        pool_size=app_settings.db_pool_size,
+        max_overflow=app_settings.db_max_overflow,
+        pool_recycle=app_settings.db_pool_recycle_seconds,
+    )
+    outbox = build_outbox_container(
+        OutboxSettings.from_app_settings(app_settings),
+        engine=engine,
+        job_queue=jobs.port,
+    )
+    cron_jobs = build_relay_cron_jobs(outbox)
 
     functions = build_arq_functions(jobs.registry)
     redis_settings = RedisSettings.from_dsn(jobs_settings.redis_url)
@@ -100,6 +130,7 @@ def build_worker_settings() -> type:
         """arq's ``WorkerSettings`` shape, populated from composition."""
 
     WorkerSettings.functions = functions  # type: ignore[attr-defined]
+    WorkerSettings.cron_jobs = list(cron_jobs)  # type: ignore[attr-defined]
     WorkerSettings.redis_settings = redis_settings  # type: ignore[attr-defined]
     WorkerSettings.queue_name = jobs_settings.queue_name  # type: ignore[attr-defined]
     WorkerSettings.on_startup = staticmethod(job_handler_logging_startup)  # type: ignore[attr-defined]

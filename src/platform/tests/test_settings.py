@@ -22,6 +22,7 @@ _VALID_PROD_ENV = {
     "APP_EMAIL_FROM": "no-reply@example.com",
     "APP_JOBS_BACKEND": "arq",
     "APP_JOBS_REDIS_URL": "redis://localhost:6379/0",
+    "APP_OUTBOX_ENABLED": "true",
 }
 
 
@@ -211,3 +212,43 @@ def test_production_accepts_resend_backend(monkeypatch: pytest.MonkeyPatch) -> N
     # only needs FROM + key — construct should succeed without raising.
     settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
     assert settings.email_backend == "resend"
+
+
+def test_production_rejects_disabled_outbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_OUTBOX_ENABLED", "false")
+    with pytest.raises(ValidationError, match="APP_OUTBOX_ENABLED"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_accepts_enabled_outbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_OUTBOX_ENABLED", "true")
+    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.outbox_enabled is True
+
+
+def test_outbox_relay_interval_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_OUTBOX_RELAY_INTERVAL_SECONDS", "0")
+    with pytest.raises(ValidationError, match="APP_OUTBOX_RELAY_INTERVAL_SECONDS"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_outbox_claim_batch_size_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_OUTBOX_CLAIM_BATCH_SIZE", "0")
+    with pytest.raises(ValidationError, match="APP_OUTBOX_CLAIM_BATCH_SIZE"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_outbox_max_attempts_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_OUTBOX_MAX_ATTEMPTS", "0")
+    with pytest.raises(ValidationError, match="APP_OUTBOX_MAX_ATTEMPTS"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]

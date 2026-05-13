@@ -66,7 +66,7 @@ from src.features.authentication.application.use_cases.auth.request_password_res
 from src.features.authentication.application.use_cases.auth.resolve_principal import (
     ResolvePrincipalFromAccessToken,
 )
-from src.features.background_jobs.application.ports.job_queue_port import JobQueuePort
+from src.features.outbox.composition.container import SessionScopedOutboxFactory
 from src.features.users.application.ports.user_port import UserPort
 from src.platform.config.settings import AppSettings
 
@@ -108,10 +108,18 @@ def build_auth_container(
     *,
     settings: AppSettings,
     users: UserPort,
-    jobs: JobQueuePort,
+    outbox_session_factory: SessionScopedOutboxFactory,
     repository: SQLModelAuthRepository | None = None,
 ) -> AuthContainer:
-    """Wire all auth dependencies and return a ready-to-use container."""
+    """Wire all auth dependencies and return a ready-to-use container.
+
+    ``outbox_session_factory`` is registered on the repository so that
+    ``issue_internal_token_transaction`` can build a session-scoped
+    :class:`OutboxPort` bound to the same SQL transaction as the token
+    and audit writes. Without it, the request-path consumers
+    (``RequestPasswordReset`` / ``RequestEmailVerification``) cannot
+    open their transaction.
+    """
     repo = repository or SQLModelAuthRepository(
         settings.postgresql_dsn,
         create_schema=False,
@@ -120,6 +128,7 @@ def build_auth_container(
         pool_recycle=settings.db_pool_recycle_seconds,
         pool_pre_ping=settings.db_pool_pre_ping,
     )
+    repo.set_outbox_session_factory(outbox_session_factory)
     password_service = PasswordService()
 
     if not settings.auth_jwt_secret_key:
@@ -202,7 +211,6 @@ def build_auth_container(
         request_password_reset=RequestPasswordReset(
             _users=users,
             _repository=repo,
-            _jobs=jobs,
             _settings=settings,
         ),
         confirm_password_reset=ConfirmPasswordReset(
@@ -214,7 +222,6 @@ def build_auth_container(
         request_email_verification=RequestEmailVerification(
             _users=users,
             _repository=repo,
-            _jobs=jobs,
             _settings=settings,
         ),
         confirm_email_verification=ConfirmEmailVerification(

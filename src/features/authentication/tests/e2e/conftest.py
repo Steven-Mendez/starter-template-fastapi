@@ -50,6 +50,7 @@ from src.features.email.composition.jobs import register_send_email_handler
 from src.features.email.composition.settings import EmailSettings
 from src.features.email.composition.wiring import attach_email_container
 from src.features.email.tests.fakes.fake_email_port import FakeEmailPort
+from src.features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
 from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
 )
@@ -178,10 +179,21 @@ def _build_app(
     register_send_email_handler(jobs_registry, email_port)
     jobs_registry.seal()
     jobs_port = InProcessJobQueueAdapter(registry=jobs_registry)
+
+    # In e2e tests we dispatch outbox rows inline at enqueue time — the
+    # SQLite test engine cannot run the real ``FOR UPDATE SKIP LOCKED``
+    # relay (Postgres-only). Atomicity guarantees are exercised by
+    # ``tests/integration/test_password_reset_atomicity.py`` against a
+    # real Postgres via testcontainers.
+    def _outbox_session_factory(_session: Any) -> Any:
+        return InlineDispatchOutboxAdapter(
+            dispatcher=lambda name, payload: jobs_port.enqueue(name, payload),
+        )
+
     auth = build_auth_container(
         settings=settings,
         users=users.user_repository,
-        jobs=jobs_port,
+        outbox_session_factory=_outbox_session_factory,
         repository=repository,
     )
     user_registrar = build_user_registrar_adapter(

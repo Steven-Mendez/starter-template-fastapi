@@ -44,6 +44,9 @@ from src.features.file_storage.composition.container import (
 )
 from src.features.file_storage.composition.settings import StorageSettings
 from src.features.file_storage.composition.wiring import attach_file_storage_container
+from src.features.outbox.composition.container import build_outbox_container
+from src.features.outbox.composition.settings import OutboxSettings
+from src.features.outbox.composition.wiring import attach_outbox_container
 from src.features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
@@ -158,10 +161,19 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         register_send_email_handler(jobs.registry, email.port)
         jobs.registry.seal()
+        # Outbox sits between jobs and auth: it depends on the engine and
+        # the JobQueuePort, and authentication's request-path consumers
+        # take the session-scoped outbox factory so their writes commit
+        # atomically with the outbox row.
+        outbox = build_outbox_container(
+            OutboxSettings.from_app_settings(app_settings),
+            engine=repository.engine,
+            job_queue=jobs.port,
+        )
         auth = build_auth_container(
             settings=app_settings,
             users=users.user_repository,
-            jobs=jobs.port,
+            outbox_session_factory=outbox.session_scoped_factory,
             repository=repository,
         )
         user_registrar = build_user_registrar_adapter(
@@ -192,6 +204,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         attach_users_container(lifespan_app, users)
         attach_email_container(lifespan_app, email)
         attach_jobs_container(lifespan_app, jobs)
+        attach_outbox_container(lifespan_app, outbox)
         attach_file_storage_container(lifespan_app, file_storage)
 
         # Shared Redis client used by health probes and other platform consumers.
@@ -213,6 +226,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         finally:
             # Shutdown order is reverse of startup so dependent resources
             # (e.g. connection pools) are closed after the services that use them.
+            outbox.shutdown()
             jobs.shutdown()
             users.shutdown()
             authorization.shutdown()

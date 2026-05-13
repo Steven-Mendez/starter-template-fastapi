@@ -109,6 +109,26 @@ class FakeAuthRepository:
     def internal_token_transaction(self) -> Iterator["FakeAuthRepository"]:
         yield self
 
+    @contextmanager
+    def issue_internal_token_transaction(self) -> Iterator["_FakeIssueTokenTx"]:
+        """Yield a thin wrapper that exposes ``outbox`` alongside the writes.
+
+        The wrapper's ``outbox`` is an :class:`InlineDispatchOutboxAdapter`
+        with a no-op dispatcher; unit tests that need to assert outbox
+        behaviour install their own adapter on the fake before
+        exercising the use case.
+        """
+        from src.features.outbox.tests.fakes.fake_outbox import (
+            InlineDispatchOutboxAdapter,
+        )
+
+        outbox = getattr(
+            self,
+            "_issue_outbox_override",
+            InlineDispatchOutboxAdapter(dispatcher=lambda _n, _p: None),
+        )
+        yield _FakeIssueTokenTx(self, outbox)
+
     def get_refresh_token_for_update(self, token_hash: str) -> RefreshToken | None:
         return self.get_refresh_token_by_hash(token_hash)
 
@@ -236,3 +256,49 @@ def _replace(obj: Any, **changes: Any) -> Any:
     from dataclasses import replace
 
     return replace(obj, **changes)
+
+
+class _FakeIssueTokenTx:
+    """Test stand-in for the session-scoped issue-token transaction.
+
+    Forwards token + audit writes to the underlying fake repository
+    and exposes ``outbox`` as the configured (or default) adapter.
+    """
+
+    def __init__(self, repo: "FakeAuthRepository", outbox: Any) -> None:
+        self._repo = repo
+        self.outbox = outbox
+
+    def create_internal_token(
+        self,
+        *,
+        user_id: UUID | None,
+        purpose: str,
+        token_hash: str,
+        expires_at: datetime,
+        created_ip: str | None,
+    ) -> InternalToken:
+        return self._repo.create_internal_token(
+            user_id=user_id,
+            purpose=purpose,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            created_ip=created_ip,
+        )
+
+    def record_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: UUID | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self._repo.record_audit_event(
+            event_type=event_type,
+            user_id=user_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            metadata=metadata,
+        )

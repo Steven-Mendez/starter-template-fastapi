@@ -80,6 +80,9 @@ asyncio_mode = "auto"
 
 [tool.coverage.run]
 source = ["src"]
+# Branch coverage is measured in addition to statement coverage. Note: pytest-cov
+# only emits branch data when invoked with --cov-branch; the Makefile passes that
+# flag on every coverage-producing target.
 branch = true
 omit = [
     "src/**/tests/**",
@@ -90,6 +93,8 @@ omit = [
 data_file = ".coverage"
 
 [tool.coverage.report]
+# Statement (line) coverage floor; the separate BRANCH floor is enforced by the
+# Makefile (BRANCH_COVERAGE_FLOOR) so the two signals stay distinct in CI output.
 fail_under = 80
 show_missing = true
 skip_covered = false
@@ -158,6 +163,7 @@ ignore_imports = [
     "src.platform.config.settings -> src.features.background_jobs.composition.settings",
     "src.platform.config.settings -> src.features.email.composition.settings",
     "src.platform.config.settings -> src.features.file_storage.composition.settings",
+    "src.platform.config.settings -> src.features.outbox.composition.settings",
     "src.platform.config.settings -> src.features.users.composition.settings",
 ]
 
@@ -437,3 +443,40 @@ forbidden_modules = [
     "src.features.email",
     "src.features.background_jobs",
 ]
+
+# === Outbox feature boundaries ===
+#
+# The outbox feature owns its port, its table, and its relay use case.
+# It must never import from another feature — producer features call
+# ``OutboxPort`` (composed by the outbox container) and the relay
+# composes ``JobQueuePort`` from its constructor argument.
+[[tool.importlinter.contracts]]
+name = "Outbox does not import from other features"
+type = "forbidden"
+source_modules = [
+    "src.features.outbox.application",
+    "src.features.outbox.adapters",
+    "src.features.outbox.domain",
+    "src.features.outbox.composition",
+]
+forbidden_modules = [
+    "src.features.authentication",
+    "src.features.authorization",
+    "src.features.users",
+    "src.features.email",
+    "src.features.file_storage",
+]
+
+# The dispatch use case depends on ``JobQueuePort`` (an inbound
+# Protocol) but the outbox feature must not reach into the background-
+# jobs *adapters*. Keeping this rule explicit prevents a regression where
+# the relay accidentally couples to a specific queue backend.
+[[tool.importlinter.contracts]]
+name = "Outbox does not import background-jobs adapters"
+type = "forbidden"
+source_modules = [
+    "src.features.outbox.application",
+    "src.features.outbox.adapters",
+    "src.features.outbox.domain",
+]
+forbidden_modules = ["src.features.background_jobs.adapters"]

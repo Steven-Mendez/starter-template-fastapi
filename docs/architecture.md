@@ -11,8 +11,7 @@ error handling, the shared engine, the cross-feature `relationships` table).
 The `features` package owns business capabilities. Every feature follows the
 same layout — `domain/`, `application/`, `adapters/`, `composition/`, `tests/`
 — so adding a new feature is a copy-and-rename of the scaffold recovered
-from git history or the `examples/kanban` branch (see
-[Feature Template Guide](feature-template.md)).
+from git history (see [Feature Template Guide](feature-template.md)).
 
 ```text
 HTTP client
@@ -34,6 +33,7 @@ HTTP client
 | `email` | `EmailPort`, console + SMTP adapters, the `EmailTemplateRegistry`. | Nothing. |
 | `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, the `JobHandlerRegistry`, the worker entrypoint. | Nothing. |
 | `file_storage` | `FileStoragePort`, local adapter, S3 stub. | Nothing. |
+| `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, the `DispatchPending` relay use case. | `JobQueuePort` (the relay's destination). |
 
 ### Dependency Graph
 
@@ -120,8 +120,9 @@ make lint-arch
 | Authorization checks | Every feature gates its HTTP routes with the platform `require_authorization(action, resource_type, id_loader=...)` dependency, which calls `AuthorizationPort.check`. |
 | Authorization tuples | Resource-creating writes commit the resource row and the `owner` relationship tuple in the same Unit of Work via a session-scoped `AuthorizationPort`. |
 | User lookup from authentication | Authentication takes `UserPort` as a constructor dependency; it never imports `UserTable` or the users repository directly. |
-| Sending email | Features call `EmailPort.send(to, template_name, context)`. Authentication's password-reset and email-verify use cases enqueue a `send_email` background job rather than blocking on SMTP. |
+| Sending email | Features call `EmailPort.send(to, template_name, context)`. Authentication's password-reset and email-verify use cases write a `send_email` row to the outbox so the email enqueue commits atomically with the token write. |
 | Background work | Features register handlers with `JobHandlerRegistry` and enqueue work through `JobQueuePort`. The web app and the worker share a composition root so the same handler set is visible to both. |
+| Atomic side effects | Features that write business state and trigger a side effect in the same use case call `OutboxPort.enqueue` inside the repository's `*_transaction()` context. The relay running in the worker drains pending rows and re-emits them through `JobQueuePort`. See `docs/outbox.md`. |
 | File uploads | Features call `FileStoragePort.put` / `.signed_url`; no feature consumes it in the current source tree, but the port is ready to wire. |
 
 ## Application Composition
@@ -201,7 +202,6 @@ Problem Details response.
 | Background-jobs worker | Email sends are slow; doing them inline turns `POST /auth/password-reset` into a 2 s endpoint. The queue keeps the API responsive and lets the worker absorb retry policy. |
 | Email template registry | Templates live with the feature that sends them; the email feature provides the registry rather than owning the templates itself. Mirrors the authorization-registry pattern. |
 | S3 and SpiceDB stubs | Both adapters raise `NotImplementedError` from their methods. Real implementations need provider-specific choices (boto3 IAM, SpiceDB hosting) the consumer must make. |
-| Kanban moved to `examples/kanban` branch | The kanban demo was a worked reference for parent-walk ReBAC. Deleting it from `main` keeps the core small; preserving it on a CI-rebased branch keeps the example available. |
 
 ## Tradeoffs And Limitations
 

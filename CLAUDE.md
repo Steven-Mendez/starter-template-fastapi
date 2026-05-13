@@ -29,8 +29,8 @@ make test-integration                     # Docker-backed persistence tests
 make test-e2e                             # end-to-end HTTP tests only
 make test-feature FEATURE=authentication  # single feature
 make test-feature FEATURE=users           # single feature
-make cov                                  # tests + terminal coverage
-make ci                                   # full gate: quality + test + integration
+make cov                                  # tests + coverage (gates line 80% + branch 60%)
+make ci                                   # full gate: quality + cov + integration
 
 # Migrations
 uv run alembic revision --autogenerate -m "describe change"
@@ -59,6 +59,7 @@ feature.
 | `email` | `EmailPort`, console + SMTP + Resend adapters, `EmailTemplateRegistry` |
 | `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, `JobHandlerRegistry`, worker entrypoint |
 | `file_storage` | `FileStoragePort`, local + S3 (`boto3`) adapters |
+| `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, `DispatchPending` relay use case (runs in the worker only) |
 
 Cross-feature communication goes through ports only:
 
@@ -224,7 +225,7 @@ Run boundary checks: `make lint-arch`
 | Contract | (called by unit/integration) | `*/tests/contracts/` | Same behavior assertions run against fake and real adapters |
 | Integration | `integration` | `*/tests/integration/` | Requires Docker/testcontainers; hits real PostgreSQL (or Redis for arq) |
 
-Coverage gate: `make ci` enforces 80% line coverage.
+Coverage gate: `make ci` enforces an 80% line-coverage floor (`pyproject.toml [tool.coverage.report] fail_under`) and a separate 60% branch-coverage floor (`BRANCH_COVERAGE_FLOOR` in the Makefile, override via env).
 
 ## Coding conventions
 
@@ -250,6 +251,7 @@ The settings validator refuses to start when `APP_ENVIRONMENT=production` and an
 - `APP_AUTH_RETURN_INTERNAL_TOKENS=true`
 - `APP_STORAGE_ENABLED=true` with `APP_STORAGE_BACKEND=local`
 - `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=true` and no `APP_AUTH_REDIS_URL`
+- `APP_OUTBOX_ENABLED=false` (request-path consumers write to the outbox unconditionally; the relay must run in production)
 
 See `docs/operations.md` for the full env-var reference.
 
@@ -276,3 +278,7 @@ See `docs/operations.md` for the full env-var reference.
 | `APP_JOBS_BACKEND` | `in_process` | `in_process` for dev/test, `arq` in production |
 | `APP_JOBS_REDIS_URL` | unset | Required for `arq`; falls back to `APP_AUTH_REDIS_URL` |
 | `APP_STORAGE_BACKEND` | `local` | `local` for dev/test, `s3` in production when `APP_STORAGE_ENABLED=true` |
+| `APP_OUTBOX_ENABLED` | `false` | Must be `true` in production; the worker schedules the relay only when this is set |
+| `APP_OUTBOX_RELAY_INTERVAL_SECONDS` | `5.0` | Cron cadence of the relay (snapped to nearest divisor of 60) |
+| `APP_OUTBOX_CLAIM_BATCH_SIZE` | `100` | Max rows per claim transaction |
+| `APP_OUTBOX_MAX_ATTEMPTS` | `8` | Per-row retry budget before flipping to `failed` |

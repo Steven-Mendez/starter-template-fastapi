@@ -8,7 +8,7 @@ module never imports ``UserTable``.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from types import TracebackType
@@ -31,6 +31,15 @@ from src.features.authentication.domain.models import (
     InternalToken,
     RefreshToken,
 )
+from src.features.outbox.application.ports.outbox_port import OutboxPort
+
+# A factory the auth repository uses to construct a session-scoped
+# OutboxPort each time it opens a write transaction that needs the
+# outbox. Keeping this as a Callable type alias keeps the repository
+# decoupled from the concrete outbox adapter — it never imports
+# ``src.features.outbox.adapters`` (forbidden by the platform isolation
+# Import Linter contract for cross-feature adapters).
+OutboxSessionFactory = Callable[[Session], OutboxPort]
 
 
 @overload
@@ -242,6 +251,61 @@ class _SessionInternalTokenTransaction:
         )
 
 
+class _SessionIssueTokenTransaction:
+    """Issue a single-use internal token + outbox row in one DB transaction.
+
+    Used by request-path producer use cases (``RequestPasswordReset``,
+    ``RequestEmailVerification``) so the token insert, the audit event,
+    and the side-effect intent commit atomically. The ``outbox``
+    attribute is a session-scoped :class:`OutboxPort` bound to the
+    same session as the token write.
+    """
+
+    def __init__(self, session: Session, outbox: OutboxPort) -> None:
+        self._session = session
+        self.outbox = outbox
+
+    def create_internal_token(
+        self,
+        *,
+        user_id: UUID | None,
+        purpose: str,
+        token_hash: str,
+        expires_at: datetime,
+        created_ip: str | None,
+    ) -> InternalToken:
+        token = AuthInternalTokenTable(
+            user_id=user_id,
+            purpose=purpose,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            created_ip=created_ip,
+        )
+        self._session.add(token)
+        self._session.flush()
+        self._session.refresh(token)
+        return _to_internal_token(token)
+
+    def record_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: UUID | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self._session.add(
+            AuthAuditEventTable(
+                user_id=user_id,
+                event_type=event_type,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                event_metadata=metadata or {},
+            )
+        )
+
+
 class SQLModelAuthRepository:
     """SQLModel-backed persistence adapter for authentication state.
 
@@ -272,6 +336,11 @@ class SQLModelAuthRepository:
             pool_recycle=pool_recycle,
         )
         self._closed = False
+        # ``set_outbox_session_factory`` must be called by the composition
+        # root before any caller invokes ``issue_internal_token_transaction``.
+        # Kept optional so the existing constructor signature stays
+        # backwards-compatible for tests that do not exercise the outbox path.
+        self._outbox_session_factory: OutboxSessionFactory | None = None
         if create_schema:
             SQLModel.metadata.create_all(self._engine)
 
@@ -282,9 +351,23 @@ class SQLModelAuthRepository:
         instance = cls.__new__(cls)
         instance._engine = engine
         instance._closed = False
+        instance._outbox_session_factory = None
         if create_schema:
             SQLModel.metadata.create_all(engine)
         return instance
+
+    def set_outbox_session_factory(self, factory: OutboxSessionFactory) -> None:
+        """Register the factory the repository uses to build session-scoped outboxes.
+
+        The composition root calls this once during startup, passing in
+        the outbox container's ``session_scoped_factory``. The repository
+        constructor does not take it as a positional argument because
+        the auth and outbox containers are built in sequence and the
+        existing constructor signature is part of the migration test
+        suite — adding it inline would force a wider rewrite than this
+        change needs.
+        """
+        self._outbox_session_factory = factory
 
     @property
     def engine(self) -> Engine:
@@ -346,6 +429,34 @@ class SQLModelAuthRepository:
         with Session(self._engine, expire_on_commit=False) as session:
             try:
                 yield _SessionInternalTokenTransaction(session)
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    @contextmanager
+    def issue_internal_token_transaction(
+        self,
+    ) -> Iterator[_SessionIssueTokenTransaction]:
+        """Open a write transaction that issues a token + outbox row atomically.
+
+        The yielded transaction object exposes ``create_internal_token``
+        and ``record_audit_event`` (both staged on the session) and an
+        ``outbox`` attribute bound to the same session. Commit happens
+        on successful exit; any exception triggers a rollback so the
+        outbox row is never visible to the relay if the use case fails.
+        """
+        self._ensure_open()
+        if self._outbox_session_factory is None:
+            raise RuntimeError(
+                "SQLModelAuthRepository.issue_internal_token_transaction was "
+                "called before set_outbox_session_factory(...). The composition "
+                "root must register the outbox factory during startup."
+            )
+        with Session(self._engine, expire_on_commit=False) as session:
+            outbox = self._outbox_session_factory(session)
+            try:
+                yield _SessionIssueTokenTransaction(session, outbox)
                 session.commit()
             except Exception:
                 session.rollback()

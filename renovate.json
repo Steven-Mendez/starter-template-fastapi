@@ -1,0 +1,55 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard"
+  ],
+  "timezone": "Etc/UTC",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on monday"]
+  },
+  "github-actions": {
+    "enabled": true,
+    "pinDigests": true
+  },
+  "packageRules": [
+    {
+      "groupName": "pytest",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["pytest", "pytest-asyncio", "pytest-clarity", "pytest-cov", "pytest-html", "pytest-randomly", "pytest-sugar"]
+    },
+    {
+      "groupName": "fastapi-pydantic",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["fastapi", "starlette", "pydantic", "pydantic-settings"]
+    },
+    {
+      "groupName": "sqlmodel-stack",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["sqlmodel", "sqlalchemy", "alembic"]
+    },
+    {
+      "groupName": "arq-redis",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["arq", "redis", "fakeredis"]
+    },
+    {
+      "groupName": "boto3",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["boto3", "botocore", "boto3-stubs", "moto"]
+    },
+    {
+      "groupName": "dev-tooling",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["ruff", "mypy", "import-linter", "pre-commit", "pip-audit"]
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "pinDigests": true
+    }
+  ]
+}

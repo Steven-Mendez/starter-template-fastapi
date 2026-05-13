@@ -51,7 +51,16 @@ Useful commands:
 | `make test` | Run unit and e2e tests excluding integration. |
 | `make test-feature FEATURE=kanban` | Run tests for one feature. |
 | `make test-integration` | Run Docker-backed persistence tests. |
+| `make outbox-retry-failed` | Re-arm `outbox_messages` rows that reached `APP_OUTBOX_MAX_ATTEMPTS`. |
 | `make report` | Generate HTML test and coverage reports. |
+
+> **Outbox**: request-path use cases that both write business state and
+> trigger a side effect (an email, a notification) MUST go through
+> `OutboxPort.enqueue` inside the repository's `*_transaction()`
+> context — never through `JobQueuePort.enqueue` directly. The token
+> insert, the audit event, and the side-effect intent must commit
+> atomically; only then does the relay claim the row and dispatch it
+> through `JobQueuePort`. See `docs/outbox.md`.
 
 ## Coding Conventions
 
@@ -76,10 +85,10 @@ The test suite is organized by scope.
 
 | Scope | Location | Marker | Purpose |
 | --- | --- | --- | --- |
-| Unit | `src/platform/tests/` and `src/features/kanban/tests/unit/` | `unit` | Test pure domain logic, use cases, settings, middleware, and platform errors. |
-| End-to-end | `src/features/kanban/tests/e2e/` | `e2e` | Test HTTP flows through FastAPI with in-memory fakes. |
-| Contract | `src/features/kanban/tests/contracts/` | called by unit and integration tests | Reuse repository behavior tests against fake and SQLModel adapters. |
-| Integration | `src/features/kanban/tests/integration/` | `integration` | Test SQLModel persistence against PostgreSQL through testcontainers. |
+| Unit | `src/platform/tests/` and `src/features/<feature>/tests/unit/` | `unit` | Test pure domain logic, use cases, settings, middleware, and platform errors. |
+| End-to-end | `src/features/<feature>/tests/e2e/` | `e2e` | Test HTTP flows through FastAPI with in-memory fakes. |
+| Contract | `src/features/<feature>/tests/contracts/` | called by unit and integration tests | Reuse repository behavior tests against fake and SQLModel adapters. |
+| Integration | `src/features/<feature>/tests/integration/` | `integration` | Test SQLModel persistence against PostgreSQL through testcontainers. |
 
 Run fast tests:
 
@@ -99,6 +108,51 @@ Skip testcontainers explicitly:
 KANBAN_SKIP_TESTCONTAINERS=1 make test-integration
 ```
 
+## Quality Gates
+
+`make ci` enforces two coverage signals on top of `make quality` (Ruff +
+Import Linter + mypy):
+
+- **Statement (line) coverage** floor of **80%**, configured in
+  `pyproject.toml [tool.coverage.report] fail_under`.
+- **Branch coverage** floor of **60%**, configured as `BRANCH_COVERAGE_FLOOR`
+  in the `Makefile`. The check runs after every coverage target (`cov`,
+  `cov-html`, `cov-xml`) and prints both numbers explicitly. Override per-run
+  with `BRANCH_COVERAGE_FLOOR=70 make cov`.
+
+The branch-coverage floor is calibrated to what `main` achieves today, rounded
+down to the nearest 5%. Bump it in a separate PR after you close concrete
+coverage gaps — bundling the gate change with a ratchet makes the diff
+impossible to review honestly.
+
+## Dependency Updates
+
+Dependency and GitHub-Actions updates are managed by [Renovate](https://docs.renovatebot.com/).
+The configuration lives at `renovate.json` at the repo root. Renovate opens
+grouped PRs:
+
+| Group | Members |
+| --- | --- |
+| `pytest` | `pytest`, `pytest-asyncio`, `pytest-clarity`, `pytest-cov`, `pytest-html`, `pytest-randomly`, `pytest-sugar` |
+| `fastapi-pydantic` | `fastapi`, `starlette`, `pydantic`, `pydantic-settings` |
+| `sqlmodel-stack` | `sqlmodel`, `sqlalchemy`, `alembic` |
+| `arq-redis` | `arq`, `redis`, `fakeredis` |
+| `boto3` | `boto3`, `botocore`, `boto3-stubs`, `moto` |
+| `dev-tooling` | `ruff`, `mypy`, `import-linter`, `pre-commit`, `pip-audit` |
+
+`lockFileMaintenance` runs weekly (Monday before 05:00 UTC) and bumps
+`uv.lock`. The Dependency Dashboard issue (auto-created when Renovate first
+runs) is the canonical place to defer or trigger updates.
+
+All `uses:` references in `.github/workflows/*.yml` are pinned to full commit
+SHAs (with a `# <version>` trailing comment for readability). Renovate's
+`github-actions` manager bumps the SHAs deterministically — never edit them by
+hand.
+
+> **Note.** `renovate.json` is inert until the Renovate GitHub App is
+> installed on the repository (or a self-hosted runner is configured). The
+> file is harmless if the app is not installed.
+
 ## Debugging Tips
 
 - Check `X-Request-ID` in responses and logs to correlate a request with an
@@ -116,13 +170,13 @@ KANBAN_SKIP_TESTCONTAINERS=1 make test-integration
 
 | Change | Add or edit files |
 | --- | --- |
-| New HTTP route for Kanban | `src/features/kanban/adapters/inbound/http/` plus schemas and mappers as needed. |
-| New Kanban use case | `src/features/kanban/application/commands/` or `queries/`, `ports/inbound/`, and `use_cases/`. |
-| New domain rule | `src/features/kanban/domain/` and domain unit tests. |
-| New persistence behavior | `src/features/kanban/adapters/outbound/persistence/sqlmodel/` and repository contract or integration tests. |
+| New HTTP route for a feature | `src/features/<feature>/adapters/inbound/http/` plus schemas and mappers as needed. |
+| New use case for a feature | `src/features/<feature>/application/commands/` or `queries/`, `ports/inbound/`, and `use_cases/`. |
+| New domain rule | `src/features/<feature>/domain/` and domain unit tests. |
+| New persistence behavior | `src/features/<feature>/adapters/outbound/persistence/sqlmodel/` and repository contract or integration tests. |
 | New database schema change | SQLModel models plus a new Alembic migration under `alembic/versions/`. |
 | New cross-cutting platform behavior | `src/platform/` with platform tests under `src/platform/tests/`. |
-| New feature | Recover the scaffold from git history or the `examples/kanban` branch and follow [Feature Template Guide](feature-template.md). |
+| New feature | Recover the scaffold from git history and follow [Feature Template Guide](feature-template.md). |
 
 ## Adding A Migration
 

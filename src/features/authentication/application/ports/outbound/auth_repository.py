@@ -18,6 +18,7 @@ from src.features.authentication.domain.models import (
     InternalToken,
     RefreshToken,
 )
+from src.features.outbox.application.ports.outbox_port import OutboxPort
 
 
 class AuthRefreshTokenTransactionPort(Protocol):
@@ -38,6 +39,38 @@ class AuthRefreshTokenTransactionPort(Protocol):
         self, token_id: UUID, *, replaced_by_token_id: UUID | None = None
     ) -> None: ...
     def revoke_refresh_family(self, family_id: UUID) -> None: ...
+    def record_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: UUID | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None: ...
+
+
+class AuthIssueTokenTransactionPort(Protocol):
+    """Issue a single-use internal token and stage its side effects atomically.
+
+    The :attr:`outbox` adapter is bound to the same session as the token
+    insert and the audit event, so the row that the relay later
+    dispatches is committed in the same transaction as the token row —
+    if the use case rolls back, the relay never sees the outbox row.
+    """
+
+    outbox: OutboxPort
+
+    def create_internal_token(
+        self,
+        *,
+        user_id: UUID | None,
+        purpose: str,
+        token_hash: str,
+        expires_at: datetime,
+        created_ip: str | None,
+    ) -> InternalToken: ...
+
     def record_audit_event(
         self,
         *,
@@ -88,6 +121,9 @@ class TokenRepositoryPort(Protocol):
     def internal_token_transaction(
         self,
     ) -> ContextManager[AuthInternalTokenTransactionPort]: ...
+    def issue_internal_token_transaction(
+        self,
+    ) -> ContextManager[AuthIssueTokenTransactionPort]: ...
     def revoke_refresh_token(
         self, token_id: UUID, *, replaced_by_token_id: UUID | None = None
     ) -> None: ...

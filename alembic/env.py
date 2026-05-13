@@ -13,6 +13,7 @@ from sqlmodel import SQLModel
 # application owns. The noqa suppresses the "imported but unused" warning;
 # the side-effect is intentional.
 import src.features.authentication.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
+import src.features.outbox.adapters.outbound.sqlmodel.models  # noqa: F401
 import src.features.users.adapters.outbound.persistence.sqlmodel.models  # noqa: F401
 import src.platform.persistence.sqlmodel.authorization.models  # noqa: F401
 from alembic import context
@@ -21,7 +22,13 @@ from src.platform.config.settings import AppSettings
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # ``disable_existing_loggers=False`` is required so pytest's ``caplog``
+    # handler (and any other previously-configured logger) survives a
+    # migration run from within the test suite. The default would set
+    # ``disabled=True`` on every pre-existing logger and replace root
+    # handlers, which silently breaks caplog-based assertions in tests
+    # that run *after* the migration round-trip integration test.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 
 _DEFAULT_INI_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/starter"

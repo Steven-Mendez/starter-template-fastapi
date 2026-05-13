@@ -163,6 +163,24 @@ class AppSettings(BaseSettings):
     jobs_redis_url: str | None = None
     jobs_queue_name: str = "arq:queue"
     # ---------------------------------------------------------------------------
+    # Transactional outbox
+    # ---------------------------------------------------------------------------
+    # When enabled, request-path consumers (e.g. ``RequestPasswordReset``)
+    # write side-effect intents into ``outbox_messages`` inside the same
+    # SQL transaction as the business state, and the worker's relay tick
+    # claims pending rows and dispatches them through ``JobQueuePort``.
+    # Production refuses ``enabled=false`` because the use cases call
+    # ``OutboxPort.enqueue`` unconditionally; with the relay off, those
+    # rows would accumulate without ever being delivered.
+    outbox_enabled: bool = False
+    outbox_relay_interval_seconds: float = 5.0
+    outbox_claim_batch_size: int = 100
+    outbox_max_attempts: int = 8
+    # Stamped onto ``outbox_messages.locked_by`` so operators can see which
+    # worker holds a row mid-flight. Defaults to ``hostname:pid`` at
+    # OutboxSettings construction when unset here.
+    outbox_worker_id: str | None = None
+    # ---------------------------------------------------------------------------
     # File storage
     # ---------------------------------------------------------------------------
     # ``local`` writes to ``APP_STORAGE_LOCAL_PATH`` (dev/test default).
@@ -215,10 +233,12 @@ class AppSettings(BaseSettings):
         from src.features.background_jobs.composition.settings import JobsSettings
         from src.features.email.composition.settings import EmailSettings
         from src.features.file_storage.composition.settings import StorageSettings
+        from src.features.outbox.composition.settings import OutboxSettings
 
         EmailSettings.from_app_settings(self).validate(errors)
         JobsSettings.from_app_settings(self).validate(errors)
         StorageSettings.from_app_settings(self).validate(errors)
+        OutboxSettings.from_app_settings(self).validate(errors)
         if errors:
             raise ValueError("\n".join(errors))
         return self
@@ -244,6 +264,7 @@ class AppSettings(BaseSettings):
         from src.features.background_jobs.composition.settings import JobsSettings
         from src.features.email.composition.settings import EmailSettings
         from src.features.file_storage.composition.settings import StorageSettings
+        from src.features.outbox.composition.settings import OutboxSettings
         from src.features.users.composition.settings import UsersSettings
 
         errors: list[str] = []
@@ -253,6 +274,7 @@ class AppSettings(BaseSettings):
         EmailSettings.from_app_settings(self).validate_production(errors)
         JobsSettings.from_app_settings(self).validate_production(errors)
         StorageSettings.from_app_settings(self).validate_production(errors)
+        OutboxSettings.from_app_settings(self).validate_production(errors)
         DatabaseSettings.from_app_settings(self).validate_production(errors)
         ApiSettings.from_app_settings(self).validate_production(errors)
         ObservabilitySettings.from_app_settings(self).validate_production(errors)

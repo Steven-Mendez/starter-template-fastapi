@@ -1,8 +1,13 @@
 PORT ?= 8000
 
+# Branch-coverage floor enforced by the Makefile after every coverage run.
+# Set to the value `main` achieves rounded down to the nearest 5%. Override
+# via env: `BRANCH_COVERAGE_FLOOR=70 make cov`.
+BRANCH_COVERAGE_FLOOR ?= 60
+
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev worker format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports
+.PHONY: help sync dev worker format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports check-branch-coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -15,6 +20,9 @@ dev: ## Run API with auto-reload (FastAPI CLI)
 
 worker: ## Run the arq background-jobs worker (requires APP_JOBS_BACKEND=arq)
 	uv run python -m src.worker
+
+outbox-retry-failed: ## Re-arm outbox rows that reached APP_OUTBOX_MAX_ATTEMPTS
+	uv run python -m src.features.outbox.management retry-failed
 
 format: ## Format code with Ruff formatter
 	uv run ruff format .
@@ -72,20 +80,44 @@ test-feature: ## Run tests for a single feature: make test-feature FEATURE=authe
 	fi; \
 	uv run pytest src/features/$$feature/tests
 
-cov: ## Run tests with terminal coverage report
-	uv run pytest -m "not integration" --cov --cov-report=term-missing --cov-fail-under=80
+cov: ## Run tests with terminal coverage report (gates line + branch)
+	@mkdir -p reports
+	uv run pytest -m "not integration" \
+	    --cov --cov-branch \
+	    --cov-report=term-missing \
+	    --cov-report=json:reports/coverage.json \
+	    --cov-fail-under=80
+	@$(MAKE) --no-print-directory check-branch-coverage
 
 cov-html: ## Run tests and generate fancy HTML coverage report at reports/coverage/index.html
 	@mkdir -p reports
 	uv run pytest -m "not integration" \
-	    --cov --cov-report=html:reports/coverage --cov-report=term --cov-fail-under=80
+	    --cov --cov-branch \
+	    --cov-report=html:reports/coverage \
+	    --cov-report=json:reports/coverage.json \
+	    --cov-report=term \
+	    --cov-fail-under=80
+	@$(MAKE) --no-print-directory check-branch-coverage
 	@echo ""
 	@echo "Coverage report: file://$(CURDIR)/reports/coverage/index.html"
 
 cov-xml: ## Run tests and emit Cobertura XML at reports/coverage.xml (CI artifacts)
 	@mkdir -p reports
 	uv run pytest -m "not integration" \
-	    --cov --cov-report=xml:reports/coverage.xml --cov-fail-under=80
+	    --cov --cov-branch \
+	    --cov-report=xml:reports/coverage.xml \
+	    --cov-report=json:reports/coverage.json \
+	    --cov-fail-under=80
+	@$(MAKE) --no-print-directory check-branch-coverage
+
+check-branch-coverage: ## Fail if branch coverage in reports/coverage.json is below BRANCH_COVERAGE_FLOOR
+	@uv run python -c "import json, sys, os; \
+floor = float(os.environ.get('BRANCH_COVERAGE_FLOOR', '$(BRANCH_COVERAGE_FLOOR)')); \
+data = json.load(open('reports/coverage.json'))['totals']; \
+pct = data.get('percent_branches_covered'); \
+sys.exit('FAIL: branch coverage not measured — invoke pytest with --cov-branch') if pct is None else None; \
+print(f'Branch coverage: {pct:.2f}% (floor: {floor:.0f}%)'); \
+sys.exit(f'FAIL: branch coverage {pct:.2f}% < floor {floor:.0f}%') if pct < floor else None"
 
 cov-open: ## Open the latest HTML coverage report in the default browser
 	@if [ ! -f reports/coverage/index.html ]; then echo "Run 'make cov-html' first."; exit 1; fi
@@ -108,9 +140,9 @@ report-open: ## Open the latest test report and coverage report
 clean-reports: ## Remove generated reports/ and .coverage artifacts
 	rm -rf reports/ .coverage .coverage.* htmlcov/
 
-ci: quality test test-integration ## Full gate: quality + unit + e2e + integration
+ci: quality cov test-integration ## Full gate: quality + unit + e2e (with line+branch coverage gate) + integration
 
-ci-local: quality app-import-smoke test test-integration migration-check audit sast docker-smoke ## Local pre-push gate mirroring CI jobs
+ci-local: quality app-import-smoke cov test-integration migration-check audit sast docker-smoke ## Local pre-push gate mirroring CI jobs
 
 precommit-install: ## Install git pre-commit and pre-push hooks
 	uv run pre-commit install --install-hooks

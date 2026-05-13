@@ -1,27 +1,20 @@
 # Feature Template Guide
 
 The in-tree `_template` feature was removed (see the OpenSpec change
-`remove-template-feature`). The scaffold now lives only in git history and on
-the long-lived examples branch.
+`remove-template-feature`). The scaffold now lives only in git history.
 
 ## Where to find the scaffold
 
-Pick whichever is easier:
+The last commit before deletion contains the full directory under
+`src/features/_template/`. Recover it with:
 
-- **Git history**: the last commit before deletion contains the full
-  directory under `src/features/_template/`. Recover it with:
-
-  ```bash
-  git log --diff-filter=D --summary -- src/features/_template | head -20
-  # find the SHA where _template was deleted, then:
-  git show <sha>^:src/features/_template > /tmp/_template-tree.txt
-  # or check out the directory at that revision:
-  git checkout <sha>^ -- src/features/_template
-  ```
-
-- **`examples/kanban` branch**: a worked multi-resource feature built on top
-  of the same scaffold, rebased weekly onto `main`. Use it when you want a
-  more substantial reference than a single-resource CRUD.
+```bash
+git log --diff-filter=D --summary -- src/features/_template | head -20
+# find the SHA where _template was deleted, then:
+git show <sha>^:src/features/_template > /tmp/_template-tree.txt
+# or check out the directory at that revision:
+git checkout <sha>^ -- src/features/_template
+```
 
 ## Adding a new feature
 

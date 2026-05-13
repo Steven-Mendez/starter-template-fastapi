@@ -514,6 +514,20 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_JOBS_REDIS_URL` | unset | Required when `APP_JOBS_BACKEND=arq`; falls back to `APP_AUTH_REDIS_URL`. |
 | `APP_JOBS_QUEUE_NAME` | `arq:queue` | `arq` queue name. |
 
+### Transactional outbox (`OutboxSettings`)
+
+The outbox routes request-path side effects through `outbox_messages`
+so they commit atomically with the surrounding business write. See
+`docs/outbox.md` for the full pattern.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_OUTBOX_ENABLED` | `false` | Master switch. **Must be `true` in production** (use cases write to the outbox unconditionally; the relay must run to drain them). |
+| `APP_OUTBOX_RELAY_INTERVAL_SECONDS` | `5.0` | Relay cron cadence (snapped to nearest divisor of 60). |
+| `APP_OUTBOX_CLAIM_BATCH_SIZE` | `100` | Max rows per claim transaction. |
+| `APP_OUTBOX_MAX_ATTEMPTS` | `8` | Per-row retry budget before a row flips to `failed`. |
+| `APP_OUTBOX_WORKER_ID` | `<hostname>:<pid>` | Stamped onto `locked_by` for operator visibility. |
+
 ### File storage (`StorageSettings`)
 
 | Variable | Default | Notes |

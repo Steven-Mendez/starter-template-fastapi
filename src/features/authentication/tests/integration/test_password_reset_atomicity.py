@@ -11,7 +11,7 @@ from src.features.authentication.adapters.outbound.persistence.sqlmodel.reposito
 )
 from src.features.authentication.application.errors import TokenAlreadyUsedError
 from src.features.authentication.composition.container import build_auth_container
-from src.features.background_jobs.tests.fakes.fake_job_queue import FakeJobQueue
+from src.features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
 from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
@@ -37,7 +37,9 @@ def test_concurrent_password_reset_serializes_on_token_row(
     container = build_auth_container(
         settings=settings,
         users=users,
-        jobs=FakeJobQueue(),
+        outbox_session_factory=lambda _s: InlineDispatchOutboxAdapter(
+            dispatcher=lambda _n, _p: None,
+        ),
         repository=postgres_auth_repository,
     )
     reg = container.register_user.execute(
