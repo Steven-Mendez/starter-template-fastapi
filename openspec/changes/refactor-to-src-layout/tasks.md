@@ -53,6 +53,6 @@
 
 ## 9. Land the change
 
-- [ ] 9.1 Commit with a single subject line: `refactor!: adopt canonical src layout (drop src. prefix, rename platform → app_platform)`. Body explains the breaking-internal nature and references the archived `add-quality-automation` follow-up.
+- [x] 9.1 Commit with a single subject line: `refactor!: adopt canonical src layout (drop src. prefix, rename platform → app_platform)`. Body explains the breaking-internal nature and references the archived `add-quality-automation` follow-up.
 - [ ] 9.2 **Deferred to user**: push branch, open PR, confirm CI is green (in particular: ImportLinter contracts, docker-smoke, and coverage gates), squash-merge to `main`.
 - [ ] 9.3 **Follow-up (tracked outside this change)**: open a separate `add-mutmut` change to re-introduce `mutmut` now that the layout supports it.
