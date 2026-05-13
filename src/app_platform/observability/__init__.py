@@ -6,7 +6,13 @@ from app_platform.observability.logging import (
     RequestIdFilter,
     configure_logging,
 )
-from app_platform.observability.tracing import configure_tracing, instrument_fastapi_app
+from app_platform.observability.tracing import (
+    configure_tracing,
+    email_hash,
+    instrument_fastapi_app,
+    shutdown_tracing,
+    traced,
+)
 
 __all__ = [
     "REQUEST_ID_CONTEXT",
@@ -14,5 +20,8 @@ __all__ = [
     "RequestIdFilter",
     "configure_logging",
     "configure_tracing",
+    "email_hash",
     "instrument_fastapi_app",
+    "shutdown_tracing",
+    "traced",
 ]

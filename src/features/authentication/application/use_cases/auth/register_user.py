@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app_platform.config.settings import AppSettings
+from app_platform.observability.tracing import email_hash, traced
 from app_platform.shared.result import Err, Ok, Result
 from features.authentication.application.crypto import PasswordService
 from features.authentication.application.errors import (
@@ -39,6 +40,12 @@ class RegisterUser:
     _password_service: PasswordService
     _settings: AppSettings
 
+    @traced(
+        "auth.register_user",
+        attrs=lambda self, *, email, password, ip_address=None, user_agent=None: {  # noqa: ARG005
+            "user.email_hash": email_hash(email),
+        },
+    )
     def execute(
         self,
         *,

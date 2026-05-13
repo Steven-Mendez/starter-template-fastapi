@@ -82,7 +82,14 @@ class ObservabilitySettings:
     otel_exporter_endpoint: str | None
     otel_service_name: str
     otel_service_version: str
+    otel_traces_sampler_ratio: float
+    otel_instrument_sqlalchemy: bool
+    otel_instrument_httpx: bool
+    otel_instrument_redis: bool
     metrics_enabled: bool
+    auth_redis_url: str | None
+    jobs_redis_url: str | None
+    environment: str
 
     @classmethod
     def from_app_settings(cls, app: Any) -> ObservabilitySettings:
@@ -91,8 +98,23 @@ class ObservabilitySettings:
             otel_exporter_endpoint=app.otel_exporter_endpoint,
             otel_service_name=app.otel_service_name,
             otel_service_version=app.otel_service_version,
+            otel_traces_sampler_ratio=app.otel_traces_sampler_ratio,
+            otel_instrument_sqlalchemy=app.otel_instrument_sqlalchemy,
+            otel_instrument_httpx=app.otel_instrument_httpx,
+            otel_instrument_redis=app.otel_instrument_redis,
             metrics_enabled=app.metrics_enabled,
+            auth_redis_url=app.auth_redis_url,
+            jobs_redis_url=app.jobs_redis_url,
+            environment=app.environment,
         )
+
+    def validate(self, errors: list[str]) -> None:
+        """Validate fields that must be well-formed in every environment."""
+        if not (0.0 <= self.otel_traces_sampler_ratio <= 1.0):
+            errors.append(
+                "APP_OTEL_TRACES_SAMPLER_RATIO must be between 0.0 and 1.0 "
+                f"(got {self.otel_traces_sampler_ratio})"
+            )
 
     def validate_production(self, errors: list[str]) -> None:  # noqa: ARG002
         """No production-only constraints today."""

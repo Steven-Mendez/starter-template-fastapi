@@ -11,6 +11,10 @@ logs.
 | `APP_OTEL_EXPORTER_ENDPOINT` | unset | Enables OpenTelemetry tracing and exports spans over OTLP/HTTP. |
 | `APP_OTEL_SERVICE_NAME` | `starter-template-fastapi` | Service name attached to traces and JSON logs. |
 | `APP_OTEL_SERVICE_VERSION` | `0.1.0` | Service version attached to traces and JSON logs. |
+| `APP_OTEL_TRACES_SAMPLER_RATIO` | `1.0` | Head-based sampler ratio in `[0.0, 1.0]`. Set to `0.1` in production. |
+| `APP_OTEL_INSTRUMENT_SQLALCHEMY` | `true` | Toggle SQLAlchemy auto-instrumentation. |
+| `APP_OTEL_INSTRUMENT_HTTPX` | `true` | Toggle HTTPX auto-instrumentation. |
+| `APP_OTEL_INSTRUMENT_REDIS` | `true` | Toggle Redis auto-instrumentation (only loaded when a Redis URL is set). |
 | `APP_LOG_LEVEL` | `INFO` | Root Python log level used by the application. |
 
 ## Metrics
@@ -48,13 +52,63 @@ export APP_OTEL_SERVICE_VERSION=0.1.0
 When tracing is enabled, the app instruments:
 
 - FastAPI requests.
-- SQLAlchemy/SQLModel database calls.
-- Redis calls when `APP_AUTH_REDIS_URL` is set.
+- SQLAlchemy/SQLModel database calls (gated by `APP_OTEL_INSTRUMENT_SQLALCHEMY`).
+- Outbound HTTPX calls (gated by `APP_OTEL_INSTRUMENT_HTTPX`).
+- Redis calls when `APP_AUTH_REDIS_URL` or `APP_JOBS_REDIS_URL` is set
+  (gated by `APP_OTEL_INSTRUMENT_REDIS`).
 
 Health and metrics routes are excluded from FastAPI spans.
 
 When `APP_OTEL_EXPORTER_ENDPOINT` is unset, tracing instrumentation is not
 installed and OpenTelemetry stays on its default no-op provider.
+
+### Sampling
+
+Spans are sampled head-based at the root with
+`ParentBased(TraceIdRatioBased(APP_OTEL_TRACES_SAMPLER_RATIO))`. The default
+ratio is `1.0` (every trace is kept) — appropriate for development and tests
+where individual traces are valuable.
+
+In production, leave `APP_OTEL_TRACES_SAMPLER_RATIO` at `1.0` only if your
+collector can absorb the volume; otherwise dial it down (e.g. `0.1`). The
+process logs a warning when the ratio is `1.0` in production, but it does
+NOT refuse to start: head-based sampling is a tuning knob, not a safety
+gate. (This is the only "warn but don't refuse" path in the codebase; every
+other production-misconfiguration check refuses startup.)
+
+Head-based vs. tail-based: head-based sampling decides at trace start, so
+all spans of a sampled trace are kept and all spans of a dropped trace are
+discarded — cheap, but it cannot prioritize "interesting" traces (errors,
+slow requests). Tail-based sampling — promoting interesting traces after
+all spans land at the collector — is a collector-side feature (e.g. the
+OTel Collector's `tail_sampling` processor); this service emits head-based
+samples and lets the collector make the final call.
+
+### Exporter queue sizing
+
+`BatchSpanProcessor` is configured with `max_queue_size=8192` and
+`max_export_batch_size=512`. These are bumped from the SDK defaults
+(`2048` / `512`) so bursty traffic does not silently drop spans before the
+collector catches up.
+
+### Use-case spans
+
+Hot-path use cases emit application-layer spans:
+
+| Span name | Where | Notable attributes |
+| --- | --- | --- |
+| `auth.login_user` | `LoginUser.execute` | `user.email_hash` |
+| `auth.register_user` | `RegisterUser.execute` | `user.email_hash` |
+| `authz.bootstrap_system_admin` | `BootstrapSystemAdmin.execute` | — |
+| `outbox.dispatch_pending` | `DispatchPending.execute` (relay tick) | `outbox.batch_size` |
+| `outbox.dispatch_row` | per-row child of `outbox.dispatch_pending` | `outbox.message_id`, `outbox.handler` |
+| `auth.rate_limit` | `_check_rate_limit` dependency | `rate_limit.key_hash` |
+
+PII MUST NOT appear in span attributes. Email addresses are reduced to a
+deterministic short hash (`user.email_hash` = `sha256(email)[:16]`); raw
+emails, raw tokens, and passwords are never recorded. The `@traced`
+decorator in `app_platform.observability.tracing` is the public seam for
+adding new use-case spans.
 
 ## Logs
 

@@ -222,6 +222,17 @@ class AppSettings(BaseSettings):
     otel_exporter_endpoint: str | None = None
     otel_service_name: str = "starter-template-fastapi"
     otel_service_version: str = "0.1.0"
+    # Head-based sampler ratio in [0.0, 1.0]. 1.0 keeps every trace (dev/test
+    # default); production deployments are encouraged to dial this down (e.g.
+    # 0.1) so the collector is not flooded under load. When set to 1.0 in
+    # production, ``configure_tracing`` emits a warning (it does NOT refuse).
+    otel_traces_sampler_ratio: float = 1.0
+    # Toggles for the OTel auto-instrumentation libraries registered during
+    # ``configure_tracing``. Each defaults to True; flip off to disable the
+    # corresponding spans without removing the dependency.
+    otel_instrument_sqlalchemy: bool = True
+    otel_instrument_httpx: bool = True
+    otel_instrument_redis: bool = True
     # Set to false to disable the /metrics Prometheus endpoint.
     metrics_enabled: bool = True
 
@@ -256,6 +267,7 @@ class AppSettings(BaseSettings):
         JobsSettings.from_app_settings(self).validate(errors)
         StorageSettings.from_app_settings(self).validate(errors)
         OutboxSettings.from_app_settings(self).validate(errors)
+        ObservabilitySettings.from_app_settings(self).validate(errors)
         if errors:
             raise ValueError("\n".join(errors))
         return self

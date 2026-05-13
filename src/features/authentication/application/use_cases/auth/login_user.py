@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app_platform.config.settings import AppSettings
+from app_platform.observability.tracing import email_hash, traced
 from app_platform.shared.principal import Principal
 from app_platform.shared.result import Err, Ok, Result
 from features.authentication.application.crypto import (
@@ -47,6 +48,12 @@ class LoginUser:
     _settings: AppSettings
     _dummy_hash: str
 
+    @traced(
+        "auth.login_user",
+        attrs=lambda self, *, email, password, ip_address=None, user_agent=None: {  # noqa: ARG005
+            "user.email_hash": email_hash(email),
+        },
+    )
     def execute(
         self,
         *,

@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+from app_platform.observability.tracing import traced
 from features.authorization.application.ports.authorization_port import (
     AuthorizationPort,
 )
@@ -34,6 +35,7 @@ class BootstrapSystemAdmin:
     _user_registrar: UserRegistrarPort
     _audit: AuditPort
 
+    @traced("authz.bootstrap_system_admin")
     def execute(self, *, email: str, password: str) -> UUID:
         """Return the bootstrapped user's id.
 

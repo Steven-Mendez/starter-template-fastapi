@@ -19,6 +19,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 
+from app_platform.observability.tracing import traced
 from app_platform.shared.principal import Principal
 from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.inbound.http.dependencies import (
@@ -134,6 +135,14 @@ def _enforce_cookie_origin(request: Request) -> None:
         )
 
 
+@traced(
+    "auth.rate_limit",
+    attrs=lambda request, key: {
+        "rate_limit.key_hash": hashlib.sha256(
+            f"{request.url.path}:{key}".encode()
+        ).hexdigest()[:16],
+    },
+)
 def _check_rate_limit(request: Request, key: str) -> None:
     """Apply the configured per-endpoint rate limit, raising 429 on excess.
 

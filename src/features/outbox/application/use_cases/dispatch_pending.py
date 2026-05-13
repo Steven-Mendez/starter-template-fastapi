@@ -36,6 +36,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from app_platform.observability.tracing import traced
 from features.background_jobs.application.ports.job_queue_port import JobQueuePort
 from features.outbox.application.ports.outbound.outbox_repository_port import (
     OutboxRepositoryPort,
@@ -73,6 +74,10 @@ class DispatchPending:
     _retry_base: timedelta
     _retry_max: timedelta
 
+    @traced(
+        "outbox.dispatch_pending",
+        attrs=lambda self: {"outbox.batch_size": self._batch_size},
+    )
     def execute(self) -> RelayTickReport:
         now = datetime.now(UTC)
         claimed = self._repository.claim_batch(
@@ -82,6 +87,10 @@ class DispatchPending:
         )
         if not claimed:
             return RelayTickReport(claimed=0, dispatched=0, retried=0, failed=0)
+
+        from opentelemetry import trace
+
+        tracer = trace.get_tracer(__name__)
 
         dispatched = 0
         retried = 0
@@ -93,51 +102,54 @@ class DispatchPending:
             # if a producer somehow already wrote it.
             dispatched_payload = {**row.payload}
             dispatched_payload.setdefault(_OUTBOX_MESSAGE_ID_KEY, str(row.id))
-            try:
-                self._job_queue.enqueue(row.job_name, dispatched_payload)
-            except Exception as exc:
-                next_attempts = row.attempts + 1
-                if next_attempts >= self._max_attempts:
-                    self._repository.mark_failed(
-                        row.id,
-                        attempts=next_attempts,
-                        last_error=repr(exc),
-                        failed_at=now,
-                    )
-                    failed += 1
-                    _logger.exception(
-                        "event=outbox.dispatch.failed id=%s job=%s attempts=%d",
-                        row.id,
-                        row.job_name,
-                        next_attempts,
-                    )
-                else:
-                    delay = min(
-                        self._retry_base * (2 ** (next_attempts - 1)),
-                        self._retry_max,
-                    )
-                    self._repository.mark_retry(
-                        row.id,
-                        attempts=next_attempts,
-                        last_error=repr(exc),
-                        available_at=now + delay,
-                    )
-                    retried += 1
-                    _logger.warning(
-                        "event=outbox.dispatch.retry id=%s job=%s attempts=%d",
-                        row.id,
-                        row.job_name,
-                        next_attempts,
-                    )
-                continue
-            # Per-row commit: marking the row delivered runs in its own
-            # transaction (the repository opens one). A crash between
-            # the enqueue above and this mark leaves the row in
-            # ``status='pending'``; the next tick re-claims and the
-            # handler's ``__outbox_message_id`` dedup absorbs the
-            # second delivery.
-            self._repository.mark_delivered(row.id, delivered_at=now)
-            dispatched += 1
+            with tracer.start_as_current_span("outbox.dispatch_row") as row_span:
+                row_span.set_attribute("outbox.message_id", str(row.id))
+                row_span.set_attribute("outbox.handler", row.job_name)
+                try:
+                    self._job_queue.enqueue(row.job_name, dispatched_payload)
+                except Exception as exc:
+                    next_attempts = row.attempts + 1
+                    if next_attempts >= self._max_attempts:
+                        self._repository.mark_failed(
+                            row.id,
+                            attempts=next_attempts,
+                            last_error=repr(exc),
+                            failed_at=now,
+                        )
+                        failed += 1
+                        _logger.exception(
+                            "event=outbox.dispatch.failed id=%s job=%s attempts=%d",
+                            row.id,
+                            row.job_name,
+                            next_attempts,
+                        )
+                    else:
+                        delay = min(
+                            self._retry_base * (2 ** (next_attempts - 1)),
+                            self._retry_max,
+                        )
+                        self._repository.mark_retry(
+                            row.id,
+                            attempts=next_attempts,
+                            last_error=repr(exc),
+                            available_at=now + delay,
+                        )
+                        retried += 1
+                        _logger.warning(
+                            "event=outbox.dispatch.retry id=%s job=%s attempts=%d",
+                            row.id,
+                            row.job_name,
+                            next_attempts,
+                        )
+                    continue
+                # Per-row commit: marking the row delivered runs in its
+                # own transaction (the repository opens one). A crash
+                # between the enqueue above and this mark leaves the row
+                # in ``status='pending'``; the next tick re-claims and
+                # the handler's ``__outbox_message_id`` dedup absorbs
+                # the second delivery.
+                self._repository.mark_delivered(row.id, delivered_at=now)
+                dispatched += 1
 
         _logger.info(
             "event=outbox.relay.tick claimed=%d dispatched=%d retried=%d failed=%d",
