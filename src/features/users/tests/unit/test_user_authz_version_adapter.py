@@ -99,3 +99,45 @@ def test_session_scoped_rolls_back_on_outer_failure(engine: Engine) -> None:
         SessionSQLModelUserAuthzVersionAdapter(session).bump(user_id)
         session.rollback()
     assert _authz_version(engine, user_id) == 1
+
+
+def test_bump_in_session_does_not_commit(engine: Engine) -> None:
+    """``bump_in_session`` stages the update; the caller owns commit.
+
+    Rolling back the session after the call must leave the seeded
+    ``authz_version`` unchanged on a fresh read.
+    """
+    user_id = _seed_user(engine)
+    adapter = SQLModelUserAuthzVersionAdapter(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        adapter.bump_in_session(session, user_id)
+        session.rollback()
+    assert _authz_version(engine, user_id) == 1
+
+
+def test_bump_in_session_commits_when_caller_commits(engine: Engine) -> None:
+    """When the caller commits, the staged bump lands."""
+    user_id = _seed_user(engine)
+    adapter = SQLModelUserAuthzVersionAdapter(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        adapter.bump_in_session(session, user_id)
+        session.commit()
+    assert _authz_version(engine, user_id) == 2
+
+
+def test_session_scoped_bump_in_session_uses_supplied_session(
+    engine: Engine,
+) -> None:
+    """The session-scoped adapter accepts an explicit ``session`` argument.
+
+    The contract that both adapters expose ``bump_in_session(session, user_id)``
+    keeps the Protocol uniform; the session-scoped adapter forwards to the
+    session it was passed.
+    """
+    user_id = _seed_user(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        SessionSQLModelUserAuthzVersionAdapter(session).bump_in_session(
+            session, user_id
+        )
+        session.commit()
+    assert _authz_version(engine, user_id) == 2

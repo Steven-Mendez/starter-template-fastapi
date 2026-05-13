@@ -22,6 +22,7 @@ from features.authorization.application.ports.authorization_port import (
 )
 from features.authorization.application.ports.outbound import (
     AuditPort,
+    PrincipalCacheInvalidatorPort,
     UserAuthzVersionPort,
     UserRegistrarPort,
 )
@@ -45,6 +46,7 @@ def build_authorization_container(
     user_authz_version: UserAuthzVersionPort,
     user_registrar: UserRegistrarPort,
     audit: AuditPort,
+    principal_cache_invalidator: PrincipalCacheInvalidatorPort,
 ) -> AuthorizationContainer:
     """Wire the authorization container.
 
@@ -69,6 +71,7 @@ def build_authorization_container(
         _authorization=port,
         _user_registrar=user_registrar,
         _audit=audit,
+        _principal_cache_invalidator=principal_cache_invalidator,
     )
 
     def _shutdown() -> None:

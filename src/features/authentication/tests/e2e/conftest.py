@@ -32,6 +32,9 @@ from features.authentication.adapters.outbound.persistence.sqlmodel.models impor
 from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelAuthRepository,
 )
+from features.authentication.adapters.outbound.principal_cache_invalidator import (
+    PrincipalCacheInvalidatorAdapter,
+)
 from features.authentication.composition.container import build_auth_container
 from features.authentication.composition.wiring import (
     attach_auth_container,
@@ -201,6 +204,9 @@ def _build_app(
         user_authz_version=users.user_authz_version_adapter,
         user_registrar=user_registrar,
         audit=auth.audit_adapter,
+        principal_cache_invalidator=PrincipalCacheInvalidatorAdapter(
+            auth.principal_cache
+        ),
     )
     authorization.registry.seal()
     authorization.bootstrap_system_admin.execute(

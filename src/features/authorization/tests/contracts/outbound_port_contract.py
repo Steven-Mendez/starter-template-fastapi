@@ -27,6 +27,17 @@ class UserAuthzVersionPortContract:
         port.bump(uuid4())
         port.bump(uuid4())
 
+    def test_bump_in_session_method_exists(self) -> None:
+        """Every implementor SHALL expose ``bump_in_session``.
+
+        The session-aware bump is the seam authorization uses to
+        commit the relationship write and the version bump atomically.
+        The signature is checked here; the SQLModel-backed integration
+        suite covers the transactional semantics with a real session.
+        """
+        port = self._make_port()
+        assert callable(getattr(port, "bump_in_session", None))
+
 
 class AuditPortContract:
     """Subclass and override ``_make_port``."""

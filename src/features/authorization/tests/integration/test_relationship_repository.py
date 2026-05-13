@@ -194,3 +194,108 @@ def test_authz_version_bumps_on_write_against_postgres(
     after = users.get_by_id(user_id)
     assert after is not None
     assert after.authz_version == before_version + 1
+
+
+def test_write_relationships_atomic_bump_visible_from_fresh_connection(
+    postgres_auth_repository: SQLModelAuthRepository,
+    adapter: SQLModelAuthorizationAdapter,
+) -> None:
+    """Happy path: a successful write commits the row and the bump together.
+
+    Both must be visible to a fresh connection opened after the call
+    returns, demonstrating that the bump landed in the same commit as
+    the relationship row rather than as a follow-up second transaction.
+    """
+    user_id = _seed_user(postgres_auth_repository)
+    board_id = str(uuid4())
+
+    adapter.write_relationships(
+        [
+            Relationship(
+                resource_type="thing",
+                resource_id=board_id,
+                relation="reader",
+                subject_type="user",
+                subject_id=str(user_id),
+            )
+        ]
+    )
+
+    with Session(postgres_auth_repository.engine) as session:
+        rel_count = session.execute(
+            text(
+                "SELECT COUNT(*) FROM relationships "
+                "WHERE resource_type = 'thing' AND resource_id = :rid "
+                "AND subject_id = :sid"
+            ),
+            {"rid": board_id, "sid": str(user_id)},
+        ).scalar_one()
+        bumped_version = session.execute(
+            text("SELECT authz_version FROM users WHERE id = :uid"),
+            {"uid": str(user_id)},
+        ).scalar_one()
+    assert rel_count == 1
+    # Seeded value is 1; the bump should have produced 2.
+    assert bumped_version == 2
+
+
+def test_bump_failure_rolls_back_relationship_write(
+    postgres_auth_repository: SQLModelAuthRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forced failure on ``bump_in_session`` rolls back the relationship row.
+
+    Patches the SQLModel adapter's ``bump_in_session`` to raise; asserts
+    that the relationship row never lands and the user's
+    ``authz_version`` stays at its seeded value when read from a fresh
+    connection.
+    """
+    from features.users.adapters.outbound.authz_version import (
+        SQLModelUserAuthzVersionAdapter,
+    )
+
+    engine = postgres_auth_repository.engine
+    user_id = _seed_user(postgres_auth_repository)
+    board_id = str(uuid4())
+
+    version_adapter = SQLModelUserAuthzVersionAdapter(engine)
+
+    def _boom(session: object, user_id: UUID) -> None:
+        del session, user_id
+        raise RuntimeError("forced bump failure")
+
+    monkeypatch.setattr(version_adapter, "bump_in_session", _boom)
+
+    adapter = SQLModelAuthorizationAdapter(
+        engine, make_test_registry(), version_adapter
+    )
+
+    with pytest.raises(RuntimeError, match="forced bump failure"):
+        adapter.write_relationships(
+            [
+                Relationship(
+                    resource_type="thing",
+                    resource_id=board_id,
+                    relation="reader",
+                    subject_type="user",
+                    subject_id=str(user_id),
+                )
+            ]
+        )
+
+    with Session(engine) as session:
+        rel_count = session.execute(
+            text(
+                "SELECT COUNT(*) FROM relationships "
+                "WHERE resource_type = 'thing' AND resource_id = :rid "
+                "AND subject_id = :sid"
+            ),
+            {"rid": board_id, "sid": str(user_id)},
+        ).scalar_one()
+        version = session.execute(
+            text("SELECT authz_version FROM users WHERE id = :uid"),
+            {"uid": str(user_id)},
+        ).scalar_one()
+    assert rel_count == 0
+    # The seed value is 1; nothing should have committed.
+    assert version == 1

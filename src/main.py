@@ -23,6 +23,9 @@ from app_platform.observability.tracing import configure_tracing, instrument_fas
 from features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
+from features.authentication.adapters.outbound.principal_cache_invalidator import (
+    PrincipalCacheInvalidatorAdapter,
+)
 from features.authentication.composition.container import build_auth_container
 from features.authentication.composition.wiring import (
     attach_auth_container,
@@ -189,11 +192,19 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             users=users,
             credential_writer=auth.credential_writer_adapter,
         )
+        # Build the auth-side cache-invalidator adapter from the freshly
+        # built principal cache so the authorization feature can drop
+        # cached entries after engine-path grants/revokes without
+        # importing the auth feature's cache types directly.
+        principal_cache_invalidator = PrincipalCacheInvalidatorAdapter(
+            auth.principal_cache
+        )
         authorization = build_authorization_container(
             engine=repository.engine,
             user_authz_version=users.user_authz_version_adapter,
             user_registrar=user_registrar,
             audit=auth.audit_adapter,
+            principal_cache_invalidator=principal_cache_invalidator,
         )
         file_storage = build_file_storage_container(
             StorageSettings.from_app_settings(app_settings)

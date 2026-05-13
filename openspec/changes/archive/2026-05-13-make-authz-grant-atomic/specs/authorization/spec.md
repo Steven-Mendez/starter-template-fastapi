@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: AuthorizationPort writes commit relationship and version bump atomically
 
@@ -21,8 +21,6 @@ This requirement applies to both the engine-owning adapter (`SQLModelAuthorizati
 - **WHEN** `write_relationships(("system:main", "admin", "user", u.id))` succeeds
 - **THEN** exactly one transaction commits to the underlying database
 - **AND** both the relationship row and the bumped `authz_version` are visible from a separate connection
-
-## ADDED Requirements
 
 ### Requirement: UserAuthzVersionPort exposes a session-aware bump
 

@@ -28,6 +28,9 @@ from app_platform.config.settings import AppSettings
 from features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
+from features.authentication.adapters.outbound.principal_cache_invalidator import (
+    PrincipalCacheInvalidatorAdapter,
+)
 from features.authentication.composition.container import (
     AuthContainer,
     build_auth_container,
@@ -132,6 +135,9 @@ def _build_containers() -> tuple[
         user_authz_version=users.user_authz_version_adapter,
         user_registrar=user_registrar,
         audit=auth.audit_adapter,
+        principal_cache_invalidator=PrincipalCacheInvalidatorAdapter(
+            auth.principal_cache
+        ),
     )
     # Seal the authorization registry so the bootstrap use case runs
     # against the exact same frozen graph that the live application

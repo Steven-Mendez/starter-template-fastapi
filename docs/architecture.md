@@ -119,6 +119,7 @@ make lint-arch
 | --- | --- |
 | Authorization checks | Every feature gates its HTTP routes with the platform `require_authorization(action, resource_type, id_loader=...)` dependency, which calls `AuthorizationPort.check`. |
 | Authorization tuples | Resource-creating writes commit the resource row and the `owner` relationship tuple in the same Unit of Work via a session-scoped `AuthorizationPort`. |
+| Atomic grant/revoke | `AuthorizationPort.write_relationships` and `.delete_relationships` commit the relationship row and the `authz_version` bump for every affected `user:*` subject inside a single transaction. Callers are responsible for calling `PrincipalCacheInvalidatorPort.invalidate_user(subject_id)` for every affected user after the call returns — the session-scoped path inherits this via UoW commit hooks; the engine path requires explicit invalidation. Cache invalidation is best-effort (any exception is logged at WARNING and swallowed); the durable correctness signal is the in-transaction `authz_version` bump. |
 | User lookup from authentication | Authentication takes `UserPort` as a constructor dependency; it never imports `UserTable` or the users repository directly. |
 | Sending email | Features call `EmailPort.send(to, template_name, context)`. Authentication's password-reset and email-verify use cases write a `send_email` row to the outbox so the email enqueue commits atomically with the token write. |
 | Background work | Features register handlers with `JobHandlerRegistry` and enqueue work through `JobQueuePort`. The web app and the worker share a composition root so the same handler set is visible to both. |
@@ -134,8 +135,9 @@ make lint-arch
 - Per-feature containers are built during lifespan startup. The construction
   order is: `users` → `email` → `background_jobs` → `authentication` →
   `authorization` (which receives `users.user_authz_version_adapter`,
-  `users.user_registrar_adapter`, and `authentication.audit_adapter` as
-  outbound implementations) → `file_storage`.
+  `users.user_registrar_adapter`, `authentication.audit_adapter`, and a
+  `PrincipalCacheInvalidatorAdapter` wrapping `authentication.principal_cache`
+  as outbound implementations) → `file_storage`.
 - Every container is stored on `app.state` and removed during teardown.
 - The shared SQLModel engine is owned by the authentication container today
   (historical; it lives there because it predates the users split) and is

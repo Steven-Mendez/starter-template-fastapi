@@ -175,6 +175,60 @@ def test_no_bump_for_non_user_subjects(
     assert _authz_version(engine, user_id) == before
 
 
+def test_bump_failure_rolls_back_relationship_write(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure in ``bump_in_session`` rolls back the relationship row.
+
+    Exercises the same-transaction guarantee at the unit level: even
+    with a SQLite engine (no testcontainers), patching the bump to
+    raise must leave the relationships table untouched and the user's
+    seeded authz_version unchanged.
+    """
+    user_id = _seed_user(engine)
+    seeded_version = _authz_version(engine, user_id)
+
+    version_adapter = SQLModelUserAuthzVersionAdapter(engine)
+
+    def _boom(session: object, user_id: UUID) -> None:
+        del session, user_id
+        raise RuntimeError("forced bump failure")
+
+    monkeypatch.setattr(version_adapter, "bump_in_session", _boom)
+
+    adapter = SQLModelAuthorizationAdapter(
+        engine, make_test_registry(), version_adapter
+    )
+
+    board_id = str(uuid4())
+    with pytest.raises(RuntimeError, match="forced bump failure"):
+        adapter.write_relationships(
+            [
+                Relationship(
+                    resource_type="thing",
+                    resource_id=board_id,
+                    relation="reader",
+                    subject_type="user",
+                    subject_id=str(user_id),
+                )
+            ]
+        )
+
+    with Session(engine) as session:
+        from sqlalchemy import text
+
+        rel = session.execute(
+            text(
+                "SELECT 1 FROM relationships "
+                "WHERE resource_type = 'thing' AND resource_id = :rid "
+                "AND subject_id = :sid"
+            ),
+            {"rid": board_id, "sid": str(user_id)},
+        ).first()
+    assert rel is None
+    assert _authz_version(engine, user_id) == seeded_version
+
+
 def test_writing_to_a_missing_user_silently_skips_the_bump(
     engine: Engine, adapter: SQLModelAuthorizationAdapter
 ) -> None:

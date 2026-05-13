@@ -192,6 +192,11 @@ class _BaseAuthorizationAdapter:
     def write_relationships(self, tuples: list[Relationship]) -> None:
         """Persist tuples (idempotent) and bump authz_version for affected users.
 
+        The relationship inserts and the version bump for every affected
+        user share one ``_write_session_scope`` so they commit (or roll
+        back) atomically. If any bump raises, the surrounding session
+        rolls back and no relationship row lands either.
+
         Idempotency is achieved by an existence check before insert rather
         than relying on the unique constraint, so a duplicate tuple in a
         batch does not poison the surrounding transaction. The constraint
@@ -224,11 +229,15 @@ class _BaseAuthorizationAdapter:
                     )
                 )
             session.flush()
-        for user_id in _user_subject_ids(tuples):
-            self._user_authz_version.bump(user_id)
+            self._bump_affected_users(session, tuples)
 
     def delete_relationships(self, tuples: list[Relationship]) -> None:
-        """Remove tuples and bump authz_version for affected users."""
+        """Remove tuples and bump authz_version for affected users.
+
+        The deletes and the version bump for every affected user share
+        one ``_write_session_scope`` so they commit (or roll back)
+        atomically.
+        """
         if not tuples:
             return
         with self._write_session_scope() as session:
@@ -255,8 +264,20 @@ class _BaseAuthorizationAdapter:
                         ),
                     )
                 )
+            self._bump_affected_users(session, tuples)
+
+    def _bump_affected_users(
+        self, session: Session, tuples: list[Relationship]
+    ) -> None:
+        """Bump ``authz_version`` once per affected ``user:*`` subject.
+
+        Multiple tuples in the same call may touch the same subject;
+        ``_user_subject_ids`` dedupes them so the bump is exactly-once
+        per user per transaction. The bump runs inside the caller's
+        session so it shares the surrounding commit/rollback.
+        """
         for user_id in _user_subject_ids(tuples):
-            self._user_authz_version.bump(user_id)
+            self._user_authz_version.bump_in_session(session, user_id)
 
     # ── Internals ─────────────────────────────────────────────────────────────
 
