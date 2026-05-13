@@ -30,4 +30,4 @@ class OutboxMessage:
     locked_at: datetime | None
     locked_by: str | None
     created_at: datetime
-    dispatched_at: datetime | None
+    delivered_at: datetime | None

@@ -80,18 +80,51 @@ the wiring layer.
 
 ## Consumer contract
 
-Consumers are unchanged from today: they are handlers registered
-against `JobHandlerRegistry`, called from `JobQueuePort.enqueue`.
-The relay simply re-emits the outbox payload as if a normal producer
-had enqueued it.
+Consumers are handlers registered against `JobHandlerRegistry`, called
+from `JobQueuePort.enqueue`. The relay re-emits the outbox payload as
+if a normal producer had enqueued it, plus one reserved key the relay
+injects on every dispatch (see "Reserved payload keys" below).
 
-**Handlers MUST be idempotent.** The relay is at-least-once: a row
-can be dispatched more than once if a worker crashes between
-`JobQueuePort.enqueue` and the row's `mark_dispatched` write. The
-typical handler — "load this user, send this email" — is naturally
-idempotent if the underlying side effect tolerates re-execution
-(email providers are normally fine with this because they
-deduplicate on `Message-ID`).
+**Handlers MUST be idempotent on `__outbox_message_id`.** The relay
+is at-least-once: a row can be dispatched more than once if a worker
+crashes between `JobQueuePort.enqueue` and the per-row
+`mark_delivered` commit. The starter ships a small dedup table —
+`processed_outbox_messages` — keyed on `OutboxMessage.id`. Handlers
+insert into that table inside their own transaction; a duplicate-PK
+collision means the message was already processed and the handler
+MUST short-circuit to `Ok`. The bundled `send_email` handler does
+this for you when you wire it through the outbox composition
+(`build_handler_dedupe(engine)`).
+
+### Row-state machine
+
+Each row in `outbox_messages` moves through the strict state machine:
+
+```
+pending --(enqueue + commit)--> delivered
+pending --(attempts >= max)----> failed
+```
+
+The success-state column is `delivered_at`; the failure-state column
+is `failed_at`. The relay flips a row to `delivered` only after
+`JobQueuePort.enqueue` returns successfully and the row's
+transaction commits — a crash between the enqueue and the commit
+leaves the row `pending` for the next tick to re-claim (which is
+safe because handlers dedup on `__outbox_message_id`).
+
+### Reserved payload keys
+
+The relay owns the `__*` prefix inside the job payload. Non-reserved
+keys are the producer's original payload; the relay never modifies
+them. Handlers that re-enqueue a payload (manual replay, redrive
+tooling) MUST preserve every `__*` key they received — including
+keys they do not understand — so future cluster changes can add
+reserved keys without breaking older deployments.
+
+| Key | Type / shape | Purpose |
+|---|---|---|
+| `__outbox_message_id` | `str` (UUID) | Handler-side dedup token |
+| `__trace` | `{"traceparent": str, "tracestate"?: str}` (W3C) | Trace context propagation (sibling change `propagate-trace-context-through-jobs`) |
 
 ## How the relay works
 
@@ -101,16 +134,25 @@ tick:
 
 1. Opens a short transaction, runs
    `SELECT ... FROM outbox_messages WHERE status='pending' AND
-   available_at <= now() ORDER BY available_at LIMIT :batch
+   available_at <= now() ORDER BY available_at, id LIMIT :batch
    FOR UPDATE SKIP LOCKED`, and stamps `locked_at` / `locked_by`
    on each row. The lock window is bounded by the size of the
-   batch (default 100), not by the dispatch duration.
-2. For each claimed row, calls `JobQueuePort.enqueue(name, payload)`.
-3. On success, marks the row `dispatched` and records `dispatched_at`.
-4. On failure, increments `attempts`, records `last_error`,
-   advances `available_at` by 30 s, and leaves the row `pending`.
-   Once `attempts >= APP_OUTBOX_MAX_ATTEMPTS` (default 8) the row
-   flips to `failed` and stops competing for relay budget.
+   batch (default 100), not by the dispatch duration. The
+   `(available_at, id)` partial index supports the claim path; the
+   `id` tiebreaker gives SKIP LOCKED a deterministic scan order.
+2. For each claimed row, opens a per-row writer transaction,
+   injects `__outbox_message_id` into the payload, calls
+   `JobQueuePort.enqueue(name, payload)`, and marks the row
+   `delivered` in the same transaction. A crash between the enqueue
+   and the commit leaves the row `pending` for the next tick to
+   re-claim (handlers dedup on `__outbox_message_id`).
+3. On failure, increments `attempts`, records `last_error`, and
+   advances `available_at` with exponential backoff:
+   `min(retry_base * 2^(attempts-1), retry_max)`. Defaults are
+   `retry_base=30s` and `retry_max=900s`. Once
+   `attempts >= APP_OUTBOX_MAX_ATTEMPTS` (default 8) the row flips
+   to `failed`, records `failed_at`, and stops competing for relay
+   budget.
 
 `FOR UPDATE SKIP LOCKED` is the standard PostgreSQL idiom that lets
 multiple worker replicas share one outbox table with zero
@@ -126,6 +168,8 @@ claimed yet.
 | `APP_OUTBOX_CLAIM_BATCH_SIZE` | `100` | Max rows per claim transaction. |
 | `APP_OUTBOX_MAX_ATTEMPTS` | `8` | Per-row retry budget before flipping to `failed`. |
 | `APP_OUTBOX_WORKER_ID` | `<hostname>:<pid>` | Stamped onto `locked_by` for operator visibility. |
+| `APP_OUTBOX_RETRY_BASE_SECONDS` | `30.0` | Base delay for the exponential retry backoff. |
+| `APP_OUTBOX_RETRY_MAX_SECONDS` | `900.0` | Cap on the retry backoff. |
 
 The web process does NOT need any of these set — the request-path
 producers always write to the outbox regardless. The relay only
@@ -166,12 +210,18 @@ into an outbox-backed flow:
   budget. To re-arm them, run `make outbox-retry-failed` (or
   manually: `UPDATE outbox_messages SET status='pending',
   attempts=0, available_at=now() WHERE status='failed';`).
-- **Retention**: Dispatched rows accumulate. The starter ships no
+- **Retention**: Delivered rows accumulate. The starter ships no
   GC job; run a periodic cleanup if your write volume warrants:
   ```sql
   DELETE FROM outbox_messages
-  WHERE status = 'dispatched'
-    AND dispatched_at < now() - interval '7 days';
+  WHERE status = 'delivered'
+    AND delivered_at < now() - interval '7 days';
+  ```
+  The handler-side `processed_outbox_messages` table grows in
+  lockstep; trim it on the same cadence:
+  ```sql
+  DELETE FROM processed_outbox_messages
+  WHERE processed_at < now() - interval '7 days';
   ```
 
 ## Not in scope
@@ -186,4 +236,4 @@ into an outbox-backed flow:
   `JobQueuePort`. Swap the queue's adapter if you need a
   different transport.
 - Exactly-once delivery. The relay is at-least-once; idempotent
-  consumers are the user's responsibility.
+  consumers (dedup on `__outbox_message_id`) are the contract.

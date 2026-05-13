@@ -26,7 +26,7 @@ _CLAIM_QUERY = """
 SELECT id
 FROM   outbox_messages
 WHERE  status = 'pending' AND available_at <= now()
-ORDER  BY available_at
+ORDER  BY available_at, id
 LIMIT  :limit
 FOR    UPDATE SKIP LOCKED
 """

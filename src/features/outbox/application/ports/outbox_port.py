@@ -36,5 +36,16 @@ class OutboxPort(Protocol):
         database (whenever the relay next runs the claim query). When
         non-``None``, the value MUST be timezone-aware; the SQLModel
         adapter rejects naive datetimes.
+
+        The relay reserves the ``__*`` prefix inside the payload it
+        delivers to the job queue: when it dispatches this row, it
+        injects ``__outbox_message_id`` (the row's UUID as a string)
+        before calling ``JobQueuePort.enqueue``. Outbox-fed job
+        handlers MUST be idempotent on that key — the relay is
+        at-least-once, so a worker crash between enqueue and the
+        terminal-state mark can cause a second delivery. Producers
+        SHOULD NOT write ``__*`` keys themselves; any such keys the
+        producer does write are preserved verbatim and not overwritten
+        by the relay.
         """
         ...

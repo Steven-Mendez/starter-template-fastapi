@@ -36,6 +36,7 @@ from features.email.composition.container import build_email_container
 from features.email.composition.jobs import register_send_email_handler
 from features.email.composition.settings import EmailSettings
 from features.outbox.composition.container import build_outbox_container
+from features.outbox.composition.handler_dedupe import build_handler_dedupe
 from features.outbox.composition.settings import OutboxSettings
 from features.outbox.composition.worker import build_relay_cron_jobs
 
@@ -102,8 +103,6 @@ def build_worker_settings() -> type:
         socket_connect_timeout=2.0,
     )
     jobs = build_jobs_container(jobs_settings, redis_client=redis_client)
-    register_send_email_handler(jobs.registry, email.port)
-    jobs.registry.seal()
 
     # Outbox relay: builds its own short-lived sessions against the
     # shared SQLModel engine, so we construct an engine pinned to the
@@ -121,6 +120,15 @@ def build_worker_settings() -> type:
         engine=engine,
         job_queue=jobs.port,
     )
+    # Register the send_email handler with a dedupe callable backed by
+    # the outbox feature's ``processed_outbox_messages`` table — the
+    # relay's at-least-once redelivery becomes effective once-per-id.
+    register_send_email_handler(
+        jobs.registry,
+        email.port,
+        dedupe=build_handler_dedupe(engine),
+    )
+    jobs.registry.seal()
     cron_jobs = build_relay_cron_jobs(outbox)
 
     functions = build_arq_functions(

@@ -3,7 +3,7 @@
 This adapter belongs to the relay running inside the worker process —
 it owns its own short transactions, not the producer's. ``claim_batch``
 runs the canonical Postgres ``FOR UPDATE SKIP LOCKED`` claim query in
-one transaction and the per-row state changes (``mark_dispatched``,
+one transaction and the per-row state changes (``mark_delivered``,
 ``mark_retry``, ``mark_failed``) in independent commits so a slow
 ``JobQueuePort.enqueue`` does not hold the lock window open longer than
 necessary.
@@ -15,11 +15,10 @@ require async functions for the inner work.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, cast
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -68,10 +67,10 @@ class SQLModelOutboxRepository:
                     """
                     SELECT id, job_name, payload, available_at, status,
                            attempts, last_error, locked_at, locked_by,
-                           created_at, dispatched_at
+                           created_at, delivered_at
                     FROM outbox_messages
                     WHERE status = 'pending' AND available_at <= :now
-                    ORDER BY available_at
+                    ORDER BY available_at, id
                     LIMIT :batch_size
                     FOR UPDATE SKIP LOCKED
                     """
@@ -103,27 +102,24 @@ class SQLModelOutboxRepository:
                 locked_at=now,
                 locked_by=worker_id,
                 created_at=row.created_at,
-                dispatched_at=row.dispatched_at,
+                delivered_at=row.delivered_at,
             )
             for row in rows
         ]
 
-    def mark_dispatched(
+    def mark_delivered(
         self,
-        ids: Iterable[UUID],
+        id: UUID,
         *,
-        dispatched_at: datetime,
+        delivered_at: datetime,
     ) -> None:
-        id_list = list(ids)
-        if not id_list:
-            return
         with self._write_session() as session:
             session.execute(
                 sa.update(OutboxMessageTable)
-                .where(cast(Any, OutboxMessageTable.id).in_(id_list))
+                .where(_id_column() == id)
                 .values(
-                    status="dispatched",
-                    dispatched_at=dispatched_at,
+                    status="delivered",
+                    delivered_at=delivered_at,
                     locked_at=None,
                     locked_by=None,
                 )
@@ -140,7 +136,7 @@ class SQLModelOutboxRepository:
         with self._write_session() as session:
             session.execute(
                 sa.update(OutboxMessageTable)
-                .where(cast(Any, OutboxMessageTable.id == id))
+                .where(_id_column() == id)
                 .values(
                     attempts=attempts,
                     last_error=last_error,
@@ -156,15 +152,17 @@ class SQLModelOutboxRepository:
         *,
         attempts: int,
         last_error: str,
+        failed_at: datetime,
     ) -> None:
         with self._write_session() as session:
             session.execute(
                 sa.update(OutboxMessageTable)
-                .where(cast(Any, OutboxMessageTable.id == id))
+                .where(_id_column() == id)
                 .values(
                     status="failed",
                     attempts=attempts,
                     last_error=last_error,
+                    failed_at=failed_at,
                     locked_at=None,
                     locked_by=None,
                 )
@@ -172,6 +170,20 @@ class SQLModelOutboxRepository:
 
 
 def _coerce_status(value: str) -> OutboxStatus:
-    if value in ("pending", "dispatched", "failed"):
+    if value in ("pending", "delivered", "failed"):
         return value  # type: ignore[return-value]
     raise ValueError(f"Unknown outbox status: {value!r}")
+
+
+def _id_column() -> sa.Column[UUID]:
+    """Return the table's ``id`` column for a typed ``WHERE`` expression.
+
+    SQLModel's declarative ``Field`` shape makes ``OutboxMessageTable.id``
+    look to mypy like an ``UUID`` value rather than the SQLAlchemy
+    column it actually is, so ``OutboxMessageTable.id == id`` types as
+    ``bool`` instead of ``ColumnElement[bool]``. Going through
+    ``__table__.c`` is the cleanest, type-correct path; the previous
+    ``cast(Any, ...)`` workaround stripped real type errors along with
+    the noise.
+    """
+    return OutboxMessageTable.__table__.c.id  # type: ignore[attr-defined,no-any-return]

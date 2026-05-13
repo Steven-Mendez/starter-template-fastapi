@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import timedelta
 
 from sqlalchemy.engine import Engine
 
@@ -65,6 +66,8 @@ def build_outbox_container(
         _batch_size=settings.claim_batch_size,
         _max_attempts=settings.max_attempts,
         _worker_id=settings.worker_id,
+        _retry_base=timedelta(seconds=settings.retry_base_seconds),
+        _retry_max=timedelta(seconds=settings.retry_max_seconds),
     )
 
     def _shutdown() -> None:

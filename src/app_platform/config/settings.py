@@ -183,6 +183,12 @@ class AppSettings(BaseSettings):
     outbox_relay_interval_seconds: float = 5.0
     outbox_claim_batch_size: int = 100
     outbox_max_attempts: int = 8
+    # Retry backoff for the relay's per-row failures. The next
+    # ``available_at`` is ``now + min(retry_base * 2^(attempts-1), retry_max)``
+    # — capped so a single poison row does not burn its entire
+    # ``max_attempts`` budget in lockstep 30s ticks.
+    outbox_retry_base_seconds: float = 30.0
+    outbox_retry_max_seconds: float = 900.0
     # Stamped onto ``outbox_messages.locked_by`` so operators can see which
     # worker holds a row mid-flight. Defaults to ``hostname:pid`` at
     # OutboxSettings construction when unset here.

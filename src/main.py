@@ -50,6 +50,7 @@ from features.file_storage.composition.container import (
 from features.file_storage.composition.settings import StorageSettings
 from features.file_storage.composition.wiring import attach_file_storage_container
 from features.outbox.composition.container import build_outbox_container
+from features.outbox.composition.handler_dedupe import build_handler_dedupe
 from features.outbox.composition.settings import OutboxSettings
 from features.outbox.composition.wiring import attach_outbox_container
 from features.users.composition.container import (
@@ -159,8 +160,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 queue_name=app_settings.jobs_queue_name,
             )
         )
-        register_send_email_handler(jobs.registry, email.port)
-        jobs.registry.seal()
         # Outbox sits between jobs and auth: it depends on the engine and
         # the JobQueuePort, and authentication's request-path consumers
         # consume the outbox unit-of-work port so their writes commit
@@ -170,6 +169,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             engine=repository.engine,
             job_queue=jobs.port,
         )
+        # Register send_email with a dedupe callable backed by the outbox
+        # feature's ``processed_outbox_messages`` table; safe even though
+        # the web process never runs the relay — the in-process queue used
+        # in dev/test still reaches the handler.
+        register_send_email_handler(
+            jobs.registry,
+            email.port,
+            dedupe=build_handler_dedupe(repository.engine),
+        )
+        jobs.registry.seal()
         auth = build_auth_container(
             settings=app_settings,
             users=users.user_repository,

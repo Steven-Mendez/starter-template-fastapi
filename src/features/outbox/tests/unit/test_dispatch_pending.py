@@ -8,7 +8,6 @@ live in the integration suite under ``tests/integration/``.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -30,11 +29,12 @@ def _msg(
     job_name: str = "send_email",
     attempts: int = 0,
     available_at: datetime | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> OutboxMessage:
     return OutboxMessage(
         id=uuid4(),
         job_name=job_name,
-        payload={"to": "x@example.com"},
+        payload=dict(payload) if payload is not None else {"to": "x@example.com"},
         available_at=available_at or datetime.now(UTC),
         status="pending",
         attempts=attempts,
@@ -42,16 +42,16 @@ def _msg(
         locked_at=None,
         locked_by=None,
         created_at=datetime.now(UTC),
-        dispatched_at=None,
+        delivered_at=None,
     )
 
 
 @dataclass(slots=True)
 class _FakeRepository:
     ready: list[OutboxMessage] = field(default_factory=list)
-    dispatched_calls: list[tuple[list[UUID], datetime]] = field(default_factory=list)
+    delivered_calls: list[tuple[UUID, datetime]] = field(default_factory=list)
     retry_calls: list[tuple[UUID, int, str, datetime]] = field(default_factory=list)
-    failed_calls: list[tuple[UUID, int, str]] = field(default_factory=list)
+    failed_calls: list[tuple[UUID, int, str, datetime]] = field(default_factory=list)
 
     def claim_batch(
         self,
@@ -64,8 +64,8 @@ class _FakeRepository:
         self.ready = self.ready[batch_size:]
         return batch
 
-    def mark_dispatched(self, ids: Iterable[UUID], *, dispatched_at: datetime) -> None:
-        self.dispatched_calls.append((list(ids), dispatched_at))
+    def mark_delivered(self, id: UUID, *, delivered_at: datetime) -> None:
+        self.delivered_calls.append((id, delivered_at))
 
     def mark_retry(
         self,
@@ -77,8 +77,15 @@ class _FakeRepository:
     ) -> None:
         self.retry_calls.append((id, attempts, last_error, available_at))
 
-    def mark_failed(self, id: UUID, *, attempts: int, last_error: str) -> None:
-        self.failed_calls.append((id, attempts, last_error))
+    def mark_failed(
+        self,
+        id: UUID,
+        *,
+        attempts: int,
+        last_error: str,
+        failed_at: datetime,
+    ) -> None:
+        self.failed_calls.append((id, attempts, last_error, failed_at))
 
 
 @dataclass(slots=True)
@@ -97,50 +104,90 @@ class _StubJobQueue:
         raise NotImplementedError
 
 
-def test_empty_claim_returns_zero_report() -> None:
-    repo = _FakeRepository()
-    use_case = DispatchPending(
-        _repository=repo,
-        _job_queue=_StubJobQueue(),
-        _batch_size=10,
-        _max_attempts=5,
-        _worker_id="test",
-    )
-    report = use_case.execute()
-    assert report == RelayTickReport(claimed=0, dispatched=0, retried=0, failed=0)
-    assert repo.dispatched_calls == []
-
-
-def test_successful_dispatch_marks_dispatched_in_one_call() -> None:
-    repo = _FakeRepository(ready=[_msg(), _msg(), _msg()])
-    queue = _StubJobQueue()
-    use_case = DispatchPending(
+def _make_use_case(
+    repo: _FakeRepository,
+    queue: _StubJobQueue,
+    *,
+    max_attempts: int = 5,
+    retry_base: timedelta = timedelta(seconds=30),
+    retry_max: timedelta = timedelta(seconds=900),
+) -> DispatchPending:
+    return DispatchPending(
         _repository=repo,
         _job_queue=queue,
         _batch_size=10,
-        _max_attempts=5,
+        _max_attempts=max_attempts,
         _worker_id="test",
+        _retry_base=retry_base,
+        _retry_max=retry_max,
     )
+
+
+def test_empty_claim_returns_zero_report() -> None:
+    repo = _FakeRepository()
+    use_case = _make_use_case(repo, _StubJobQueue())
+    report = use_case.execute()
+    assert report == RelayTickReport(claimed=0, dispatched=0, retried=0, failed=0)
+    assert repo.delivered_calls == []
+
+
+def test_successful_dispatch_marks_each_row_delivered_inline() -> None:
+    repo = _FakeRepository(ready=[_msg(), _msg(), _msg()])
+    queue = _StubJobQueue()
+    use_case = _make_use_case(repo, queue)
     report = use_case.execute()
     assert report.claimed == 3
     assert report.dispatched == 3
     assert report.retried == 0
     assert report.failed == 0
     assert len(queue.enqueued) == 3
-    assert len(repo.dispatched_calls) == 1
-    assert len(repo.dispatched_calls[0][0]) == 3
+    # Per-row mark: one mark_delivered call per row.
+    assert len(repo.delivered_calls) == 3
 
 
-def test_transient_failure_schedules_retry() -> None:
+def test_dispatched_payload_carries_outbox_message_id() -> None:
+    msg = _msg(payload={"to": "alice@example.com"})
+    repo = _FakeRepository(ready=[msg])
+    queue = _StubJobQueue()
+    use_case = _make_use_case(repo, queue)
+    use_case.execute()
+    name, payload = queue.enqueued[0]
+    assert name == msg.job_name
+    assert payload["to"] == "alice@example.com"
+    assert payload["__outbox_message_id"] == str(msg.id)
+
+
+def test_dispatched_payload_preserves_unknown_reserved_keys() -> None:
+    # A sibling change may add a reserved key on the producer side; the
+    # relay must not strip it. The reserved-key contract is forward-
+    # compatible: older relays carry through keys they do not understand.
+    msg = _msg(payload={"to": "a@example.com", "__trace": {"traceparent": "abc"}})
+    repo = _FakeRepository(ready=[msg])
+    queue = _StubJobQueue()
+    use_case = _make_use_case(repo, queue)
+    use_case.execute()
+    _, payload = queue.enqueued[0]
+    assert payload["__trace"] == {"traceparent": "abc"}
+    assert payload["__outbox_message_id"] == str(msg.id)
+
+
+def test_existing_outbox_message_id_in_payload_is_not_overwritten() -> None:
+    # If a producer somehow already wrote ``__outbox_message_id`` (e.g.
+    # manual re-enqueue via tooling), the relay preserves it verbatim.
+    pre_existing = "00000000-0000-0000-0000-000000000001"
+    msg = _msg(payload={"to": "a@example.com", "__outbox_message_id": pre_existing})
+    repo = _FakeRepository(ready=[msg])
+    queue = _StubJobQueue()
+    use_case = _make_use_case(repo, queue)
+    use_case.execute()
+    _, payload = queue.enqueued[0]
+    assert payload["__outbox_message_id"] == pre_existing
+
+
+def test_transient_failure_schedules_retry_with_base_backoff() -> None:
     repo = _FakeRepository(ready=[_msg(job_name="boom")])
     queue = _StubJobQueue(raise_on={"boom"})
-    use_case = DispatchPending(
-        _repository=repo,
-        _job_queue=queue,
-        _batch_size=10,
-        _max_attempts=5,
-        _worker_id="test",
-    )
+    use_case = _make_use_case(repo, queue, retry_base=timedelta(seconds=30))
     report = use_case.execute()
     assert report.retried == 1
     assert report.failed == 0
@@ -148,24 +195,68 @@ def test_transient_failure_schedules_retry() -> None:
     _id, attempts, last_error, available_at = repo.retry_calls[0]
     assert attempts == 1
     assert "boom" in last_error
+    # First retry: delay == retry_base.
     assert available_at > datetime.now(UTC) + timedelta(seconds=20)
+    assert available_at < datetime.now(UTC) + timedelta(seconds=40)
 
 
-def test_exhausting_attempts_flips_to_failed() -> None:
+def test_failure_on_one_row_does_not_block_subsequent_successes() -> None:
+    # Ordering: ok, bad, ok2. The bad row is rescheduled; the surrounding
+    # rows are marked delivered in their own per-row transactions.
+    rows = [_msg(job_name="ok"), _msg(job_name="bad"), _msg(job_name="ok2")]
+    repo = _FakeRepository(ready=rows)
+    queue = _StubJobQueue(raise_on={"bad"})
+    use_case = _make_use_case(repo, queue)
+    report = use_case.execute()
+    assert report.dispatched == 2
+    assert report.retried == 1
+    delivered_ids = {row_id for row_id, _ in repo.delivered_calls}
+    assert delivered_ids == {rows[0].id, rows[2].id}
+    assert rows[1].id not in delivered_ids
+    assert len(repo.retry_calls) == 1
+    assert repo.retry_calls[0][0] == rows[1].id
+
+
+def test_exhausting_attempts_flips_to_failed_with_failed_at() -> None:
     repo = _FakeRepository(ready=[_msg(job_name="boom", attempts=4)])
     queue = _StubJobQueue(raise_on={"boom"})
-    use_case = DispatchPending(
-        _repository=repo,
-        _job_queue=queue,
-        _batch_size=10,
-        _max_attempts=5,
-        _worker_id="test",
-    )
+    use_case = _make_use_case(repo, queue, max_attempts=5)
     report = use_case.execute()
     assert report.retried == 0
     assert report.failed == 1
     assert len(repo.failed_calls) == 1
-    assert repo.failed_calls[0][1] == 5  # incremented before the threshold check
+    _id, attempts, _err, failed_at = repo.failed_calls[0]
+    # Incremented to 5 (== max) before the threshold check.
+    assert attempts == 5
+    assert failed_at <= datetime.now(UTC)
+
+
+def test_retry_delay_is_exponential_and_capped() -> None:
+    base = timedelta(seconds=30)
+    cap = timedelta(seconds=900)
+    deltas: list[timedelta] = []
+    for attempts_so_far in range(7):  # next_attempts will be 1..7
+        msg = _msg(job_name="boom", attempts=attempts_so_far)
+        repo = _FakeRepository(ready=[msg])
+        queue = _StubJobQueue(raise_on={"boom"})
+        use_case = _make_use_case(
+            repo,
+            queue,
+            max_attempts=999,  # never trip the failed branch
+            retry_base=base,
+            retry_max=cap,
+        )
+        use_case.execute()
+        _id, _attempts, _err, available_at = repo.retry_calls[0]
+        # Approximate: tick happens "now"; the recorded available_at is
+        # ``now + delay`` for the delay computed against ``next_attempts``.
+        deltas.append(available_at - datetime.now(UTC))
+    # Expected delays (next_attempts = 1..7): 30, 60, 120, 240, 480, 900, 900.
+    expected_seconds = [30, 60, 120, 240, 480, 900, 900]
+    for actual, expected in zip(deltas, expected_seconds, strict=True):
+        assert abs(actual.total_seconds() - expected) < 2.0, (
+            f"expected ~{expected}s, got {actual.total_seconds()}s"
+        )
 
 
 def test_mixed_batch_reports_each_outcome() -> None:
@@ -178,13 +269,7 @@ def test_mixed_batch_reports_each_outcome() -> None:
         ]
     )
     queue = _StubJobQueue(raise_on={"bad", "terminal"})
-    use_case = DispatchPending(
-        _repository=repo,
-        _job_queue=queue,
-        _batch_size=10,
-        _max_attempts=5,
-        _worker_id="test",
-    )
+    use_case = _make_use_case(repo, queue, max_attempts=5)
     report = use_case.execute()
     assert report.claimed == 4
     assert report.dispatched == 2

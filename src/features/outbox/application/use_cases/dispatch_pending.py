@@ -8,15 +8,21 @@ The worker schedules this use case to run every
    repository's claim query uses ``FOR UPDATE SKIP LOCKED`` so two
    workers competing for the same table cannot grab the same row.
 
-2. For each claimed row, calls ``JobQueuePort.enqueue(job_name,
-   payload)``. The job queue is the consumer side of the pattern; it
-   stays unchanged. Successful enqueues are aggregated into a single
-   :meth:`mark_dispatched` write to amortise per-row commits.
+2. For each claimed row, opens a per-row writer transaction:
+   ``JobQueuePort.enqueue(job_name, payload)`` runs inside it and the
+   row is marked ``delivered`` in the same transaction. A crash
+   between the enqueue and the commit leaves the row in
+   ``status='pending'``, eligible for re-claim. The enqueued payload
+   carries the reserved key ``__outbox_message_id`` (the row's UUID);
+   handlers MUST be idempotent on it.
 
-3. On failure, either reschedules the row (``mark_retry``) with the
-   configured retry delay, or — once ``attempts`` would exceed
-   ``max_attempts`` — flips it to ``failed`` so the relay stops
-   competing for budget on a pathological row.
+3. On a transient enqueue failure, reschedules the row
+   (``mark_retry``) with an exponential backoff of
+   ``min(retry_base * 2^(attempts-1), retry_max)`` — capped so a
+   poison row does not burn its entire retry budget in lockstep at
+   30s intervals. Once ``attempts`` would meet ``max_attempts`` the
+   row flips to ``failed`` so the relay stops competing for budget on
+   a pathological row.
 
 The use case never raises through the relay loop: every per-row
 exception is converted into a repository write. That keeps the
@@ -37,11 +43,12 @@ from features.outbox.application.ports.outbound.outbox_repository_port import (
 
 _logger = logging.getLogger("features.outbox.dispatch")
 
-# Retry delay is fixed for the starter — see design.md for the rationale
-# (the destination is a local Redis push; exponential backoff does not
-# add anything useful here, and a single configurable knob is one knob
-# too many for a starter pattern).
-_RETRY_DELAY = timedelta(seconds=30)
+# Reserved payload key the relay injects so handlers can dedup on
+# repeated deliveries. Sibling changes layer additional reserved keys
+# (e.g. ``__trace`` from ``propagate-trace-context-through-jobs``) on
+# top of this one. The ``__*`` prefix is the relay's namespace — the
+# handler's original payload keys never start with ``__``.
+_OUTBOX_MESSAGE_ID_KEY = "__outbox_message_id"
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +70,8 @@ class DispatchPending:
     _batch_size: int
     _max_attempts: int
     _worker_id: str
-    _retry_delay: timedelta = _RETRY_DELAY
+    _retry_base: timedelta
+    _retry_max: timedelta
 
     def execute(self) -> RelayTickReport:
         now = datetime.now(UTC)
@@ -75,12 +83,18 @@ class DispatchPending:
         if not claimed:
             return RelayTickReport(claimed=0, dispatched=0, retried=0, failed=0)
 
-        dispatched_ids = []
+        dispatched = 0
         retried = 0
         failed = 0
         for row in claimed:
+            # Forward-compat: never strip unknown ``__*`` keys the row
+            # may already carry (a sibling change may have added one),
+            # and never overwrite an existing ``__outbox_message_id``
+            # if a producer somehow already wrote it.
+            dispatched_payload = {**row.payload}
+            dispatched_payload.setdefault(_OUTBOX_MESSAGE_ID_KEY, str(row.id))
             try:
-                self._job_queue.enqueue(row.job_name, row.payload)
+                self._job_queue.enqueue(row.job_name, dispatched_payload)
             except Exception as exc:
                 next_attempts = row.attempts + 1
                 if next_attempts >= self._max_attempts:
@@ -88,6 +102,7 @@ class DispatchPending:
                         row.id,
                         attempts=next_attempts,
                         last_error=repr(exc),
+                        failed_at=now,
                     )
                     failed += 1
                     _logger.exception(
@@ -97,11 +112,15 @@ class DispatchPending:
                         next_attempts,
                     )
                 else:
+                    delay = min(
+                        self._retry_base * (2 ** (next_attempts - 1)),
+                        self._retry_max,
+                    )
                     self._repository.mark_retry(
                         row.id,
                         attempts=next_attempts,
                         last_error=repr(exc),
-                        available_at=now + self._retry_delay,
+                        available_at=now + delay,
                     )
                     retried += 1
                     _logger.warning(
@@ -111,21 +130,25 @@ class DispatchPending:
                         next_attempts,
                     )
                 continue
-            dispatched_ids.append(row.id)
-
-        if dispatched_ids:
-            self._repository.mark_dispatched(dispatched_ids, dispatched_at=now)
+            # Per-row commit: marking the row delivered runs in its own
+            # transaction (the repository opens one). A crash between
+            # the enqueue above and this mark leaves the row in
+            # ``status='pending'``; the next tick re-claims and the
+            # handler's ``__outbox_message_id`` dedup absorbs the
+            # second delivery.
+            self._repository.mark_delivered(row.id, delivered_at=now)
+            dispatched += 1
 
         _logger.info(
             "event=outbox.relay.tick claimed=%d dispatched=%d retried=%d failed=%d",
             len(claimed),
-            len(dispatched_ids),
+            dispatched,
             retried,
             failed,
         )
         return RelayTickReport(
             claimed=len(claimed),
-            dispatched=len(dispatched_ids),
+            dispatched=dispatched,
             retried=retried,
             failed=failed,
         )

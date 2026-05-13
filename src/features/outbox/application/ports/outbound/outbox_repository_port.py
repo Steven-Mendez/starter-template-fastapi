@@ -11,14 +11,16 @@ Two parts:
   mid-flight.
 
 - The mark methods commit the outcome of a dispatch attempt:
-  :meth:`mark_dispatched` for success, :meth:`mark_retry` for a
+  :meth:`mark_delivered` for success, :meth:`mark_retry` for a
   transient failure (increments attempts, advances ``available_at``),
-  :meth:`mark_failed` once the per-row retry budget is exhausted.
+  :meth:`mark_failed` once the per-row retry budget is exhausted. The
+  dispatch use case calls :meth:`mark_delivered` per row inside the
+  same transaction as the enqueue so a crash between enqueue and
+  commit leaves the row visible for re-claim.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
@@ -45,13 +47,19 @@ class OutboxRepositoryPort(Protocol):
         """
         ...
 
-    def mark_dispatched(
+    def mark_delivered(
         self,
-        ids: Iterable[UUID],
+        id: UUID,
         *,
-        dispatched_at: datetime,
+        delivered_at: datetime,
     ) -> None:
-        """Mark a batch of rows ``status='dispatched'``."""
+        """Mark a single row ``status='delivered'``.
+
+        The relay calls this inside the same transaction it used to
+        enqueue the row to ``JobQueuePort`` (per-row commit). A crash
+        between the enqueue and the commit MUST leave the row in
+        ``status='pending'`` so the next tick can re-claim it.
+        """
         ...
 
     def mark_retry(
@@ -71,6 +79,7 @@ class OutboxRepositoryPort(Protocol):
         *,
         attempts: int,
         last_error: str,
+        failed_at: datetime,
     ) -> None:
         """Mark a row ``status='failed'`` after exhausting retries."""
         ...

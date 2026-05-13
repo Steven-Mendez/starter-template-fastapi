@@ -21,5 +21,5 @@ class OutboxDispatchError(OutboxError):
     The dispatch use case itself records per-row outcomes back to the
     repository (retry / failed); this exception is only raised when
     the relay's own bookkeeping fails (e.g. the DB write to mark a
-    row as dispatched raised).
+    row as delivered raised).
     """

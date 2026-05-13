@@ -3,7 +3,8 @@
 The relay flips a row through these states in a strict order:
 
 - ``pending`` — written by a producer transaction, awaiting dispatch.
-- ``dispatched`` — successfully handed off to ``JobQueuePort``.
+- ``delivered`` — successfully handed off to ``JobQueuePort`` and the
+  per-row transaction committed.
 - ``failed`` — permanently abandoned after exhausting the retry budget.
 
 Operators inspect the table by status. Failed rows surface to a human
@@ -15,4 +16,4 @@ from __future__ import annotations
 
 from typing import Literal
 
-OutboxStatus = Literal["pending", "dispatched", "failed"]
+OutboxStatus = Literal["pending", "delivered", "failed"]

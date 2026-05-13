@@ -282,3 +282,5 @@ See `docs/operations.md` for the full env-var reference.
 | `APP_OUTBOX_RELAY_INTERVAL_SECONDS` | `5.0` | Cron cadence of the relay (snapped to nearest divisor of 60) |
 | `APP_OUTBOX_CLAIM_BATCH_SIZE` | `100` | Max rows per claim transaction |
 | `APP_OUTBOX_MAX_ATTEMPTS` | `8` | Per-row retry budget before flipping to `failed` |
+| `APP_OUTBOX_RETRY_BASE_SECONDS` | `30.0` | Base delay for the relay's exponential retry backoff (`min(base * 2^(attempts-1), max)`) |
+| `APP_OUTBOX_RETRY_MAX_SECONDS` | `900.0` | Cap on the retry backoff so a poison row does not stall the queue indefinitely |

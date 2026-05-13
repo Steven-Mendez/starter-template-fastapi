@@ -18,8 +18,11 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlmodel import create_engine
 
-# Import the table side-effect so SQLModel.metadata knows about it.
-from features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
+# Import the table side-effects so SQLModel.metadata knows about them.
+from features.outbox.adapters.outbound.sqlmodel.models import (
+    OutboxMessageTable,
+    ProcessedOutboxMessageTable,
+)
 
 
 def _load_postgres_container() -> Any:
@@ -73,11 +76,17 @@ def postgres_outbox_engine(_outbox_postgres_url: str) -> Iterator[Engine]:
         conn.execute(text("DROP SCHEMA public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
     OutboxMessageTable.__table__.create(engine)  # type: ignore[attr-defined]
+    ProcessedOutboxMessageTable.__table__.create(engine)  # type: ignore[attr-defined]
     with engine.begin() as conn:
+        # Drop the auto-created index (without the ``id`` tiebreaker)
+        # and recreate with the production shape so integration tests
+        # exercise the same index the relay relies on.
+        conn.execute(text("DROP INDEX IF EXISTS ix_outbox_pending"))
         conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_outbox_pending "
-                "ON outbox_messages (available_at) WHERE status = 'pending'"
+                "ON outbox_messages (available_at, id) "
+                "WHERE status = 'pending'"
             )
         )
     try:

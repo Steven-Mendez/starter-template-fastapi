@@ -2,10 +2,11 @@
 
 The outbox feature reads only a handful of knobs — whether the pattern
 is enabled, how often the relay wakes up, how many rows it claims per
-tick, the per-row retry budget, and an identifier for the worker that
-holds the claim. Owning the projection here keeps the env-loading
-boundary (:mod:`app_platform.config.settings`) free of feature-internal
-defaults and gives the feature its own ``validate_production`` hook.
+tick, the per-row retry budget + backoff shape, and an identifier for
+the worker that holds the claim. Owning the projection here keeps the
+env-loading boundary (:mod:`app_platform.config.settings`) free of
+feature-internal defaults and gives the feature its own
+``validate_production`` hook.
 """
 
 from __future__ import annotations
@@ -36,6 +37,8 @@ class OutboxSettings:
     relay_interval_seconds: float
     claim_batch_size: int
     max_attempts: int
+    retry_base_seconds: float
+    retry_max_seconds: float
     worker_id: str
 
     @classmethod
@@ -47,6 +50,8 @@ class OutboxSettings:
         relay_interval_seconds: float | None = None,
         claim_batch_size: int | None = None,
         max_attempts: int | None = None,
+        retry_base_seconds: float | None = None,
+        retry_max_seconds: float | None = None,
         worker_id: str | None = None,
     ) -> OutboxSettings:
         """Construct from either an :class:`AppSettings` or flat kwargs."""
@@ -55,6 +60,8 @@ class OutboxSettings:
             relay_interval_seconds = app.outbox_relay_interval_seconds
             claim_batch_size = app.outbox_claim_batch_size
             max_attempts = app.outbox_max_attempts
+            retry_base_seconds = app.outbox_retry_base_seconds
+            retry_max_seconds = app.outbox_retry_max_seconds
             worker_id = app.outbox_worker_id
         if enabled is None:
             raise ValueError("OutboxSettings: 'enabled' is required")
@@ -65,6 +72,12 @@ class OutboxSettings:
             ),
             claim_batch_size=int(100 if claim_batch_size is None else claim_batch_size),
             max_attempts=int(8 if max_attempts is None else max_attempts),
+            retry_base_seconds=float(
+                30.0 if retry_base_seconds is None else retry_base_seconds
+            ),
+            retry_max_seconds=float(
+                900.0 if retry_max_seconds is None else retry_max_seconds
+            ),
             worker_id=worker_id or _default_worker_id(),
         )
 
@@ -75,6 +88,14 @@ class OutboxSettings:
             errors.append("APP_OUTBOX_CLAIM_BATCH_SIZE must be > 0")
         if self.max_attempts <= 0:
             errors.append("APP_OUTBOX_MAX_ATTEMPTS must be > 0")
+        if self.retry_base_seconds <= 0:
+            errors.append("APP_OUTBOX_RETRY_BASE_SECONDS must be > 0")
+        if self.retry_max_seconds <= 0:
+            errors.append("APP_OUTBOX_RETRY_MAX_SECONDS must be > 0")
+        if self.retry_max_seconds < self.retry_base_seconds:
+            errors.append(
+                "APP_OUTBOX_RETRY_MAX_SECONDS must be >= APP_OUTBOX_RETRY_BASE_SECONDS"
+            )
 
     def validate_production(self, errors: list[str]) -> None:
         if not self.enabled:

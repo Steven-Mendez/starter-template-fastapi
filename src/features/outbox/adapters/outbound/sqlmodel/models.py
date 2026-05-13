@@ -1,10 +1,19 @@
-"""SQLModel table backing the transactional outbox.
+"""SQLModel tables backing the transactional outbox.
 
 A producer transaction inserts one row per side effect; the relay loop
 running inside the worker consumes them by claim-and-update under
 ``FOR UPDATE SKIP LOCKED`` semantics. The partial index on
-``status='pending'`` keeps the claim scan cheap once dispatched rows
+``status='pending'`` keeps the claim scan cheap once delivered rows
 accumulate, since the index only contains rows the relay can act on.
+
+Two tables live in this module:
+
+- :class:`OutboxMessageTable` — the producer-written queue.
+- :class:`ProcessedOutboxMessageTable` — the handler-side dedup table.
+  Handlers insert ``id`` (the source ``OutboxMessage.id``) inside their
+  own transaction; a duplicate-PK collision is the signal that this
+  message was already processed and the handler MUST short-circuit to
+  ``Ok``.
 """
 
 from __future__ import annotations
@@ -25,10 +34,10 @@ def _utc_now() -> datetime:
 
 
 class OutboxMessageTable(SQLModel, table=True):
-    """A pending or dispatched outbox row.
+    """A pending or delivered outbox row.
 
     The ``status`` column is a free-text discriminator that the relay
-    flips between ``pending``, ``dispatched``, and ``failed`` — encoded
+    flips between ``pending``, ``delivered``, and ``failed`` — encoded
     as plain text rather than a Postgres enum to avoid migrations when
     adding a new state (none planned, but starter code stays flexible).
     """
@@ -38,6 +47,7 @@ class OutboxMessageTable(SQLModel, table=True):
         sa.Index(
             "ix_outbox_pending",
             "available_at",
+            "id",
             postgresql_where=sa.text("status = 'pending'"),
         ),
         sa.Index("ix_outbox_created", "created_at"),
@@ -89,7 +99,39 @@ class OutboxMessageTable(SQLModel, table=True):
         default_factory=_utc_now,
         sa_column=Column(sa.DateTime(timezone=True), nullable=False),
     )
-    dispatched_at: datetime | None = Field(
+    delivered_at: datetime | None = Field(
         default=None,
         sa_column=Column(sa.DateTime(timezone=True), nullable=True),
+    )
+    failed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(sa.DateTime(timezone=True), nullable=True),
+    )
+
+
+class ProcessedOutboxMessageTable(SQLModel, table=True):
+    """Handler-side dedup record for an already-processed outbox message.
+
+    Handlers insert a row keyed on ``OutboxMessage.id`` inside their
+    own transaction. A duplicate-PK collision means the message was
+    already processed; the handler MUST treat that as ``Ok`` and skip
+    re-running the side effect. This makes the at-least-once relay
+    safe even when the destination side effect (sending email, writing
+    to an external API) is not naturally idempotent.
+    """
+
+    __tablename__ = "processed_outbox_messages"
+
+    id: UUID = Field(
+        sa_column=Column(
+            postgresql.UUID(as_uuid=True), primary_key=True, nullable=False
+        ),
+    )
+    processed_at: datetime = Field(
+        default_factory=_utc_now,
+        sa_column=Column(
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
