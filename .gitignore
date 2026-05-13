@@ -61,3 +61,6 @@ logs/
 # Runtime data (PostgreSQL local environments)
 .pgdata/
 postgres-data/
+
+# Local-backend file storage (default APP_STORAGE_LOCAL_PATH in .env.example)
+var/

@@ -193,7 +193,11 @@ class AppSettings(BaseSettings):
     # projects that never use file storage are not forced to set up S3.
     storage_enabled: bool = False
     storage_backend: Literal["local", "s3"] = "local"
-    storage_local_path: str | None = None
+    # Default points inside the repo so a fresh `.env` (or a stale one that
+    # predates this setting) still boots; production deployments override
+    # the whole storage stack to `s3` and `validate_production` refuses
+    # `local` when ``storage_enabled=True``.
+    storage_local_path: str | None = "./var/storage"
     storage_s3_bucket: str | None = None
     storage_s3_region: str = "us-east-1"
     # ---------------------------------------------------------------------------

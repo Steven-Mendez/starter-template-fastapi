@@ -25,6 +25,9 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen --python ${{ env.PYTHON_VERSION }}
 
+      - name: Smoke check — fastapi CLI installed (asserts fastapi[standard] is in the dev group)
+        run: uv run fastapi --version
+
       - name: Quality
         run: make quality
 
