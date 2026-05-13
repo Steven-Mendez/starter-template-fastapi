@@ -9,9 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.features.users.application.errors import UserError
-from src.features.users.application.ports.user_port import UserPort
-from src.platform.shared.result import Err, Ok, Result
+from app_platform.shared.result import Err, Ok, Result
+from features.users.application.errors import UserError
+from features.users.application.ports.user_port import UserPort
 
 
 @dataclass(slots=True)

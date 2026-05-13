@@ -21,7 +21,7 @@ For SpiceDB this would be a schema fragment such as::
 
 from __future__ import annotations
 
-from src.features.authorization.application.registry import AuthorizationRegistry
+from features.authorization.application.registry import AuthorizationRegistry
 
 
 def expand_relations(

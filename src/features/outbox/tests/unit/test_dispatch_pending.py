@@ -16,11 +16,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from src.features.outbox.application.use_cases.dispatch_pending import (
+from features.outbox.application.use_cases.dispatch_pending import (
     DispatchPending,
     RelayTickReport,
 )
-from src.features.outbox.domain.message import OutboxMessage
+from features.outbox.domain.message import OutboxMessage
 
 pytestmark = pytest.mark.unit
 

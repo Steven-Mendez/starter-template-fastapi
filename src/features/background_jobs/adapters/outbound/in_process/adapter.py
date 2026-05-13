@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from src.features.background_jobs.application.errors import UnknownJobError
-from src.features.background_jobs.application.registry import JobHandlerRegistry
+from features.background_jobs.application.errors import UnknownJobError
+from features.background_jobs.application.registry import JobHandlerRegistry
 
-_logger = logging.getLogger("src.features.background_jobs.in_process")
+_logger = logging.getLogger("features.background_jobs.in_process")
 
 
 @dataclass(slots=True)

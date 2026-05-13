@@ -21,14 +21,14 @@ import pytest
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from src.features.outbox.adapters.outbound.sqlmodel.adapter import (
+from features.outbox.adapters.outbound.sqlmodel.adapter import (
     SessionSQLModelOutboxAdapter,
 )
-from src.features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
-from src.features.outbox.adapters.outbound.sqlmodel.repository import (
+from features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
+from features.outbox.adapters.outbound.sqlmodel.repository import (
     SQLModelOutboxRepository,
 )
-from src.features.outbox.application.use_cases.dispatch_pending import DispatchPending
+from features.outbox.application.use_cases.dispatch_pending import DispatchPending
 
 pytestmark = pytest.mark.integration
 

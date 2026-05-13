@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.features.authentication.tests.fakes import FakeAuthRepository
+from features.authentication.tests.fakes import FakeAuthRepository
 
 pytestmark = pytest.mark.unit
 

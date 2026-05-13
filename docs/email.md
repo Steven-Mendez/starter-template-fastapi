@@ -43,7 +43,7 @@ non-blocking delivery, take `JobQueuePort` and enqueue the `send_email`
 handler the email feature provides).
 
 ```python
-from src.platform.shared.result import Result, Ok, Err
+from app_platform.shared.result import Result, Ok, Err
 
 class NotifyUser:
     def __init__(self, email_port: EmailPort) -> None:

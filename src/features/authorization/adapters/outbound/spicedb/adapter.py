@@ -21,10 +21,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from src.features.authorization.application.ports.authorization_port import (
+from features.authorization.application.ports.authorization_port import (
     LOOKUP_DEFAULT_LIMIT,
 )
-from src.features.authorization.application.types import Relationship
+from features.authorization.application.types import Relationship
 
 
 class SpiceDBAuthorizationAdapter:  # pragma: no cover

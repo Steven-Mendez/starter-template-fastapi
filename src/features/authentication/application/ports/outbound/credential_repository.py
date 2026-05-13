@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from src.features.authentication.domain.models import Credential
+from features.authentication.domain.models import Credential
 
 
 class CredentialRepositoryPort(Protocol):

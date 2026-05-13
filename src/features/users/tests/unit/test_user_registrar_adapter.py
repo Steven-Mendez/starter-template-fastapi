@@ -11,13 +11,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import create_engine
 
-from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
-from src.features.users.adapters.outbound.user_registrar import (
+from features.users.adapters.outbound.user_registrar import (
     SQLModelUserRegistrarAdapter,
 )
 

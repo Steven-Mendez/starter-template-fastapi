@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from fastapi import Depends, FastAPI, params
 
-from src.features.authentication.adapters.inbound.http.dependencies import (
+from features.authentication.adapters.inbound.http.dependencies import (
     get_current_principal,
 )
-from src.features.authentication.adapters.inbound.http.router import build_auth_router
-from src.features.authentication.composition.app_state import set_auth_container
-from src.features.authentication.composition.container import AuthContainer
+from features.authentication.adapters.inbound.http.router import build_auth_router
+from features.authentication.composition.app_state import set_auth_container
+from features.authentication.composition.container import AuthContainer
 
 
 def make_auth_guard() -> list[params.Depends]:

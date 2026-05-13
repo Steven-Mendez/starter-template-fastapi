@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.features.authentication.application.cache import PrincipalCachePort
-from src.features.authentication.application.crypto import hash_token
-from src.features.authentication.application.errors import AuthError
-from src.features.authentication.application.ports.outbound.auth_repository import (
+from app_platform.shared.result import Ok, Result
+from features.authentication.application.cache import PrincipalCachePort
+from features.authentication.application.crypto import hash_token
+from features.authentication.application.errors import AuthError
+from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
-from src.platform.shared.result import Ok, Result
 
 
 @dataclass(slots=True)

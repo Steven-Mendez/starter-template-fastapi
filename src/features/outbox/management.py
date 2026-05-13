@@ -14,9 +14,9 @@ import sys
 
 from sqlalchemy import create_engine, text
 
-from src.platform.config.settings import get_settings
+from app_platform.config.settings import get_settings
 
-_logger = logging.getLogger("src.features.outbox.management")
+_logger = logging.getLogger("features.outbox.management")
 
 
 def retry_failed() -> int:

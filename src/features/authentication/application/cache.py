@@ -19,7 +19,7 @@ from uuid import UUID
 
 from cachetools import TTLCache
 
-from src.platform.shared.principal import Principal
+from app_platform.shared.principal import Principal
 
 
 class PrincipalCachePort(Protocol):

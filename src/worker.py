@@ -21,25 +21,25 @@ from arq import run_worker
 from arq.connections import RedisSettings
 from sqlalchemy import create_engine
 
-from src.features.authentication.email_templates import (
+from app_platform.config.settings import AppSettings, get_settings
+from app_platform.observability import configure_logging
+from features.authentication.email_templates import (
     register_authentication_email_templates,
 )
-from src.features.background_jobs.adapters.outbound.arq import (
+from features.background_jobs.adapters.outbound.arq import (
     build_arq_functions,
     job_handler_logging_startup,
 )
-from src.features.background_jobs.composition.container import build_jobs_container
-from src.features.background_jobs.composition.settings import JobsSettings
-from src.features.email.composition.container import build_email_container
-from src.features.email.composition.jobs import register_send_email_handler
-from src.features.email.composition.settings import EmailSettings
-from src.features.outbox.composition.container import build_outbox_container
-from src.features.outbox.composition.settings import OutboxSettings
-from src.features.outbox.composition.worker import build_relay_cron_jobs
-from src.platform.config.settings import AppSettings, get_settings
-from src.platform.observability import configure_logging
+from features.background_jobs.composition.container import build_jobs_container
+from features.background_jobs.composition.settings import JobsSettings
+from features.email.composition.container import build_email_container
+from features.email.composition.jobs import register_send_email_handler
+from features.email.composition.settings import EmailSettings
+from features.outbox.composition.container import build_outbox_container
+from features.outbox.composition.settings import OutboxSettings
+from features.outbox.composition.worker import build_relay_cron_jobs
 
-_logger = logging.getLogger("src.worker")
+_logger = logging.getLogger("worker")
 
 
 def _email_settings(app_settings: AppSettings) -> EmailSettings:

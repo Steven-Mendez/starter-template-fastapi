@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterator
 from uuid import UUID, uuid4
 
-from src.features.authentication.domain.models import (
+from features.authentication.domain.models import (
     AuditEvent,
     Credential,
     InternalToken,
@@ -118,7 +118,7 @@ class FakeAuthRepository:
         behaviour install their own adapter on the fake before
         exercising the use case.
         """
-        from src.features.outbox.tests.fakes.fake_outbox import (
+        from features.outbox.tests.fakes.fake_outbox import (
             InlineDispatchOutboxAdapter,
         )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from src.features.email.composition.container import EmailContainer
+from features.email.composition.container import EmailContainer
 
 
 def attach_email_container(app: FastAPI, container: EmailContainer) -> None:

@@ -16,7 +16,7 @@ from typing import Any
 
 from sqlmodel import Session
 
-from src.features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
+from features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
 
 
 @dataclass(slots=True)

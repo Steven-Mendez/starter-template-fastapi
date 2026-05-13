@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.features.email.adapters.outbound.console import ConsoleEmailAdapter
-from src.features.email.adapters.outbound.resend import ResendEmailAdapter
-from src.features.email.adapters.outbound.smtp import SmtpEmailAdapter
-from src.features.email.application.ports.email_port import EmailPort
-from src.features.email.application.registry import EmailTemplateRegistry
-from src.features.email.composition.settings import EmailSettings
+from features.email.adapters.outbound.console import ConsoleEmailAdapter
+from features.email.adapters.outbound.resend import ResendEmailAdapter
+from features.email.adapters.outbound.smtp import SmtpEmailAdapter
+from features.email.application.ports.email_port import EmailPort
+from features.email.application.registry import EmailTemplateRegistry
+from features.email.composition.settings import EmailSettings
 
 
 @dataclass(slots=True)

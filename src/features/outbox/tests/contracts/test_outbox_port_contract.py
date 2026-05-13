@@ -15,8 +15,8 @@ from typing import Any
 
 import pytest
 
-from src.features.outbox.application.ports.outbox_port import OutboxPort
-from src.features.outbox.tests.fakes.fake_outbox import InMemoryOutboxAdapter
+from features.outbox.application.ports.outbox_port import OutboxPort
+from features.outbox.tests.fakes.fake_outbox import InMemoryOutboxAdapter
 
 pytestmark = pytest.mark.unit
 

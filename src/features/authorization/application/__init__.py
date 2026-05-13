@@ -20,16 +20,16 @@ The Zanzibar-style relationship model is encoded across:
 
 from __future__ import annotations
 
-from src.features.authorization.application.actions import relations_for
-from src.features.authorization.application.errors import NotAuthorizedError
-from src.features.authorization.application.hierarchy import expand_relations
-from src.features.authorization.application.ports.authorization_port import (
+from features.authorization.application.actions import relations_for
+from features.authorization.application.errors import NotAuthorizedError
+from features.authorization.application.hierarchy import expand_relations
+from features.authorization.application.ports.authorization_port import (
     AuthorizationPort,
 )
-from src.features.authorization.application.registry import AuthorizationRegistry
-from src.features.authorization.application.resource_graph import ParentResolver
-from src.features.authorization.application.types import Relationship
-from src.features.authorization.application.use_cases import BootstrapSystemAdmin
+from features.authorization.application.registry import AuthorizationRegistry
+from features.authorization.application.resource_graph import ParentResolver
+from features.authorization.application.types import Relationship
+from features.authorization.application.use_cases import BootstrapSystemAdmin
 
 __all__ = [
     "AuthorizationPort",

@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from src.features.authorization.application.errors import UnknownActionError
+from features.authorization.application.errors import UnknownActionError
 
 ParentLookup = Callable[[str], tuple[str, str] | None]
 

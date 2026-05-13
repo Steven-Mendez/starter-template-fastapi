@@ -10,8 +10,8 @@ from __future__ import annotations
 import fakeredis
 import pytest
 
-from src.features.authentication.application.errors import RateLimitExceededError
-from src.features.authentication.application.rate_limit import RedisRateLimiter
+from features.authentication.application.errors import RateLimitExceededError
+from features.authentication.application.rate_limit import RedisRateLimiter
 
 pytestmark = pytest.mark.unit
 

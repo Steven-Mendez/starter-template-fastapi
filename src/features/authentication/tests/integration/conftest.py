@@ -11,22 +11,22 @@ from sqlalchemy import text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import create_engine
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
+from app_platform.persistence.sqlmodel.authorization.models import RelationshipTable
+from features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
     CredentialTable,
     RefreshTokenTable,
 )
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
-from src.platform.persistence.sqlmodel.authorization.models import RelationshipTable
 
 AUTH_TABLES: list[Any] = [
     UserTable,

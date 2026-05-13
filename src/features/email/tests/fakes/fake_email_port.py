@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.features.email.application.errors import EmailError
-from src.platform.shared.result import Err, Ok, Result
+from app_platform.shared.result import Err, Ok, Result
+from features.email.application.errors import EmailError
 
 
 @dataclass(frozen=True, slots=True)

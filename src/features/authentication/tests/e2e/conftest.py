@@ -19,56 +19,56 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import create_engine
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
+from app_platform.api.app_factory import build_fastapi_app
+from app_platform.api.dependencies.container import set_app_container
+from app_platform.config.settings import AppSettings
+from app_platform.persistence.sqlmodel.authorization.models import RelationshipTable
+from features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
     CredentialTable,
     RefreshTokenTable,
 )
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
-from src.features.authentication.composition.container import build_auth_container
-from src.features.authentication.composition.wiring import (
+from features.authentication.composition.container import build_auth_container
+from features.authentication.composition.wiring import (
     attach_auth_container,
     mount_auth_routes,
 )
-from src.features.authentication.email_templates import (
+from features.authentication.email_templates import (
     register_authentication_email_templates,
 )
-from src.features.authorization.composition import (
+from features.authorization.composition import (
     attach_authorization_container,
     build_authorization_container,
     register_authorization_error_handlers,
 )
-from src.features.background_jobs.adapters.outbound.in_process import (
+from features.background_jobs.adapters.outbound.in_process import (
     InProcessJobQueueAdapter,
 )
-from src.features.background_jobs.application.registry import JobHandlerRegistry
-from src.features.email.composition.container import build_email_container
-from src.features.email.composition.jobs import register_send_email_handler
-from src.features.email.composition.settings import EmailSettings
-from src.features.email.composition.wiring import attach_email_container
-from src.features.email.tests.fakes.fake_email_port import FakeEmailPort
-from src.features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
-from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+from features.background_jobs.application.registry import JobHandlerRegistry
+from features.email.composition.container import build_email_container
+from features.email.composition.jobs import register_send_email_handler
+from features.email.composition.settings import EmailSettings
+from features.email.composition.wiring import attach_email_container
+from features.email.tests.fakes.fake_email_port import FakeEmailPort
+from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
+from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
-from src.features.users.composition.container import (
+from features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
 )
-from src.features.users.composition.wiring import (
+from features.users.composition.wiring import (
     attach_users_container,
     mount_users_routes,
 )
-from src.platform.api.app_factory import build_fastapi_app
-from src.platform.api.dependencies.container import set_app_container
-from src.platform.config.settings import AppSettings
-from src.platform.persistence.sqlmodel.authorization.models import RelationshipTable
 
 
 @dataclass(frozen=True, slots=True)

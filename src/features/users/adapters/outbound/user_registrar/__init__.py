@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.features.users.adapters.outbound.user_registrar.sqlmodel import (
+from features.users.adapters.outbound.user_registrar.sqlmodel import (
     SQLModelUserRegistrarAdapter,
 )
 

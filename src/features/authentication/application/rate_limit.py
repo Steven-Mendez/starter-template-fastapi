@@ -16,7 +16,7 @@ from typing import cast
 
 import redis as redis_lib
 
-from src.features.authentication.application.errors import RateLimitExceededError
+from features.authentication.application.errors import RateLimitExceededError
 
 # Lua script: atomic sliding-window check using a sorted set.
 #

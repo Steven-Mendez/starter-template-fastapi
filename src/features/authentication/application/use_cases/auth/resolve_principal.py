@@ -2,21 +2,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.features.authentication.application.cache import (
+from app_platform.config.settings import AppSettings
+from app_platform.shared.principal import Principal
+from app_platform.shared.result import Err, Ok, Result
+from features.authentication.application.cache import (
     InProcessPrincipalCache,
     PrincipalCachePort,
 )
-from src.features.authentication.application.errors import (
+from features.authentication.application.errors import (
     AuthError,
     InactiveUserError,
     InvalidTokenError,
     StaleTokenError,
 )
-from src.features.authentication.application.jwt_tokens import AccessTokenService
-from src.features.users.application.ports.user_port import UserPort
-from src.platform.config.settings import AppSettings
-from src.platform.shared.principal import Principal
-from src.platform.shared.result import Err, Ok, Result
+from features.authentication.application.jwt_tokens import AccessTokenService
+from features.users.application.ports.user_port import UserPort
 
 
 @dataclass(slots=True)

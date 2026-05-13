@@ -13,7 +13,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
-from src.features.authentication.tests.e2e.conftest import AuthTestContext
+from features.authentication.tests.e2e.conftest import AuthTestContext
 
 pytestmark = pytest.mark.e2e
 
@@ -257,7 +257,7 @@ def test_internal_token_omission_does_not_emit_per_request_warning(
     client = auth_context_internal_tokens_hidden.client
     _register(client)
     caplog.set_level(
-        logging.WARNING, logger="src.features.authentication.application.services"
+        logging.WARNING, logger="features.authentication.application.services"
     )
 
     forgot = client.post("/auth/password/forgot", json={"email": "user@example.com"})

@@ -6,9 +6,9 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from src.features.users.application.errors import UserError
-from src.features.users.domain.user import User
-from src.platform.shared.result import Err, Ok, Result
+from app_platform.shared.result import Err, Ok, Result
+from features.users.application.errors import UserError
+from features.users.domain.user import User
 
 
 def _aware_now() -> datetime:

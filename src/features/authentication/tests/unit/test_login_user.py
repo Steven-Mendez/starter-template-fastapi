@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import pytest
 
-from src.features.authentication.application.crypto import PasswordService
-from src.features.authentication.application.errors import (
+from app_platform.config.settings import AppSettings
+from app_platform.shared.result import Err, Ok
+from features.authentication.application.crypto import PasswordService
+from features.authentication.application.errors import (
     InactiveUserError,
     InvalidCredentialsError,
 )
-from src.features.authentication.application.jwt_tokens import AccessTokenService
-from src.features.authentication.application.use_cases.auth.login_user import LoginUser
-from src.features.authentication.application.use_cases.auth.register_user import (
+from features.authentication.application.jwt_tokens import AccessTokenService
+from features.authentication.application.use_cases.auth.login_user import LoginUser
+from features.authentication.application.use_cases.auth.register_user import (
     RegisterUser,
 )
-from src.features.authentication.tests.fakes import FakeAuthRepository
-from src.features.users.tests.fakes.fake_user_port import FakeUserPort
-from src.platform.config.settings import AppSettings
-from src.platform.shared.result import Err, Ok
+from features.authentication.tests.fakes import FakeAuthRepository
+from features.users.tests.fakes.fake_user_port import FakeUserPort
 
 pytestmark = pytest.mark.unit
 

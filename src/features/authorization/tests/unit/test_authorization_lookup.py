@@ -10,20 +10,20 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import create_engine
 
-from src.features.authorization.adapters.outbound.sqlmodel import (
+from app_platform.persistence.sqlmodel.authorization.models import RelationshipTable
+from features.authorization.adapters.outbound.sqlmodel import (
     SQLModelAuthorizationAdapter,
 )
-from src.features.authorization.application.types import Relationship
-from src.features.authorization.tests.contracts.fake_user_authz_version import (
+from features.authorization.application.types import Relationship
+from features.authorization.tests.contracts.fake_user_authz_version import (
     FakeUserAuthzVersionPort,
 )
-from src.features.authorization.tests.contracts.registry_helper import (
+from features.authorization.tests.contracts.registry_helper import (
     make_test_registry,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
 )
-from src.platform.persistence.sqlmodel.authorization.models import RelationshipTable
 
 _SCHEMA: list[Any] = [UserTable, RelationshipTable]
 

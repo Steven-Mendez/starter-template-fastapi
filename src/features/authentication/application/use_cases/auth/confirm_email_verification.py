@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from src.features.authentication.application.cache import PrincipalCachePort
-from src.features.authentication.application.crypto import hash_token
-from src.features.authentication.application.errors import AuthError, InvalidTokenError
-from src.features.authentication.application.ports.outbound.auth_repository import (
+from app_platform.shared.result import Err, Ok, Result
+from features.authentication.application.cache import PrincipalCachePort
+from features.authentication.application.crypto import hash_token
+from features.authentication.application.errors import AuthError, InvalidTokenError
+from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
-from src.features.users.application.ports.user_port import UserPort
-from src.platform.shared.result import Err, Ok, Result
+from features.users.application.ports.user_port import UserPort
 
 EMAIL_VERIFY_PURPOSE = "email_verify"
 

@@ -58,12 +58,12 @@ imports). Every cross-feature call goes through an application port.
 | --- | --- |
 | `src/main.py` | Builds the FastAPI app, mounts every feature's routes, and wires the per-feature containers inside the lifespan event. |
 | `src/worker.py` | Background-jobs worker entrypoint — loads the same composition root, registers handlers, runs `arq`. |
-| `src/platform/api/app_factory.py` | Creates the FastAPI app, configures docs URLs, CORS, trusted hosts, request context middleware, content-size limits, and Problem Details handlers. |
-| `src/platform/config/settings.py` | `AppSettings` — the env-loading boundary. Exposes typed per-feature views via `settings.authentication`, `settings.email`, etc. |
-| `src/platform/config/sub_settings.py` | `DatabaseSettings`, `ApiSettings`, `ObservabilitySettings` — cross-cutting platform configuration projections. |
-| `src/platform/persistence/sqlmodel/authorization/` | The cross-feature `relationships` table. Platform-owned because every feature's authz check reads it; the authorization feature is its only writer. |
-| `src/platform/api/middleware/request_context.py` | Adds or propagates `X-Request-ID` and emits one JSON access log per request. |
-| `src/platform/api/error_handlers.py` | Converts framework, validation, dependency, application, and unhandled exceptions into `application/problem+json` responses. |
+| `src/app_platform/api/app_factory.py` | Creates the FastAPI app, configures docs URLs, CORS, trusted hosts, request context middleware, content-size limits, and Problem Details handlers. |
+| `src/app_platform/config/settings.py` | `AppSettings` — the env-loading boundary. Exposes typed per-feature views via `settings.authentication`, `settings.email`, etc. |
+| `src/app_platform/config/sub_settings.py` | `DatabaseSettings`, `ApiSettings`, `ObservabilitySettings` — cross-cutting platform configuration projections. |
+| `src/app_platform/persistence/sqlmodel/authorization/` | The cross-feature `relationships` table. Platform-owned because every feature's authz check reads it; the authorization feature is its only writer. |
+| `src/app_platform/api/middleware/request_context.py` | Adds or propagates `X-Request-ID` and emits one JSON access log per request. |
+| `src/app_platform/api/error_handlers.py` | Converts framework, validation, dependency, application, and unhandled exceptions into `application/problem+json` responses. |
 | `alembic/` | Migration environment and versioned schema migrations. |
 
 ## Layer Boundaries
@@ -72,7 +72,7 @@ Boundaries are enforced by Import Linter contracts in `pyproject.toml`.
 
 | Boundary | Rule |
 | --- | --- |
-| Platform isolation | `src.platform` must not import `src.features` (the configuration composition root in `src.platform.config.settings` is the sole tolerated exception, ignored explicitly). |
+| Platform isolation | `app_platform` must not import `features` (the configuration composition root in `app_platform.config.settings` is the sole tolerated exception, ignored explicitly). |
 | Domain purity | Each feature's `domain/` package must not import application, adapters, composition, FastAPI, SQLModel, SQLAlchemy, Alembic, Pydantic, or other framework packages. |
 | Application isolation | Each feature's `application/` package must not import adapters, composition, platform API, persistence, FastAPI, SQLModel, SQLAlchemy, Alembic, or other adapter packages. |
 | Inbound adapter isolation | Inbound adapters must not bypass application ports to import outbound adapters or domain directly. |

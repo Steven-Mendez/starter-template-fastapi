@@ -1,1 +1,0 @@
-"""FastAPI starter template package."""

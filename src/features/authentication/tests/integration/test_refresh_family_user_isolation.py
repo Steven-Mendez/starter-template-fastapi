@@ -7,13 +7,13 @@ from uuid import uuid4
 
 import pytest
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from app_platform.shared.result import Ok
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
-from src.platform.shared.result import Ok
 
 pytestmark = pytest.mark.integration
 

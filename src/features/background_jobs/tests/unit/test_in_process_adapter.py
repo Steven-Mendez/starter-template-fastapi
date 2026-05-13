@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.features.background_jobs.adapters.outbound.in_process import (
+from features.background_jobs.adapters.outbound.in_process import (
     InProcessJobQueueAdapter,
 )
-from src.features.background_jobs.application.errors import UnknownJobError
-from src.features.background_jobs.application.registry import JobHandlerRegistry
+from features.background_jobs.application.errors import UnknownJobError
+from features.background_jobs.application.registry import JobHandlerRegistry
 
 pytestmark = pytest.mark.unit
 

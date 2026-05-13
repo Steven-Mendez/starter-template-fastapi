@@ -18,26 +18,26 @@ from uuid import UUID
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
+from features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
     CredentialTable,
     RefreshTokenTable,
     utc_now,
 )
-from src.features.authentication.domain.models import (
+from features.authentication.domain.models import (
     AuditEvent,
     Credential,
     InternalToken,
     RefreshToken,
 )
-from src.features.outbox.application.ports.outbox_port import OutboxPort
+from features.outbox.application.ports.outbox_port import OutboxPort
 
 # A factory the auth repository uses to construct a session-scoped
 # OutboxPort each time it opens a write transaction that needs the
 # outbox. Keeping this as a Callable type alias keeps the repository
 # decoupled from the concrete outbox adapter — it never imports
-# ``src.features.outbox.adapters`` (forbidden by the platform isolation
+# ``features.outbox.adapters`` (forbidden by the platform isolation
 # Import Linter contract for cross-feature adapters).
 OutboxSessionFactory = Callable[[Session], OutboxPort]
 

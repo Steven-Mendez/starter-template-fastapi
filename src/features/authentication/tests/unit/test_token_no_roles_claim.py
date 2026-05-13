@@ -13,8 +13,8 @@ from uuid import UUID, uuid4
 import jwt
 import pytest
 
-from src.features.authentication.application.jwt_tokens import AccessTokenService
-from src.platform.config.settings import AppSettings
+from app_platform.config.settings import AppSettings
+from features.authentication.application.jwt_tokens import AccessTokenService
 
 pytestmark = pytest.mark.unit
 

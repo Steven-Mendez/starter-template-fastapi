@@ -15,13 +15,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from src.features.background_jobs.application.registry import JobHandlerRegistry
-from src.features.email.application.ports.email_port import EmailPort
-from src.platform.shared.result import Err
+from app_platform.shared.result import Err
+from features.background_jobs.application.registry import JobHandlerRegistry
+from features.email.application.ports.email_port import EmailPort
 
 SEND_EMAIL_JOB = "send_email"
 
-_logger = logging.getLogger("src.features.email.jobs")
+_logger = logging.getLogger("features.email.jobs")
 
 
 def register_send_email_handler(

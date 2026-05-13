@@ -12,13 +12,13 @@ from typing import Annotated, TypeAlias
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from src.features.authentication.adapters.inbound.http.errors import (
+from app_platform.api.request_state import set_actor_id
+from app_platform.shared.principal import Principal
+from app_platform.shared.result import Err, Ok
+from features.authentication.adapters.inbound.http.errors import (
     raise_http_from_auth_error,
 )
-from src.features.authentication.composition.app_state import get_auth_container
-from src.platform.api.request_state import set_actor_id
-from src.platform.shared.principal import Principal
-from src.platform.shared.result import Err, Ok
+from features.authentication.composition.app_state import get_auth_container
 
 # HTTPBearer (not OAuth2 password) so Swagger UI "Authorize" accepts a pasted
 # JWT: OAuth2PasswordBearer would POST form username/password to /auth/login,

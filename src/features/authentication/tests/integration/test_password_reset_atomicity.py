@@ -6,17 +6,17 @@ import threading
 
 import pytest
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from app_platform.config.settings import AppSettings
+from app_platform.shared.result import Ok
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
-from src.features.authentication.application.errors import TokenAlreadyUsedError
-from src.features.authentication.composition.container import build_auth_container
-from src.features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
-from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+from features.authentication.application.errors import TokenAlreadyUsedError
+from features.authentication.composition.container import build_auth_container
+from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
+from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
-from src.platform.config.settings import AppSettings
-from src.platform.shared.result import Ok
 
 pytestmark = pytest.mark.integration
 

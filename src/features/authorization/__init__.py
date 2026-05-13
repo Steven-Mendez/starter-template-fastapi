@@ -11,7 +11,7 @@ feature only through the three small outbound ports defined under
 
 from __future__ import annotations
 
-from src.features.authorization.application import (
+from features.authorization.application import (
     AuthorizationPort,
     AuthorizationRegistry,
     BootstrapSystemAdmin,

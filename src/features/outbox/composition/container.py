@@ -20,16 +20,16 @@ from dataclasses import dataclass
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from src.features.background_jobs.application.ports.job_queue_port import JobQueuePort
-from src.features.outbox.adapters.outbound.sqlmodel.adapter import (
+from features.background_jobs.application.ports.job_queue_port import JobQueuePort
+from features.outbox.adapters.outbound.sqlmodel.adapter import (
     SessionSQLModelOutboxAdapter,
 )
-from src.features.outbox.adapters.outbound.sqlmodel.repository import (
+from features.outbox.adapters.outbound.sqlmodel.repository import (
     SQLModelOutboxRepository,
 )
-from src.features.outbox.application.ports.outbox_port import OutboxPort
-from src.features.outbox.application.use_cases.dispatch_pending import DispatchPending
-from src.features.outbox.composition.settings import OutboxSettings
+from features.outbox.application.ports.outbox_port import OutboxPort
+from features.outbox.application.use_cases.dispatch_pending import DispatchPending
+from features.outbox.composition.settings import OutboxSettings
 
 # A callable producers use to construct an outbox port bound to *their*
 # session. Keeping it as a Callable (not the adapter type) lets a future

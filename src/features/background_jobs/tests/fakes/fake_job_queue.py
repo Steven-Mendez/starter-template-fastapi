@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from src.features.background_jobs.application.errors import UnknownJobError
+from features.background_jobs.application.errors import UnknownJobError
 
 
 @dataclass(frozen=True, slots=True)

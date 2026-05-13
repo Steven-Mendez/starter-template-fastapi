@@ -55,9 +55,10 @@ dev = [
 ]
 
 [tool.fastapi]
-entrypoint = "src.main:app"
+entrypoint = "main:app"
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 testpaths = ["src"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
@@ -142,29 +143,29 @@ check_untyped_defs = true
 no_implicit_optional = true
 
 [tool.importlinter]
-root_packages = ["src"]
+root_packages = ["app_platform", "features"]
 include_external_packages = true
 
 # Platform must never depend on a feature.
 #
 # The one tolerated exception is the configuration composition root:
-# :mod:`src.platform.config.settings` aggregates per-feature settings
+# :mod:`app_platform.config.settings` aggregates per-feature settings
 # classes so each feature can own its config and production validation
 # alongside its other code. Every *other* platform module remains
 # feature-agnostic.
 [[tool.importlinter.contracts]]
 name = "Platform isolation: no feature imports"
 type = "forbidden"
-source_modules = ["src.platform"]
-forbidden_modules = ["src.features"]
+source_modules = ["app_platform"]
+forbidden_modules = ["features"]
 ignore_imports = [
-    "src.platform.config.settings -> src.features.authentication.composition.settings",
-    "src.platform.config.settings -> src.features.authorization.composition.settings",
-    "src.platform.config.settings -> src.features.background_jobs.composition.settings",
-    "src.platform.config.settings -> src.features.email.composition.settings",
-    "src.platform.config.settings -> src.features.file_storage.composition.settings",
-    "src.platform.config.settings -> src.features.outbox.composition.settings",
-    "src.platform.config.settings -> src.features.users.composition.settings",
+    "app_platform.config.settings -> features.authentication.composition.settings",
+    "app_platform.config.settings -> features.authorization.composition.settings",
+    "app_platform.config.settings -> features.background_jobs.composition.settings",
+    "app_platform.config.settings -> features.email.composition.settings",
+    "app_platform.config.settings -> features.file_storage.composition.settings",
+    "app_platform.config.settings -> features.outbox.composition.settings",
+    "app_platform.config.settings -> features.users.composition.settings",
 ]
 
 # === Auth ↔ Authorization split ===
@@ -179,30 +180,30 @@ ignore_imports = [
 name = "Authentication does not import authorization"
 type = "forbidden"
 source_modules = [
-    "src.features.authentication.application",
-    "src.features.authentication.adapters",
-    "src.features.authentication.composition",
-    "src.features.authentication.domain",
+    "features.authentication.application",
+    "features.authentication.adapters",
+    "features.authentication.composition",
+    "features.authentication.domain",
 ]
-forbidden_modules = ["src.features.authorization"]
+forbidden_modules = ["features.authorization"]
 # The configuration composition root aggregates per-feature settings
 # classes (see the matching ignore in "Platform isolation" above). The
 # transitive ``platform.config.settings -> authorization.composition.settings``
 # edge is not a feature-to-feature dependency, so it does not violate
 # the spirit of this contract.
 ignore_imports = [
-    "src.platform.config.settings -> src.features.authorization.composition.settings",
+    "app_platform.config.settings -> features.authorization.composition.settings",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Authorization does not import authentication"
 type = "forbidden"
 source_modules = [
-    "src.features.authorization.application",
-    "src.features.authorization.adapters",
-    "src.features.authorization.composition",
+    "features.authorization.application",
+    "features.authorization.adapters",
+    "features.authorization.composition",
 ]
-forbidden_modules = ["src.features.authentication"]
+forbidden_modules = ["features.authentication"]
 
 # === Auth feature contracts ===
 
@@ -210,14 +211,14 @@ forbidden_modules = ["src.features.authentication"]
 [[tool.importlinter.contracts]]
 name = "Authentication domain: pure"
 type = "forbidden"
-source_modules = ["src.features.authentication.domain"]
+source_modules = ["features.authentication.domain"]
 forbidden_modules = [
-    "src.features.authentication.application",
-    "src.features.authentication.adapters",
-    "src.features.authentication.composition",
-    "src.platform.api",
-    "src.platform.persistence",
-    "src.platform.config",
+    "features.authentication.application",
+    "features.authentication.adapters",
+    "features.authentication.composition",
+    "app_platform.api",
+    "app_platform.persistence",
+    "app_platform.config",
     "fastapi",
     "starlette",
     "sqlmodel",
@@ -236,13 +237,13 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Authentication application: framework-free"
 type = "forbidden"
-source_modules = ["src.features.authentication.application"]
+source_modules = ["features.authentication.application"]
 allow_indirect_imports = true
 forbidden_modules = [
-    "src.features.authentication.adapters",
-    "src.features.authentication.composition",
-    "src.platform.api",
-    "src.platform.persistence",
+    "features.authentication.adapters",
+    "features.authentication.composition",
+    "app_platform.api",
+    "app_platform.persistence",
     "fastapi",
     "starlette",
     "sqlmodel",
@@ -258,11 +259,11 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Authentication inbound adapter: no outbound bypass"
 type = "forbidden"
-source_modules = ["src.features.authentication.adapters.inbound"]
+source_modules = ["features.authentication.adapters.inbound"]
 allow_indirect_imports = true
 forbidden_modules = [
-    "src.features.authentication.adapters.outbound",
-    "src.features.authentication.domain",
+    "features.authentication.adapters.outbound",
+    "features.authentication.domain",
     "sqlmodel",
     "sqlalchemy",
     "alembic",
@@ -275,9 +276,9 @@ forbidden_modules = [
 name = "Authentication inward dependency direction"
 type = "layers"
 layers = [
-    "src.features.authentication.adapters",
-    "src.features.authentication.application",
-    "src.features.authentication.domain",
+    "features.authentication.adapters",
+    "features.authentication.application",
+    "features.authentication.domain",
 ]
 
 # === Authorization feature contracts ===
@@ -288,12 +289,12 @@ layers = [
 [[tool.importlinter.contracts]]
 name = "Authorization application: framework-free"
 type = "forbidden"
-source_modules = ["src.features.authorization.application"]
+source_modules = ["features.authorization.application"]
 allow_indirect_imports = true
 forbidden_modules = [
-    "src.features.authorization.adapters",
-    "src.features.authorization.composition",
-    "src.platform.api",
+    "features.authorization.adapters",
+    "features.authorization.composition",
+    "app_platform.api",
     "fastapi",
     "starlette",
     "sqlmodel",
@@ -311,8 +312,8 @@ forbidden_modules = [
 name = "Authorization inward dependency direction"
 type = "layers"
 layers = [
-    "src.features.authorization.adapters",
-    "src.features.authorization.application",
+    "features.authorization.adapters",
+    "features.authorization.application",
 ]
 
 # === Users feature boundaries ===
@@ -324,11 +325,11 @@ layers = [
 name = "Users does not import from authentication"
 type = "forbidden"
 source_modules = [
-    "src.features.users.application",
-    "src.features.users.adapters",
-    "src.features.users.domain",
+    "features.users.application",
+    "features.users.adapters",
+    "features.users.domain",
 ]
-forbidden_modules = ["src.features.authentication"]
+forbidden_modules = ["features.authentication"]
 
 # Authentication production code uses ``users`` only through its application
 # ports (``UserPort``, ``PasswordHasherPort``). Reaching into users' adapters
@@ -337,11 +338,11 @@ forbidden_modules = ["src.features.authentication"]
 name = "Authentication uses users only via application ports"
 type = "forbidden"
 source_modules = [
-    "src.features.authentication.application",
-    "src.features.authentication.adapters",
-    "src.features.authentication.domain",
+    "features.authentication.application",
+    "features.authentication.adapters",
+    "features.authentication.domain",
 ]
-forbidden_modules = ["src.features.users.adapters"]
+forbidden_modules = ["features.users.adapters"]
 
 # Users implements outbound ports defined by authorization; the implementations
 # live in adapters and may not reach back into authorization's adapter package.
@@ -349,11 +350,11 @@ forbidden_modules = ["src.features.users.adapters"]
 name = "Users does not import authorization adapters"
 type = "forbidden"
 source_modules = [
-    "src.features.users.application",
-    "src.features.users.adapters",
-    "src.features.users.domain",
+    "features.users.application",
+    "features.users.adapters",
+    "features.users.domain",
 ]
-forbidden_modules = ["src.features.authorization.adapters"]
+forbidden_modules = ["features.authorization.adapters"]
 
 # === Email feature boundaries ===
 #
@@ -364,15 +365,15 @@ forbidden_modules = ["src.features.authorization.adapters"]
 name = "Email does not import from other features"
 type = "forbidden"
 source_modules = [
-    "src.features.email.application",
-    "src.features.email.adapters",
-    "src.features.email.domain",
-    "src.features.email.composition",
+    "features.email.application",
+    "features.email.adapters",
+    "features.email.domain",
+    "features.email.composition",
 ]
 forbidden_modules = [
-    "src.features.authentication",
-    "src.features.authorization",
-    "src.features.users",
+    "features.authentication",
+    "features.authorization",
+    "features.users",
 ]
 
 # Authentication consumes the email feature only through ``EmailPort``;
@@ -381,11 +382,11 @@ forbidden_modules = [
 name = "Authentication uses email only via the port"
 type = "forbidden"
 source_modules = [
-    "src.features.authentication.application",
-    "src.features.authentication.adapters",
-    "src.features.authentication.domain",
+    "features.authentication.application",
+    "features.authentication.adapters",
+    "features.authentication.domain",
 ]
-forbidden_modules = ["src.features.email.adapters"]
+forbidden_modules = ["features.email.adapters"]
 
 # === Background-jobs feature boundaries ===
 #
@@ -397,16 +398,16 @@ forbidden_modules = ["src.features.email.adapters"]
 name = "Background-jobs does not import from other features"
 type = "forbidden"
 source_modules = [
-    "src.features.background_jobs.application",
-    "src.features.background_jobs.adapters",
-    "src.features.background_jobs.domain",
-    "src.features.background_jobs.composition",
+    "features.background_jobs.application",
+    "features.background_jobs.adapters",
+    "features.background_jobs.domain",
+    "features.background_jobs.composition",
 ]
 forbidden_modules = [
-    "src.features.authentication",
-    "src.features.authorization",
-    "src.features.users",
-    "src.features.email",
+    "features.authentication",
+    "features.authorization",
+    "features.users",
+    "features.email",
 ]
 
 # Authentication consumes the background-jobs feature only through
@@ -416,11 +417,11 @@ forbidden_modules = [
 name = "Authentication uses background-jobs only via the port"
 type = "forbidden"
 source_modules = [
-    "src.features.authentication.application",
-    "src.features.authentication.adapters",
-    "src.features.authentication.domain",
+    "features.authentication.application",
+    "features.authentication.adapters",
+    "features.authentication.domain",
 ]
-forbidden_modules = ["src.features.background_jobs.adapters"]
+forbidden_modules = ["features.background_jobs.adapters"]
 
 # === File-storage feature boundaries ===
 #
@@ -431,17 +432,17 @@ forbidden_modules = ["src.features.background_jobs.adapters"]
 name = "File-storage does not import from other features"
 type = "forbidden"
 source_modules = [
-    "src.features.file_storage.application",
-    "src.features.file_storage.adapters",
-    "src.features.file_storage.domain",
-    "src.features.file_storage.composition",
+    "features.file_storage.application",
+    "features.file_storage.adapters",
+    "features.file_storage.domain",
+    "features.file_storage.composition",
 ]
 forbidden_modules = [
-    "src.features.authentication",
-    "src.features.authorization",
-    "src.features.users",
-    "src.features.email",
-    "src.features.background_jobs",
+    "features.authentication",
+    "features.authorization",
+    "features.users",
+    "features.email",
+    "features.background_jobs",
 ]
 
 # === Outbox feature boundaries ===
@@ -454,17 +455,17 @@ forbidden_modules = [
 name = "Outbox does not import from other features"
 type = "forbidden"
 source_modules = [
-    "src.features.outbox.application",
-    "src.features.outbox.adapters",
-    "src.features.outbox.domain",
-    "src.features.outbox.composition",
+    "features.outbox.application",
+    "features.outbox.adapters",
+    "features.outbox.domain",
+    "features.outbox.composition",
 ]
 forbidden_modules = [
-    "src.features.authentication",
-    "src.features.authorization",
-    "src.features.users",
-    "src.features.email",
-    "src.features.file_storage",
+    "features.authentication",
+    "features.authorization",
+    "features.users",
+    "features.email",
+    "features.file_storage",
 ]
 
 # The dispatch use case depends on ``JobQueuePort`` (an inbound
@@ -475,8 +476,8 @@ forbidden_modules = [
 name = "Outbox does not import background-jobs adapters"
 type = "forbidden"
 source_modules = [
-    "src.features.outbox.application",
-    "src.features.outbox.adapters",
-    "src.features.outbox.domain",
+    "features.outbox.application",
+    "features.outbox.adapters",
+    "features.outbox.domain",
 ]
-forbidden_modules = ["src.features.background_jobs.adapters"]
+forbidden_modules = ["features.background_jobs.adapters"]

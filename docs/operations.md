@@ -118,9 +118,9 @@ For local Docker Compose, those defaults are already provided unless overridden.
 The management commands remain available for manual/one-off operations:
 
 ```bash
-uv run python -m src.features.auth.management seed
+uv run python -m features.auth.management seed
 export AUTH_BOOTSTRAP_PASSWORD="set-a-temporary-password-outside-git"
-uv run python -m src.features.auth.management create-super-admin \
+uv run python -m features.auth.management create-super-admin \
   --email admin@example.com \
   --password-env AUTH_BOOTSTRAP_PASSWORD
 unset AUTH_BOOTSTRAP_PASSWORD
@@ -376,7 +376,7 @@ APP_JOBS_BACKEND=arq APP_JOBS_REDIS_URL=redis://localhost:6379/0 \
   make worker
 ```
 
-In production, run `python -m src.worker` as a separate process (a
+In production, run `python -m worker` as a separate process (a
 sidecar container, a Kubernetes Deployment, a systemd unit, etc.). The
 worker logs the names of every registered job handler at startup so
 operators can confirm what it will consume before the first job
@@ -399,7 +399,7 @@ enqueue a name the worker does not know about.
 ## Operational Limitations
 
 - The runtime Docker image starts only the API server. Migrations are separate.
-- A background worker (`make worker` / `python -m src.worker`) is required in
+- A background worker (`make worker` / `python -m worker`) is required in
   production but is **not** started by the API image; run it as its own process.
 - There is no built-in backup or restore automation.
 
@@ -407,7 +407,7 @@ enqueue a name the worker does not know about.
 
 Every runtime knob is exposed as an `APP_`-prefixed environment variable. The
 groupings below mirror the per-feature settings classes in each feature's
-`composition/settings.py` (and `src/platform/config/sub_settings.py` for the
+`composition/settings.py` (and `src/app_platform/config/sub_settings.py` for the
 cross-cutting platform sections). Production-only requirements are noted on
 the right; the settings validator refuses to start when any of them are
 violated and `APP_ENVIRONMENT=production`.

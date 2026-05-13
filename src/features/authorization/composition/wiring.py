@@ -19,14 +19,14 @@ from typing import Any
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-from src.features.authorization.application.errors import (
+from features.authorization.application.errors import (
     NotAuthorizedError,
     UnknownActionError,
 )
-from src.features.authorization.composition.app_state import (
+from features.authorization.composition.app_state import (
     set_authorization_container,
 )
-from src.features.authorization.composition.container import (
+from features.authorization.composition.container import (
     AuthorizationContainer,
 )
 

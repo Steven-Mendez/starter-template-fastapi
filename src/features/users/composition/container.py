@@ -6,26 +6,26 @@ from dataclasses import dataclass
 
 from sqlalchemy.engine import Engine
 
-from src.features.users.adapters.outbound.authz_version import (
+from features.users.adapters.outbound.authz_version import (
     SQLModelUserAuthzVersionAdapter,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
-from src.features.users.adapters.outbound.user_registrar import (
+from features.users.adapters.outbound.user_registrar import (
     SQLModelUserRegistrarAdapter,
 )
-from src.features.users.application.ports.credential_writer_port import (
+from features.users.application.ports.credential_writer_port import (
     CredentialWriterPort,
 )
-from src.features.users.application.use_cases.deactivate_user import DeactivateUser
-from src.features.users.application.use_cases.get_user_by_email import (
+from features.users.application.use_cases.deactivate_user import DeactivateUser
+from features.users.application.use_cases.get_user_by_email import (
     GetUserByEmail,
 )
-from src.features.users.application.use_cases.get_user_by_id import GetUserById
-from src.features.users.application.use_cases.list_users import ListUsers
-from src.features.users.application.use_cases.register_user import RegisterUser
-from src.features.users.application.use_cases.update_profile import UpdateProfile
+from features.users.application.use_cases.get_user_by_id import GetUserById
+from features.users.application.use_cases.list_users import ListUsers
+from features.users.application.use_cases.register_user import RegisterUser
+from features.users.application.use_cases.update_profile import UpdateProfile
 
 
 @dataclass(slots=True)

@@ -10,7 +10,8 @@ from typing import NoReturn
 
 from fastapi import HTTPException, status
 
-from src.features.authentication.application.errors import (
+from app_platform.api.error_handlers_app_exception import ApplicationHTTPException
+from features.authentication.application.errors import (
     AuthError,
     ConfigurationError,
     ConflictError,
@@ -25,7 +26,6 @@ from src.features.authentication.application.errors import (
     StaleTokenError,
     TokenAlreadyUsedError,
 )
-from src.platform.api.error_handlers_app_exception import ApplicationHTTPException
 
 EXPLICIT_AUTH_ERROR_TYPES: tuple[type[AuthError], ...] = (
     ConfigurationError,

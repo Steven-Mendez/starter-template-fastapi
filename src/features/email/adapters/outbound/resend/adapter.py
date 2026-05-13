@@ -18,16 +18,16 @@ from typing import Any
 
 import httpx
 
-from src.features.email.application.errors import (
+from app_platform.shared.result import Err, Ok, Result
+from features.email.application.errors import (
     DeliveryError,
     EmailError,
     TemplateRenderError,
     UnknownTemplateError,
 )
-from src.features.email.application.registry import EmailTemplateRegistry
-from src.platform.shared.result import Err, Ok, Result
+from features.email.application.registry import EmailTemplateRegistry
 
-_logger = logging.getLogger("src.features.email.resend")
+_logger = logging.getLogger("features.email.resend")
 
 _DEFAULT_BASE_URL = "https://api.resend.com"
 _SEND_PATH = "/emails"

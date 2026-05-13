@@ -19,13 +19,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 
-from src.features.authentication.adapters.inbound.http.dependencies import (
+from app_platform.shared.principal import Principal
+from app_platform.shared.result import Err, Ok
+from features.authentication.adapters.inbound.http.dependencies import (
     CurrentPrincipalDep,
 )
-from src.features.authentication.adapters.inbound.http.errors import (
+from features.authentication.adapters.inbound.http.errors import (
     raise_http_from_auth_error,
 )
-from src.features.authentication.adapters.inbound.http.schemas import (
+from features.authentication.adapters.inbound.http.schemas import (
     EmailVerifyRequest,
     InternalTokenResponse,
     LoginRequest,
@@ -37,11 +39,9 @@ from src.features.authentication.adapters.inbound.http.schemas import (
     TokenResponse,
     UserPublic,
 )
-from src.features.authentication.application.errors import RateLimitExceededError
-from src.features.authentication.application.types import IssuedTokens
-from src.features.authentication.composition.app_state import get_auth_container
-from src.platform.shared.principal import Principal
-from src.platform.shared.result import Err, Ok
+from features.authentication.application.errors import RateLimitExceededError
+from features.authentication.application.types import IssuedTokens
+from features.authentication.composition.app_state import get_auth_container
 
 REFRESH_COOKIE_NAME = "refresh_token"
 

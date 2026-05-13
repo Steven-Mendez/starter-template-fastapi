@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from src.features.email.application.errors import EmailError
-from src.platform.shared.result import Result
+from app_platform.shared.result import Result
+from features.email.application.errors import EmailError
 
 
 class EmailPort(Protocol):

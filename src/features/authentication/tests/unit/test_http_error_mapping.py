@@ -5,11 +5,11 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException, status
 
-from src.features.authentication.adapters.inbound.http.errors import (
+from features.authentication.adapters.inbound.http.errors import (
     EXPLICIT_AUTH_ERROR_TYPES,
     raise_http_from_auth_error,
 )
-from src.features.authentication.application.errors import (
+from features.authentication.application.errors import (
     AuthError,
     InactiveUserError,
     PermissionDeniedError,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src.features.authentication.adapters.inbound.http.schemas import RegisterRequest
+from features.authentication.adapters.inbound.http.schemas import RegisterRequest
 
 pytestmark = pytest.mark.unit
 

@@ -20,12 +20,12 @@ from typing import Any
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from src.features.file_storage.application.errors import (
+from app_platform.shared.result import Err, Ok, Result
+from features.file_storage.application.errors import (
     FileStorageError,
     ObjectNotFoundError,
     StorageBackendError,
 )
-from src.platform.shared.result import Err, Ok, Result
 
 # S3 caps presigned URLs at 7 days for SigV4. Going past it returns a URL
 # that fails on use rather than at signing time, so we reject up front.

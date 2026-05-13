@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from src.features.users.adapters.inbound.http.admin import admin_router
-from src.features.users.adapters.inbound.http.me import me_router
+from features.users.adapters.inbound.http.admin import admin_router
+from features.users.adapters.inbound.http.me import me_router
 
 
 def build_users_router() -> APIRouter:

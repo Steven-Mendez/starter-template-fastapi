@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from src.features.email.application.errors import (
+from features.email.application.errors import (
     TemplateRenderError,
     UnknownTemplateError,
 )
-from src.features.email.application.registry import EmailTemplateRegistry
+from features.email.application.registry import EmailTemplateRegistry
 
 pytestmark = pytest.mark.unit
 

@@ -25,10 +25,10 @@ import redis as redis_lib
 from arq import constants as arq_constants
 from arq.jobs import serialize_job
 
-from src.features.background_jobs.application.errors import UnknownJobError
-from src.features.background_jobs.application.registry import JobHandlerRegistry
+from features.background_jobs.application.errors import UnknownJobError
+from features.background_jobs.application.registry import JobHandlerRegistry
 
-_logger = logging.getLogger("src.features.background_jobs.arq")
+_logger = logging.getLogger("features.background_jobs.arq")
 
 # Match arq's default 24h job-record TTL so the keys disappear on
 # their own if the worker is offline and the job is never picked up.

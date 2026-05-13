@@ -15,7 +15,7 @@ from uuid import UUID
 # without importing from the auth feature.  The re-export here keeps existing
 # intra-auth import paths working; callers outside auth should import directly
 # from ``platform.shared.principal``.
-from src.platform.shared.principal import Principal as Principal  # noqa: F401
+from app_platform.shared.principal import Principal as Principal  # noqa: F401
 
 
 @dataclass(frozen=True, slots=True)

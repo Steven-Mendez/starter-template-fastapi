@@ -19,10 +19,10 @@ dev: ## Run API with auto-reload (FastAPI CLI)
 	uv run fastapi dev src/main.py --host 0.0.0.0 --port $(PORT)
 
 worker: ## Run the arq background-jobs worker (requires APP_JOBS_BACKEND=arq)
-	uv run python -m src.worker
+	PYTHONPATH=src uv run python -m worker
 
 outbox-retry-failed: ## Re-arm outbox rows that reached APP_OUTBOX_MAX_ATTEMPTS
-	uv run python -m src.features.outbox.management retry-failed
+	PYTHONPATH=src uv run python -m features.outbox.management retry-failed
 
 format: ## Format code with Ruff formatter
 	uv run ruff format .
@@ -31,7 +31,7 @@ lint: ## Run Ruff lint checks
 	uv run ruff check .
 
 lint-arch: ## Check Hexagonal Architecture import contracts (Import Linter)
-	uv run lint-imports
+	PYTHONPATH=src uv run lint-imports
 
 lint-fix: ## Run Ruff lint checks and auto-fix
 	uv run ruff check --fix .
@@ -46,7 +46,7 @@ check: quality ## Alias for the local quality gate
 app-import-smoke: ## Verify the ASGI entrypoint imports in a fresh process
 	APP_AUTH_JWT_SECRET_KEY=ci-test-secret-key-min-32-chars \
 	APP_ENVIRONMENT=development \
-	uv run python -c "import src.main"
+	PYTHONPATH=src uv run python -c "import main"
 
 audit: ## Audit dependencies for known vulnerabilities
 	uv run pip-audit

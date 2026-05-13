@@ -1,7 +1,7 @@
-from src.features.background_jobs.adapters.outbound.arq.adapter import (
+from features.background_jobs.adapters.outbound.arq.adapter import (
     ArqJobQueueAdapter,
 )
-from src.features.background_jobs.adapters.outbound.arq.worker import (
+from features.background_jobs.adapters.outbound.arq.worker import (
     build_arq_functions,
     job_handler_logging_startup,
 )

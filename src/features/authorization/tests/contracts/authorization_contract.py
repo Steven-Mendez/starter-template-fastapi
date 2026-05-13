@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from src.features.authorization.application.types import Relationship
+from features.authorization.application.types import Relationship
 
 
 def _tuple(*, board_id: str, relation: str, user_id: UUID) -> Relationship:

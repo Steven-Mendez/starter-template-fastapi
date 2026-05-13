@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from src.features.authorization.application.types import Relationship
+from features.authorization.application.types import Relationship
 
 # Default page size for ``lookup_resources``. Mirrors the existing admin
 # endpoint defaults (limit=100, max=500) so the API surface is uniform.

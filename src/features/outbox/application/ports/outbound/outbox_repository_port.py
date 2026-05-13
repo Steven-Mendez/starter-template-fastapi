@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from src.features.outbox.domain.message import OutboxMessage
+from features.outbox.domain.message import OutboxMessage
 
 
 class OutboxRepositoryPort(Protocol):

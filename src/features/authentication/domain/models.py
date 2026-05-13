@@ -4,7 +4,7 @@ These dataclasses carry no framework dependencies. They are the
 canonical in-memory representation that the application layer works
 with; the persistence adapter maps to and from these types at the
 boundary. The ``User`` entity lives in the users feature
-(``src.features.users.domain.user``).
+(``features.users.domain.user``).
 """
 
 from __future__ import annotations

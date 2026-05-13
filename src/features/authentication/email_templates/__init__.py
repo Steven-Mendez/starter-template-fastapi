@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.features.email.application.registry import EmailTemplateRegistry
+from features.email.application.registry import EmailTemplateRegistry
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent
 

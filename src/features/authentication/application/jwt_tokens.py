@@ -14,12 +14,12 @@ from uuid import UUID, uuid4
 
 import jwt
 
-from src.features.authentication.application.errors import (
+from app_platform.config.settings import JWT_ALGORITHM_WHITELIST, AppSettings
+from features.authentication.application.errors import (
     ConfigurationError,
     InvalidTokenError,
 )
-from src.features.authentication.application.types import AccessTokenPayload
-from src.platform.config.settings import JWT_ALGORITHM_WHITELIST, AppSettings
+from features.authentication.application.types import AccessTokenPayload
 
 
 class AccessTokenService:

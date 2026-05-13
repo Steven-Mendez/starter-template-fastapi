@@ -13,12 +13,12 @@ from typing import Any
 
 from arq.worker import Function, func
 
-from src.features.background_jobs.application.registry import (
+from features.background_jobs.application.registry import (
     JobHandler,
     JobHandlerRegistry,
 )
 
-_logger = logging.getLogger("src.features.background_jobs.arq.worker")
+_logger = logging.getLogger("features.background_jobs.arq.worker")
 
 
 def _wrap(name: str, handler: JobHandler) -> Function:
@@ -55,7 +55,7 @@ def build_arq_functions(registry: JobHandlerRegistry) -> list[Function]:
 async def job_handler_logging_startup(ctx: dict[str, Any]) -> None:
     """arq ``on_startup`` hook that logs the names of every wired job.
 
-    Wired by :mod:`src.worker` so operators can confirm at boot which
+    Wired by :mod:`worker` so operators can confirm at boot which
     handlers the worker will pick up.
     """
     functions: dict[str, Function] = ctx.get("functions", {})

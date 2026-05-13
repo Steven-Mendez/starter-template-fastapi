@@ -7,20 +7,20 @@ from uuid import uuid4
 
 import pytest
 
-from src.features.authentication.application.crypto import PasswordService, hash_token
-from src.features.authentication.application.errors import InvalidTokenError
-from src.features.authentication.application.jwt_tokens import AccessTokenService
-from src.features.authentication.application.use_cases.auth.login_user import LoginUser
-from src.features.authentication.application.use_cases.auth.refresh_token import (
+from app_platform.config.settings import AppSettings
+from app_platform.shared.result import Err, Ok
+from features.authentication.application.crypto import PasswordService, hash_token
+from features.authentication.application.errors import InvalidTokenError
+from features.authentication.application.jwt_tokens import AccessTokenService
+from features.authentication.application.use_cases.auth.login_user import LoginUser
+from features.authentication.application.use_cases.auth.refresh_token import (
     RotateRefreshToken,
 )
-from src.features.authentication.application.use_cases.auth.register_user import (
+from features.authentication.application.use_cases.auth.register_user import (
     RegisterUser,
 )
-from src.features.authentication.tests.fakes import FakeAuthRepository
-from src.features.users.tests.fakes.fake_user_port import FakeUserPort
-from src.platform.config.settings import AppSettings
-from src.platform.shared.result import Err, Ok
+from features.authentication.tests.fakes import FakeAuthRepository
+from features.users.tests.fakes.fake_user_port import FakeUserPort
 
 pytestmark = pytest.mark.unit
 

@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.features.authentication.application.normalization import normalize_email
+from features.authentication.application.normalization import normalize_email
 
 # NIST SP 800-63B §5.1.1.2 finds long passphrases with low character-class
 # diversity at least as strong as short complex ones, and cautions that

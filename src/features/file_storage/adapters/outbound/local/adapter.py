@@ -18,14 +18,14 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.features.file_storage.application.errors import (
+from app_platform.shared.result import Err, Ok, Result
+from features.file_storage.application.errors import (
     FileStorageError,
     ObjectNotFoundError,
     StorageBackendError,
 )
-from src.platform.shared.result import Err, Ok, Result
 
-_logger = logging.getLogger("src.features.file_storage.local")
+_logger = logging.getLogger("features.file_storage.local")
 
 _METADATA_SUFFIX = ".meta.json"
 

@@ -16,14 +16,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.features.authorization.application.ports.authorization_port import (
+from features.authorization.application.ports.authorization_port import (
     AuthorizationPort,
 )
-from src.features.authorization.application.ports.outbound import (
+from features.authorization.application.ports.outbound import (
     AuditPort,
     UserRegistrarPort,
 )
-from src.features.authorization.application.types import Relationship
+from features.authorization.application.types import Relationship
 
 
 @dataclass(slots=True)

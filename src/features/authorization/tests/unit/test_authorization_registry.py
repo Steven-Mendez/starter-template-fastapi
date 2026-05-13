@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.features.authorization.application.errors import UnknownActionError
-from src.features.authorization.application.registry import (
+from features.authorization.application.errors import UnknownActionError
+from features.authorization.application.registry import (
     AuthorizationRegistry,
 )
 

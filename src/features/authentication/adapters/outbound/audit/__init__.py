@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.features.authentication.adapters.outbound.audit.sqlmodel import (
+from features.authentication.adapters.outbound.audit.sqlmodel import (
     SQLModelAuditAdapter,
 )
 

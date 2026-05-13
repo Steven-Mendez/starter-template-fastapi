@@ -12,10 +12,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from src.features.users.adapters.inbound.http.schemas import UserPublic
-from src.features.users.composition.app_state import get_users_container
-from src.platform.api.authorization import require_authorization
-from src.platform.shared.result import Err, Ok
+from app_platform.api.authorization import require_authorization
+from app_platform.shared.result import Err, Ok
+from features.users.adapters.inbound.http.schemas import UserPublic
+from features.users.composition.app_state import get_users_container
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 

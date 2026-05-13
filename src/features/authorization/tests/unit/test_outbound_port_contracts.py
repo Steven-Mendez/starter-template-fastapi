@@ -10,24 +10,24 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import create_engine
 
-from src.features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.models import (
+from features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
+from features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
 )
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
-from src.features.authorization.tests.contracts.fake_user_authz_version import (
+from features.authorization.tests.contracts.fake_user_authz_version import (
     FakeUserAuthzVersionPort,
 )
-from src.features.authorization.tests.contracts.outbound_port_contract import (
+from features.authorization.tests.contracts.outbound_port_contract import (
     AuditPortContract,
     UserAuthzVersionPortContract,
 )
-from src.features.users.adapters.outbound.authz_version import (
+from features.users.adapters.outbound.authz_version import (
     SQLModelUserAuthzVersionAdapter,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
 )
 

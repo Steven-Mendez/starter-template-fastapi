@@ -9,20 +9,20 @@ import fakeredis
 import pytest
 import redis as redis_lib
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from app_platform.config.settings import AppSettings
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
-from src.features.authentication.application.cache import InProcessPrincipalCache
-from src.features.authentication.application.rate_limit import (
+from features.authentication.application.cache import InProcessPrincipalCache
+from features.authentication.application.rate_limit import (
     FixedWindowRateLimiter,
     RedisRateLimiter,
 )
-from src.features.authentication.composition.container import build_auth_container
-from src.features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
-from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+from features.authentication.composition.container import build_auth_container
+from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxAdapter
+from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
 )
-from src.platform.config.settings import AppSettings
 
 pytestmark = pytest.mark.unit
 
@@ -70,7 +70,7 @@ def test_build_auth_container_warns_for_unimplemented_oauth_settings(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(
-        logging.WARNING, logger="src.features.authentication.composition.container"
+        logging.WARNING, logger="features.authentication.composition.container"
     )
     settings = test_settings.model_copy(update={"auth_oauth_enabled": True})
 
@@ -93,7 +93,7 @@ def test_build_auth_container_uses_fixed_limiter_without_redis_url(
 ) -> None:
     """No ``auth_redis_url`` keeps the historical in-process limiter."""
     caplog.set_level(
-        logging.ERROR, logger="src.features.authentication.composition.container"
+        logging.ERROR, logger="features.authentication.composition.container"
     )
     settings = test_settings.model_copy(update={"auth_redis_url": None})
     container = build_auth_container(
@@ -158,7 +158,7 @@ def test_build_auth_container_uses_redis_limiter_when_url_configured(
     )
     fake = fakeredis.FakeRedis(decode_responses=False)
     with patch(
-        "src.features.authentication.application.rate_limit.redis_lib.Redis.from_url",
+        "features.authentication.application.rate_limit.redis_lib.Redis.from_url",
         return_value=fake,
     ):
         container = build_auth_container(
@@ -182,7 +182,7 @@ def test_build_auth_container_propagates_redis_connection_failure(
     )
     with (
         patch(
-            "src.features.authentication.application.rate_limit.redis_lib.Redis.from_url",
+            "features.authentication.application.rate_limit.redis_lib.Redis.from_url",
             side_effect=redis_lib.ConnectionError("Connection refused"),
         ),
         pytest.raises(redis_lib.ConnectionError),

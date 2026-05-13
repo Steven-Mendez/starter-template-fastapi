@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.platform.config.settings import AppSettings
+from app_platform.config.settings import AppSettings
 
 
 @pytest.fixture

@@ -5,7 +5,7 @@ a glance that swapping the in-repo engine for SpiceDB is a one-adapter
 change. See ``README.md`` for the API mapping and ``.zed`` schema.
 """
 
-from src.features.authorization.adapters.outbound.spicedb.adapter import (
+from features.authorization.adapters.outbound.spicedb.adapter import (
     SpiceDBAuthorizationAdapter,
 )
 

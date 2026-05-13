@@ -9,7 +9,7 @@ contract suite stays free of feature-specific vocabulary.
 
 from __future__ import annotations
 
-from src.features.authorization.application.registry import (
+from features.authorization.application.registry import (
     AuthorizationRegistry,
 )
 

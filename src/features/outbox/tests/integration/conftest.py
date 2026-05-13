@@ -19,7 +19,7 @@ from sqlalchemy.engine import Engine
 from sqlmodel import create_engine
 
 # Import the table side-effect so SQLModel.metadata knows about it.
-from src.features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
+from features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
 
 
 def _load_postgres_container() -> Any:

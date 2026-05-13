@@ -54,7 +54,7 @@ the in-tree `_template` scaffold; see its directory under
 | `users` | The `User` entity, registration, profile read/update, deactivation, admin user listing. Owns the `UserPort` consumed by `authentication`. |
 | `authorization` | ReBAC engine. Owns `AuthorizationPort`, the runtime registry, the SQLModel adapter, and the SpiceDB stub. |
 | `email` | `EmailPort` plus `console` and `smtp` adapters. Owns the template registry features contribute to. |
-| `background_jobs` | `JobQueuePort` plus `in_process` and `arq` adapters. Worker entrypoint at `python -m src.worker`. |
+| `background_jobs` | `JobQueuePort` plus `in_process` and `arq` adapters. Worker entrypoint at `python -m worker`. |
 | `file_storage` | `FileStoragePort` plus `local` adapter and `s3` stub. |
 
 Cross-feature communication goes through ports only; Import Linter
@@ -173,7 +173,7 @@ make precommit-install
 ## Environment Variables
 
 Settings use the `APP_` prefix and are loaded from `.env` by
-`src.platform.config.settings.AppSettings`. Every flat field is also
+`app_platform.config.settings.AppSettings`. Every flat field is also
 exposed through a typed per-feature view (`settings.authentication`,
 `settings.email`, …) so consumers can ask for the structured shape.
 
@@ -203,7 +203,7 @@ Run a production-style Uvicorn server locally after applying migrations:
 
 ```bash
 uv run alembic upgrade head
-uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 Run the background-jobs worker against Redis:
@@ -273,7 +273,7 @@ docker run --env-file .env -p 8000:8000 starter-template-fastapi:prod
 Run the worker alongside it:
 
 ```bash
-docker run --env-file .env starter-template-fastapi:prod python -m src.worker
+docker run --env-file .env starter-template-fastapi:prod python -m worker
 ```
 
 The runtime image default command starts Uvicorn and does not run
@@ -289,7 +289,7 @@ migrations or the worker.
   `auth_return_internal_tokens`, or RBAC disabled. See
   [Operations Guide](docs/operations.md#environment-variable-reference) for the
   full list.
-- Run at least one worker (`python -m src.worker`) per Redis-backed deployment;
+- Run at least one worker (`python -m worker`) per Redis-backed deployment;
   the API does not consume the job queue itself.
 - Use `/health/live` for liveness and `/health/ready` for readiness checks.
 
@@ -323,7 +323,7 @@ migrations or the worker.
 | `uv run alembic upgrade head` uses the wrong database | Check `APP_POSTGRESQL_DSN`; Alembic reads it before the default in `AppSettings`. |
 | Auth requests return `401` after working before | The principal cache evicted; the access token may have been revoked or expired. |
 | `/health/ready` returns `503` | A readiness dependency failed. Check database, Redis, and auth configuration. |
-| Background jobs accumulate without running | The worker process is not running; start `python -m src.worker`. |
+| Background jobs accumulate without running | The worker process is not running; start `python -m worker`. |
 | Integration tests are skipped | Docker is unavailable or `KANBAN_SKIP_TESTCONTAINERS=1` is set. |
 | Architecture lint fails | Check imports against the layer contracts in `pyproject.toml`. |
 

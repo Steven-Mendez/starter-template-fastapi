@@ -4,21 +4,21 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from src.features.authentication.application.crypto import (
+from app_platform.config.settings import AppSettings
+from app_platform.shared.result import Ok, Result
+from features.authentication.application.crypto import (
     generate_opaque_token,
     hash_token,
 )
-from src.features.authentication.application.errors import AuthError
-from src.features.authentication.application.normalization import normalize_email
-from src.features.authentication.application.ports.outbound.auth_repository import (
+from features.authentication.application.errors import AuthError
+from features.authentication.application.normalization import normalize_email
+from features.authentication.application.ports.outbound.auth_repository import (
     TokenRepositoryPort,
 )
-from src.features.authentication.application.types import InternalTokenResult
-from src.features.authentication.email_templates import PASSWORD_RESET_TEMPLATE
-from src.features.email.composition.jobs import SEND_EMAIL_JOB
-from src.features.users.application.ports.user_port import UserPort
-from src.platform.config.settings import AppSettings
-from src.platform.shared.result import Ok, Result
+from features.authentication.application.types import InternalTokenResult
+from features.authentication.email_templates import PASSWORD_RESET_TEMPLATE
+from features.email.composition.jobs import SEND_EMAIL_JOB
+from features.users.application.ports.user_port import UserPort
 
 _logger = logging.getLogger(__name__)
 

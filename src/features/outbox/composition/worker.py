@@ -23,9 +23,9 @@ from typing import Any
 
 from arq.cron import cron
 
-from src.features.outbox.composition.container import OutboxContainer
+from features.outbox.composition.container import OutboxContainer
 
-_logger = logging.getLogger("src.features.outbox.worker")
+_logger = logging.getLogger("features.outbox.worker")
 
 # Divisors of 60 — the set of intervals (in seconds) that map cleanly
 # onto arq's crontab-style ``second={...}`` specification.

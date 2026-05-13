@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.features.authorization.application.actions import relations_for
-from src.features.authorization.application.errors import UnknownActionError
-from src.features.authorization.tests.contracts.registry_helper import (
+from features.authorization.application.actions import relations_for
+from features.authorization.application.errors import UnknownActionError
+from features.authorization.tests.contracts.registry_helper import (
     make_test_registry,
 )
 

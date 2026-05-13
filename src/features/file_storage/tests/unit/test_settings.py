@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from src.features.file_storage.composition.container import (
+from features.file_storage.composition.container import (
     build_file_storage_container,
 )
-from src.features.file_storage.composition.settings import StorageSettings
+from features.file_storage.composition.settings import StorageSettings
 
 pytestmark = pytest.mark.unit
 

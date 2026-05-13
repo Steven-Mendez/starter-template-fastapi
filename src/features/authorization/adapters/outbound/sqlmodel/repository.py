@@ -39,16 +39,16 @@ from sqlalchemy import delete
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
-from src.features.authorization.application.ports.authorization_port import (
+from app_platform.persistence.sqlmodel.authorization.models import RelationshipTable
+from features.authorization.application.ports.authorization_port import (
     LOOKUP_DEFAULT_LIMIT,
     LOOKUP_MAX_LIMIT,
 )
-from src.features.authorization.application.ports.outbound import (
+from features.authorization.application.ports.outbound import (
     UserAuthzVersionPort,
 )
-from src.features.authorization.application.registry import AuthorizationRegistry
-from src.features.authorization.application.types import Relationship
-from src.platform.persistence.sqlmodel.authorization.models import RelationshipTable
+from features.authorization.application.registry import AuthorizationRegistry
+from features.authorization.application.types import Relationship
 
 
 def _user_subject_ids(tuples: list[Relationship]) -> set[UUID]:

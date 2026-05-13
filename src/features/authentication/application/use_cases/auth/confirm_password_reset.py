@@ -4,18 +4,18 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
-from src.features.authentication.application.cache import PrincipalCachePort
-from src.features.authentication.application.crypto import PasswordService, hash_token
-from src.features.authentication.application.errors import (
+from app_platform.shared.result import Err, Ok, Result
+from features.authentication.application.cache import PrincipalCachePort
+from features.authentication.application.crypto import PasswordService, hash_token
+from features.authentication.application.errors import (
     AuthError,
     InvalidTokenError,
     TokenAlreadyUsedError,
 )
-from src.features.authentication.application.ports.outbound.auth_repository import (
+from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
-from src.features.users.application.ports.user_port import UserPort
-from src.platform.shared.result import Err, Ok, Result
+from features.users.application.ports.user_port import UserPort
 
 PASSWORD_RESET_PURPOSE = "password_reset"
 

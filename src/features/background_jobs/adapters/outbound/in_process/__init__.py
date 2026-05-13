@@ -1,4 +1,4 @@
-from src.features.background_jobs.adapters.outbound.in_process.adapter import (
+from features.background_jobs.adapters.outbound.in_process.adapter import (
     InProcessJobQueueAdapter,
 )
 

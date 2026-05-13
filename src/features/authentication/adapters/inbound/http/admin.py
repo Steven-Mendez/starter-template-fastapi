@@ -13,16 +13,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 
-from src.features.authentication.adapters.inbound.http.errors import (
+from app_platform.api.authorization import require_authorization
+from app_platform.shared.result import Err, Ok
+from features.authentication.adapters.inbound.http.errors import (
     raise_http_from_auth_error,
 )
-from src.features.authentication.adapters.inbound.http.schemas import (
+from features.authentication.adapters.inbound.http.schemas import (
     AuditEventRead,
     AuditLogRead,
 )
-from src.features.authentication.composition.app_state import get_auth_container
-from src.platform.api.authorization import require_authorization
-from src.platform.shared.result import Err, Ok
+from features.authentication.composition.app_state import get_auth_container
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 

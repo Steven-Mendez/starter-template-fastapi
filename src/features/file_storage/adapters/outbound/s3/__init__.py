@@ -1,4 +1,4 @@
-from src.features.file_storage.adapters.outbound.s3.adapter import (
+from features.file_storage.adapters.outbound.s3.adapter import (
     S3FileStorageAdapter,
 )
 

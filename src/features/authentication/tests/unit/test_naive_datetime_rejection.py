@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.features.authentication.domain.models import (
+from features.authentication.domain.models import (
     AuditEvent,
     InternalToken,
     RefreshToken,

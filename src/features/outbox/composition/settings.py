@@ -4,7 +4,7 @@ The outbox feature reads only a handful of knobs — whether the pattern
 is enabled, how often the relay wakes up, how many rows it claims per
 tick, the per-row retry budget, and an identifier for the worker that
 holds the claim. Owning the projection here keeps the env-loading
-boundary (:mod:`src.platform.config.settings`) free of feature-internal
+boundary (:mod:`app_platform.config.settings`) free of feature-internal
 defaults and gives the feature its own ``validate_production`` hook.
 """
 

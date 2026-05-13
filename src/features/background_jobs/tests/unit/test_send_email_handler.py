@@ -11,17 +11,17 @@ from pathlib import Path
 
 import pytest
 
-from src.features.background_jobs.adapters.outbound.in_process import (
+from features.background_jobs.adapters.outbound.in_process import (
     InProcessJobQueueAdapter,
 )
-from src.features.background_jobs.application.registry import JobHandlerRegistry
-from src.features.email.adapters.outbound.console import ConsoleEmailAdapter
-from src.features.email.application.registry import EmailTemplateRegistry
-from src.features.email.composition.jobs import (
+from features.background_jobs.application.registry import JobHandlerRegistry
+from features.email.adapters.outbound.console import ConsoleEmailAdapter
+from features.email.application.registry import EmailTemplateRegistry
+from features.email.composition.jobs import (
     SEND_EMAIL_JOB,
     register_send_email_handler,
 )
-from src.features.email.tests.fakes.fake_email_port import FakeEmailPort
+from features.email.tests.fakes.fake_email_port import FakeEmailPort
 
 pytestmark = pytest.mark.unit
 

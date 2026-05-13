@@ -14,19 +14,19 @@ from dataclasses import dataclass
 
 from sqlalchemy.engine import Engine
 
-from src.features.authorization.adapters.outbound.sqlmodel import (
+from features.authorization.adapters.outbound.sqlmodel import (
     SQLModelAuthorizationAdapter,
 )
-from src.features.authorization.application.ports.authorization_port import (
+from features.authorization.application.ports.authorization_port import (
     AuthorizationPort,
 )
-from src.features.authorization.application.ports.outbound import (
+from features.authorization.application.ports.outbound import (
     AuditPort,
     UserAuthzVersionPort,
     UserRegistrarPort,
 )
-from src.features.authorization.application.registry import AuthorizationRegistry
-from src.features.authorization.application.use_cases import BootstrapSystemAdmin
+from features.authorization.application.registry import AuthorizationRegistry
+from features.authorization.application.use_cases import BootstrapSystemAdmin
 
 
 @dataclass(slots=True)

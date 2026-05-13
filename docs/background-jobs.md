@@ -31,7 +31,7 @@ Locally:
 APP_JOBS_BACKEND=arq APP_JOBS_REDIS_URL=redis://localhost:6379/0 make worker
 ```
 
-In production, run `python -m src.worker` as a separate process (sidecar
+In production, run `python -m worker` as a separate process (sidecar
 container, Kubernetes Deployment, systemd unit, etc.). The worker logs the
 names of every registered handler at startup so operators can confirm what
 it will consume before the first job arrives.

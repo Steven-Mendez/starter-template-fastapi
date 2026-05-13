@@ -20,11 +20,11 @@ import pytest
 from arq import worker as arq_worker
 from arq.worker import Worker
 
-from src.features.background_jobs.adapters.outbound.arq import (
+from features.background_jobs.adapters.outbound.arq import (
     ArqJobQueueAdapter,
     build_arq_functions,
 )
-from src.features.background_jobs.application.registry import JobHandlerRegistry
+from features.background_jobs.application.registry import JobHandlerRegistry
 
 pytestmark = pytest.mark.integration
 

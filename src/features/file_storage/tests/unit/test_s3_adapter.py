@@ -16,12 +16,12 @@ import pytest
 from botocore.exceptions import ClientError, EndpointConnectionError
 from moto import mock_aws
 
-from src.features.file_storage.adapters.outbound.s3 import S3FileStorageAdapter
-from src.features.file_storage.application.errors import (
+from app_platform.shared.result import Err, Ok
+from features.file_storage.adapters.outbound.s3 import S3FileStorageAdapter
+from features.file_storage.application.errors import (
     ObjectNotFoundError,
     StorageBackendError,
 )
-from src.platform.shared.result import Err, Ok
 
 pytestmark = pytest.mark.unit
 

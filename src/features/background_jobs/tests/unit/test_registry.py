@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from src.features.background_jobs.application.errors import (
+from features.background_jobs.application.errors import (
     HandlerAlreadyRegisteredError,
     UnknownJobError,
 )
-from src.features.background_jobs.application.registry import JobHandlerRegistry
+from features.background_jobs.application.registry import JobHandlerRegistry
 
 pytestmark = pytest.mark.unit
 

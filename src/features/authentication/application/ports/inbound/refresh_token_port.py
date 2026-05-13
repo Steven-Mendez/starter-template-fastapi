@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from src.features.authentication.application.errors import AuthError
-from src.features.authentication.application.types import IssuedTokens
-from src.platform.shared.principal import Principal
-from src.platform.shared.result import Result
+from app_platform.shared.principal import Principal
+from app_platform.shared.result import Result
+from features.authentication.application.errors import AuthError
+from features.authentication.application.types import IssuedTokens
 
 
 class RefreshTokenPort(Protocol):

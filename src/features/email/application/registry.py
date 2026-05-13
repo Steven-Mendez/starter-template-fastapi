@@ -25,11 +25,11 @@ from jinja2 import (
     select_autoescape,
 )
 
-from src.features.email.application.errors import (
+from features.email.application.errors import (
     TemplateRenderError,
     UnknownTemplateError,
 )
-from src.features.email.domain.message import RenderedEmail
+from features.email.domain.message import RenderedEmail
 
 
 @dataclass(frozen=True, slots=True)

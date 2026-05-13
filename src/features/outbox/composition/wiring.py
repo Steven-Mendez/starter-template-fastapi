@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from src.features.outbox.composition.container import OutboxContainer
+from features.outbox.composition.container import OutboxContainer
 
 
 def attach_outbox_container(app: FastAPI, container: OutboxContainer) -> None:

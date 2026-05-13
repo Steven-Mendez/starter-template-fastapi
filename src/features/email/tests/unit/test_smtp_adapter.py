@@ -11,10 +11,10 @@ from typing import Any
 import pytest
 from aiosmtpd.controller import Controller
 
-from src.features.email.adapters.outbound.smtp import SmtpEmailAdapter
-from src.features.email.application.errors import DeliveryError
-from src.features.email.application.registry import EmailTemplateRegistry
-from src.platform.shared.result import Err, Ok
+from app_platform.shared.result import Err, Ok
+from features.email.adapters.outbound.smtp import SmtpEmailAdapter
+from features.email.application.errors import DeliveryError
+from features.email.application.registry import EmailTemplateRegistry
 
 pytestmark = pytest.mark.unit
 

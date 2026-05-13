@@ -19,16 +19,16 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Any
 
-from src.features.email.application.errors import (
+from app_platform.shared.result import Err, Ok, Result
+from features.email.application.errors import (
     DeliveryError,
     EmailError,
     TemplateRenderError,
     UnknownTemplateError,
 )
-from src.features.email.application.registry import EmailTemplateRegistry
-from src.platform.shared.result import Err, Ok, Result
+from features.email.application.registry import EmailTemplateRegistry
 
-_logger = logging.getLogger("src.features.email.smtp")
+_logger = logging.getLogger("features.email.smtp")
 
 
 @dataclass(slots=True)

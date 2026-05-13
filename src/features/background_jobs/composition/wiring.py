@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from src.features.background_jobs.composition.container import JobsContainer
+from features.background_jobs.composition.container import JobsContainer
 
 
 def attach_jobs_container(app: FastAPI, container: JobsContainer) -> None:

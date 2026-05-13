@@ -85,7 +85,7 @@ The test suite is organized by scope.
 
 | Scope | Location | Marker | Purpose |
 | --- | --- | --- | --- |
-| Unit | `src/platform/tests/` and `src/features/<feature>/tests/unit/` | `unit` | Test pure domain logic, use cases, settings, middleware, and platform errors. |
+| Unit | `src/app_platform/tests/` and `src/features/<feature>/tests/unit/` | `unit` | Test pure domain logic, use cases, settings, middleware, and platform errors. |
 | End-to-end | `src/features/<feature>/tests/e2e/` | `e2e` | Test HTTP flows through FastAPI with in-memory fakes. |
 | Contract | `src/features/<feature>/tests/contracts/` | called by unit and integration tests | Reuse repository behavior tests against fake and SQLModel adapters. |
 | Integration | `src/features/<feature>/tests/integration/` | `integration` | Test SQLModel persistence against PostgreSQL through testcontainers. |
@@ -175,7 +175,7 @@ hand.
 | New domain rule | `src/features/<feature>/domain/` and domain unit tests. |
 | New persistence behavior | `src/features/<feature>/adapters/outbound/persistence/sqlmodel/` and repository contract or integration tests. |
 | New database schema change | SQLModel models plus a new Alembic migration under `alembic/versions/`. |
-| New cross-cutting platform behavior | `src/platform/` with platform tests under `src/platform/tests/`. |
+| New cross-cutting platform behavior | `src/app_platform/` with platform tests under `src/app_platform/tests/`. |
 | New feature | Recover the scaffold from git history and follow [Feature Template Guide](feature-template.md). |
 
 ## Adding A Migration

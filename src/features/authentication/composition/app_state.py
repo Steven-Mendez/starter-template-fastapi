@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, Request
 
 if TYPE_CHECKING:
-    from src.features.authentication.composition.container import AuthContainer
+    from features.authentication.composition.container import AuthContainer
 
 # A single source of truth for the attribute name avoids silent mismatches
 # between setter and getter if the name is ever changed.

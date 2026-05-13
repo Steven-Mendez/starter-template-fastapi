@@ -2,7 +2,7 @@
 
 These mappings own the database schema for refresh tokens, internal
 (single-use) tokens, and the auth audit log. The ``users`` table is
-owned by the users feature (``src.features.users``); authentication
+owned by the users feature (``features.users``); authentication
 references it only through the ``user_id`` foreign key.
 
 The ``relationships`` table that drives the ReBAC authorization engine

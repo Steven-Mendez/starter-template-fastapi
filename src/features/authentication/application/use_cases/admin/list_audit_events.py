@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from src.features.authentication.application.errors import AuthError
-from src.features.authentication.application.ports.outbound.auth_repository import (
+from app_platform.shared.result import Ok, Result
+from features.authentication.application.errors import AuthError
+from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
-from src.features.authentication.domain.models import AuditEvent
-from src.platform.shared.result import Ok, Result
+from features.authentication.domain.models import AuditEvent
 
 
 @dataclass(slots=True)

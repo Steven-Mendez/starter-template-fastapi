@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.features.authorization.application.use_cases.bootstrap_system_admin import (
+from features.authorization.application.use_cases.bootstrap_system_admin import (
     BootstrapSystemAdmin,
 )
 

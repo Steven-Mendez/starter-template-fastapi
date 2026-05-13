@@ -69,7 +69,7 @@ Cross-feature communication goes through ports only:
 - `email`, `background_jobs`, and `file_storage` have no feature imports at all — features contribute templates/handlers through registries and call ports.
 
 The cross-feature `relationships` table is platform-owned
-(`src/platform/persistence/sqlmodel/authorization/`) because every feature's
+(`src/app_platform/persistence/sqlmodel/authorization/`) because every feature's
 authz check reads it at request time. The authorization feature is its only
 writer.
 
@@ -80,7 +80,7 @@ domain → application → adapters → composition
 ```
 
 Each layer can only import from layers to its left. `platform` is cross-cutting
-but must never import `features` — except `src.platform.config.settings`, the
+but must never import `features` — except `app_platform.config.settings`, the
 configuration composition root, which aggregates per-feature settings classes
 with an explicit Import Linter exception.
 
@@ -90,11 +90,11 @@ with an explicit Import Linter exception.
 |---|---|
 | `src/main.py` | Composition root — mounts every feature's routes and wires containers in the lifespan event |
 | `src/worker.py` | Worker entrypoint for `arq` jobs; loads the same composition root and registers handlers |
-| `src/platform/api/app_factory.py` | FastAPI factory: CORS, trusted hosts, docs, middleware, Problem Details handlers |
-| `src/platform/config/settings.py` | `AppSettings` — `APP_`-prefixed pydantic-settings; exposes typed per-feature views (`settings.email`, `settings.authentication`, …); aggregates per-feature production validation |
-| `src/platform/config/sub_settings.py` | `DatabaseSettings`, `ApiSettings`, `ObservabilitySettings` — cross-cutting platform projections |
-| `src/platform/shared/result.py` | `Result[T, E]` / `Ok` / `Err` — used by every use case |
-| `src/platform/persistence/sqlmodel/authorization/models.py` | `RelationshipTable` — cross-feature ReBAC tuples |
+| `src/app_platform/api/app_factory.py` | FastAPI factory: CORS, trusted hosts, docs, middleware, Problem Details handlers |
+| `src/app_platform/config/settings.py` | `AppSettings` — `APP_`-prefixed pydantic-settings; exposes typed per-feature views (`settings.email`, `settings.authentication`, …); aggregates per-feature production validation |
+| `src/app_platform/config/sub_settings.py` | `DatabaseSettings`, `ApiSettings`, `ObservabilitySettings` — cross-cutting platform projections |
+| `src/app_platform/shared/result.py` | `Result[T, E]` / `Ok` / `Err` — used by every use case |
+| `src/app_platform/persistence/sqlmodel/authorization/models.py` | `RelationshipTable` — cross-feature ReBAC tuples |
 | `src/features/<feature>/composition/settings.py` | Each feature owns a typed settings projection and its own `validate_production(errors)` method |
 
 ### Authentication feature (`src/features/authentication/`)

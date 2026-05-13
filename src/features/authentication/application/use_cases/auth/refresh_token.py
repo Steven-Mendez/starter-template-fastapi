@@ -3,24 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from src.features.authentication.application.crypto import (
+from app_platform.config.settings import AppSettings
+from app_platform.shared.principal import Principal
+from app_platform.shared.result import Err, Ok, Result
+from features.authentication.application.crypto import (
     generate_opaque_token,
     hash_token,
 )
-from src.features.authentication.application.errors import (
+from features.authentication.application.errors import (
     InactiveUserError,
     InvalidCredentialsError,
     InvalidTokenError,
 )
-from src.features.authentication.application.jwt_tokens import AccessTokenService
-from src.features.authentication.application.ports.outbound.auth_repository import (
+from features.authentication.application.jwt_tokens import AccessTokenService
+from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
-from src.features.authentication.application.types import IssuedTokens
-from src.features.users.application.ports.user_port import UserPort
-from src.platform.config.settings import AppSettings
-from src.platform.shared.principal import Principal
-from src.platform.shared.result import Err, Ok, Result
+from features.authentication.application.types import IssuedTokens
+from features.users.application.ports.user_port import UserPort
 
 
 def _principal_from_user(user: object) -> Principal:

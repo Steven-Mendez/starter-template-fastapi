@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from src.features.authentication.email_templates import (
+from features.authentication.email_templates import (
     PASSWORD_RESET_TEMPLATE,
     VERIFY_EMAIL_TEMPLATE,
 )
-from src.features.authentication.tests.e2e.conftest import AuthTestContext
+from features.authentication.tests.e2e.conftest import AuthTestContext
 
 pytestmark = pytest.mark.e2e
 

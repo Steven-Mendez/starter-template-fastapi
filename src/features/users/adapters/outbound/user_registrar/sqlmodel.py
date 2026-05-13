@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from src.features.users.application.errors import UserError
-from src.features.users.application.ports.credential_writer_port import (
+from app_platform.shared.result import Err, Ok
+from features.users.application.errors import UserError
+from features.users.application.ports.credential_writer_port import (
     CredentialWriterPort,
 )
-from src.features.users.application.ports.user_port import UserPort
-from src.platform.shared.result import Err, Ok
+from features.users.application.ports.user_port import UserPort
 
 
 class SQLModelUserRegistrarAdapter:

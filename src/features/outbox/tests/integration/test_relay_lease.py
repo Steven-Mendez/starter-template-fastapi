@@ -16,7 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from src.features.outbox.adapters.outbound.sqlmodel.adapter import (
+from features.outbox.adapters.outbound.sqlmodel.adapter import (
     SessionSQLModelOutboxAdapter,
 )
 

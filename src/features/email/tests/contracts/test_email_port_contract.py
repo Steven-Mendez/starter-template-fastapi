@@ -15,13 +15,13 @@ import httpx
 import pytest
 import respx
 
-from src.features.email.adapters.outbound.console import ConsoleEmailAdapter
-from src.features.email.adapters.outbound.resend import ResendEmailAdapter
-from src.features.email.application.errors import UnknownTemplateError
-from src.features.email.application.ports.email_port import EmailPort
-from src.features.email.application.registry import EmailTemplateRegistry
-from src.features.email.tests.fakes.fake_email_port import FakeEmailPort
-from src.platform.shared.result import Err, Ok
+from app_platform.shared.result import Err, Ok
+from features.email.adapters.outbound.console import ConsoleEmailAdapter
+from features.email.adapters.outbound.resend import ResendEmailAdapter
+from features.email.application.errors import UnknownTemplateError
+from features.email.application.ports.email_port import EmailPort
+from features.email.application.registry import EmailTemplateRegistry
+from features.email.tests.fakes.fake_email_port import FakeEmailPort
 
 pytestmark = pytest.mark.unit
 

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from src.features.authorization.composition.container import (
+from features.authorization.composition.container import (
     AuthorizationContainer,
     build_authorization_container,
 )
-from src.features.authorization.composition.wiring import (
+from features.authorization.composition.wiring import (
     attach_authorization_container,
     register_authorization_error_handlers,
 )

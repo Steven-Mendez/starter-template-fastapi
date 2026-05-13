@@ -19,56 +19,56 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Union
 
-from src.features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
-from src.features.authentication.adapters.outbound.credential_writer import (
+from app_platform.config.settings import AppSettings
+from features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
+from features.authentication.adapters.outbound.credential_writer import (
     SQLModelCredentialWriterAdapter,
 )
-from src.features.authentication.adapters.outbound.persistence.sqlmodel import (
+from features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
-from src.features.authentication.application.cache import (
+from features.authentication.application.cache import (
     InProcessPrincipalCache,
     PrincipalCachePort,
     RedisPrincipalCache,
 )
-from src.features.authentication.application.crypto import PasswordService
-from src.features.authentication.application.jwt_tokens import AccessTokenService
-from src.features.authentication.application.rate_limit import (
+from features.authentication.application.crypto import PasswordService
+from features.authentication.application.jwt_tokens import AccessTokenService
+from features.authentication.application.rate_limit import (
     FixedWindowRateLimiter,
     RedisRateLimiter,
 )
-from src.features.authentication.application.use_cases.admin.list_audit_events import (
+from features.authentication.application.use_cases.admin.list_audit_events import (
     ListAuditEvents,
 )
-from src.features.authentication.application.use_cases.auth.confirm_email_verification import (  # noqa: E501
+from features.authentication.application.use_cases.auth.confirm_email_verification import (  # noqa: E501
     ConfirmEmailVerification,
 )
-from src.features.authentication.application.use_cases.auth.confirm_password_reset import (  # noqa: E501
+from features.authentication.application.use_cases.auth.confirm_password_reset import (  # noqa: E501
     ConfirmPasswordReset,
 )
-from src.features.authentication.application.use_cases.auth.login_user import LoginUser
-from src.features.authentication.application.use_cases.auth.logout_user import (
+from features.authentication.application.use_cases.auth.login_user import LoginUser
+from features.authentication.application.use_cases.auth.logout_user import (
     LogoutAllSessions,
     LogoutUser,
 )
-from src.features.authentication.application.use_cases.auth.refresh_token import (
+from features.authentication.application.use_cases.auth.refresh_token import (
     RotateRefreshToken,
 )
-from src.features.authentication.application.use_cases.auth.register_user import (
+from features.authentication.application.use_cases.auth.register_user import (
     RegisterUser,
 )
-from src.features.authentication.application.use_cases.auth.request_email_verification import (  # noqa: E501
+from features.authentication.application.use_cases.auth.request_email_verification import (  # noqa: E501
     RequestEmailVerification,
 )
-from src.features.authentication.application.use_cases.auth.request_password_reset import (  # noqa: E501
+from features.authentication.application.use_cases.auth.request_password_reset import (  # noqa: E501
     RequestPasswordReset,
 )
-from src.features.authentication.application.use_cases.auth.resolve_principal import (
+from features.authentication.application.use_cases.auth.resolve_principal import (
     ResolvePrincipalFromAccessToken,
 )
-from src.features.outbox.composition.container import SessionScopedOutboxFactory
-from src.features.users.application.ports.user_port import UserPort
-from src.platform.config.settings import AppSettings
+from features.outbox.composition.container import SessionScopedOutboxFactory
+from features.users.application.ports.user_port import UserPort
 
 _logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from src.features.outbox.domain.status import OutboxStatus
+from features.outbox.domain.status import OutboxStatus
 
 
 @dataclass(frozen=True, slots=True)

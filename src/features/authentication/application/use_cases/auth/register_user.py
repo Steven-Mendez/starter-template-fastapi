@@ -2,21 +2,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.features.authentication.application.crypto import PasswordService
-from src.features.authentication.application.errors import (
+from app_platform.config.settings import AppSettings
+from app_platform.shared.result import Err, Ok, Result
+from features.authentication.application.crypto import PasswordService
+from features.authentication.application.errors import (
     DuplicateEmailError,
     NotFoundError,
 )
-from src.features.authentication.application.normalization import normalize_email
-from src.features.authentication.application.ports.outbound.auth_repository import (
+from features.authentication.application.normalization import normalize_email
+from features.authentication.application.ports.outbound.auth_repository import (
     AuditRepositoryPort,
     CredentialRepositoryPort,
 )
-from src.features.users.application.errors import UserError
-from src.features.users.application.ports.user_port import UserPort
-from src.features.users.domain.user import User
-from src.platform.config.settings import AppSettings
-from src.platform.shared.result import Err, Ok, Result
+from features.users.application.errors import UserError
+from features.users.application.ports.user_port import UserPort
+from features.users.domain.user import User
 
 
 @dataclass(slots=True)

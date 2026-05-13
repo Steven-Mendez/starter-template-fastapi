@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from src.features.file_storage.composition.container import FileStorageContainer
+from features.file_storage.composition.container import FileStorageContainer
 
 
 def attach_file_storage_container(

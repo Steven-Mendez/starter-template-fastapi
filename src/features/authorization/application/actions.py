@@ -10,7 +10,7 @@ module is intentionally empty of feature-specific knowledge.
 
 from __future__ import annotations
 
-from src.features.authorization.application.registry import AuthorizationRegistry
+from features.authorization.application.registry import AuthorizationRegistry
 
 
 def relations_for(

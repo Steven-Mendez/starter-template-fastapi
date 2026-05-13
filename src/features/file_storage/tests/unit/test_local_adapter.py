@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from src.features.file_storage.adapters.outbound.local import LocalFileStorageAdapter
-from src.platform.shared.result import Ok, expect_ok
+from app_platform.shared.result import Ok, expect_ok
+from features.file_storage.adapters.outbound.local import LocalFileStorageAdapter
 
 pytestmark = pytest.mark.unit
 

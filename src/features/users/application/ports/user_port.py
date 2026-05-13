@@ -6,9 +6,9 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from src.features.users.application.errors import UserError
-from src.features.users.domain.user import User
-from src.platform.shared.result import Result
+from app_platform.shared.result import Result
+from features.users.application.errors import UserError
+from features.users.domain.user import User
 
 
 class UserPort(Protocol):

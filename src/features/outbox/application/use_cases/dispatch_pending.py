@@ -30,12 +30,12 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from src.features.background_jobs.application.ports.job_queue_port import JobQueuePort
-from src.features.outbox.application.ports.outbound.outbox_repository_port import (
+from features.background_jobs.application.ports.job_queue_port import JobQueuePort
+from features.outbox.application.ports.outbound.outbox_repository_port import (
     OutboxRepositoryPort,
 )
 
-_logger = logging.getLogger("src.features.outbox.dispatch")
+_logger = logging.getLogger("features.outbox.dispatch")
 
 # Retry delay is fixed for the starter — see design.md for the rationale
 # (the destination is a local Redis push; exponential backoff does not

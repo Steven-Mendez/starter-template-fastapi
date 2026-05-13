@@ -10,14 +10,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from src.features.users.adapters.inbound.http.schemas import (
+from app_platform.api.authorization import CurrentPrincipalDep
+from app_platform.shared.result import Err, Ok
+from features.users.adapters.inbound.http.schemas import (
     UpdateProfileRequest,
     UserPublic,
 )
-from src.features.users.application.errors import UserError
-from src.features.users.composition.app_state import get_users_container
-from src.platform.api.authorization import CurrentPrincipalDep
-from src.platform.shared.result import Err, Ok
+from features.users.application.errors import UserError
+from features.users.composition.app_state import get_users_container
 
 me_router = APIRouter(tags=["me"])
 

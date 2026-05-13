@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from src.features.authentication.application.ports.outbound.auth_repository import (
+from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
 

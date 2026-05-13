@@ -26,9 +26,9 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from src.features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
-from src.features.outbox.domain.message import OutboxMessage
-from src.features.outbox.domain.status import OutboxStatus
+from features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
+from features.outbox.domain.message import OutboxMessage
+from features.outbox.domain.status import OutboxStatus
 
 
 @dataclass(slots=True)

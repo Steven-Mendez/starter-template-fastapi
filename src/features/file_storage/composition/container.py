@@ -11,12 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.features.file_storage.adapters.outbound.local import LocalFileStorageAdapter
-from src.features.file_storage.adapters.outbound.s3 import S3FileStorageAdapter
-from src.features.file_storage.application.ports.file_storage_port import (
+from features.file_storage.adapters.outbound.local import LocalFileStorageAdapter
+from features.file_storage.adapters.outbound.s3 import S3FileStorageAdapter
+from features.file_storage.application.ports.file_storage_port import (
     FileStoragePort,
 )
-from src.features.file_storage.composition.settings import StorageSettings
+from features.file_storage.composition.settings import StorageSettings
 
 
 @dataclass(slots=True)

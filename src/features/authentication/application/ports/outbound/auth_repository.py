@@ -12,13 +12,13 @@ from datetime import datetime
 from typing import Any, ContextManager, Protocol
 from uuid import UUID
 
-from src.features.authentication.domain.models import (
+from features.authentication.domain.models import (
     AuditEvent,
     Credential,
     InternalToken,
     RefreshToken,
 )
-from src.features.outbox.application.ports.outbox_port import OutboxPort
+from features.outbox.application.ports.outbox_port import OutboxPort
 
 
 class AuthRefreshTokenTransactionPort(Protocol):

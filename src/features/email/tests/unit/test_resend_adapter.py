@@ -15,13 +15,13 @@ import httpx
 import pytest
 import respx
 
-from src.features.email.adapters.outbound.resend import ResendEmailAdapter
-from src.features.email.application.errors import (
+from app_platform.shared.result import Err, Ok
+from features.email.adapters.outbound.resend import ResendEmailAdapter
+from features.email.application.errors import (
     DeliveryError,
     UnknownTemplateError,
 )
-from src.features.email.application.registry import EmailTemplateRegistry
-from src.platform.shared.result import Err, Ok
+from features.email.application.registry import EmailTemplateRegistry
 
 pytestmark = pytest.mark.unit
 

@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from src.features.email.adapters.outbound.console import ConsoleEmailAdapter
-from src.features.email.application.errors import UnknownTemplateError
-from src.features.email.application.registry import EmailTemplateRegistry
-from src.platform.shared.result import Err, Ok
+from app_platform.shared.result import Err, Ok
+from features.email.adapters.outbound.console import ConsoleEmailAdapter
+from features.email.application.errors import UnknownTemplateError
+from features.email.application.registry import EmailTemplateRegistry
 
 pytestmark = pytest.mark.unit
 
@@ -29,7 +29,7 @@ def registry(tmp_path: Path) -> EmailTemplateRegistry:
 def test_logs_rendered_email_at_info(
     registry: EmailTemplateRegistry, caplog: pytest.LogCaptureFixture
 ) -> None:
-    caplog.set_level(logging.INFO, logger="src.features.email.console")
+    caplog.set_level(logging.INFO, logger="features.email.console")
     adapter = ConsoleEmailAdapter(registry=registry)
 
     result = adapter.send(

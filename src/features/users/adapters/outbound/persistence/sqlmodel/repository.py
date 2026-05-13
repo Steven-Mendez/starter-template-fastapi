@@ -10,13 +10,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
-from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+from app_platform.shared.result import Err, Ok, Result
+from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
 )
-from src.features.users.application.errors import UserError
-from src.features.users.domain.user import User
-from src.platform.shared.result import Err, Ok, Result
+from features.users.application.errors import UserError
+from features.users.domain.user import User
 
 
 def _ensure_utc(value: datetime | None) -> datetime | None:

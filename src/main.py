@@ -15,51 +15,51 @@ from typing import AsyncIterator
 import redis as redis_lib
 from fastapi import FastAPI
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel import (
+from app_platform.api.app_factory import build_fastapi_app
+from app_platform.api.dependencies.container import set_app_container
+from app_platform.config.settings import AppSettings, get_settings
+from app_platform.observability import configure_logging
+from app_platform.observability.tracing import configure_tracing, instrument_fastapi_app
+from features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
-from src.features.authentication.composition.container import build_auth_container
-from src.features.authentication.composition.wiring import (
+from features.authentication.composition.container import build_auth_container
+from features.authentication.composition.wiring import (
     attach_auth_container,
     mount_auth_routes,
 )
-from src.features.authentication.email_templates import (
+from features.authentication.email_templates import (
     register_authentication_email_templates,
 )
-from src.features.authorization.composition import (
+from features.authorization.composition import (
     AuthorizationContainer,
     attach_authorization_container,
     build_authorization_container,
     register_authorization_error_handlers,
 )
-from src.features.background_jobs.composition.container import build_jobs_container
-from src.features.background_jobs.composition.settings import JobsSettings
-from src.features.background_jobs.composition.wiring import attach_jobs_container
-from src.features.email.composition.container import build_email_container
-from src.features.email.composition.jobs import register_send_email_handler
-from src.features.email.composition.settings import EmailSettings
-from src.features.email.composition.wiring import attach_email_container
-from src.features.file_storage.composition.container import (
+from features.background_jobs.composition.container import build_jobs_container
+from features.background_jobs.composition.settings import JobsSettings
+from features.background_jobs.composition.wiring import attach_jobs_container
+from features.email.composition.container import build_email_container
+from features.email.composition.jobs import register_send_email_handler
+from features.email.composition.settings import EmailSettings
+from features.email.composition.wiring import attach_email_container
+from features.file_storage.composition.container import (
     build_file_storage_container,
 )
-from src.features.file_storage.composition.settings import StorageSettings
-from src.features.file_storage.composition.wiring import attach_file_storage_container
-from src.features.outbox.composition.container import build_outbox_container
-from src.features.outbox.composition.settings import OutboxSettings
-from src.features.outbox.composition.wiring import attach_outbox_container
-from src.features.users.composition.container import (
+from features.file_storage.composition.settings import StorageSettings
+from features.file_storage.composition.wiring import attach_file_storage_container
+from features.outbox.composition.container import build_outbox_container
+from features.outbox.composition.settings import OutboxSettings
+from features.outbox.composition.wiring import attach_outbox_container
+from features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
 )
-from src.features.users.composition.wiring import (
+from features.users.composition.wiring import (
     attach_users_container,
     mount_users_routes,
 )
-from src.platform.api.app_factory import build_fastapi_app
-from src.platform.api.dependencies.container import set_app_container
-from src.platform.config.settings import AppSettings, get_settings
-from src.platform.observability import configure_logging
-from src.platform.observability.tracing import configure_tracing, instrument_fastapi_app
 
 
 @dataclass(frozen=True, slots=True)

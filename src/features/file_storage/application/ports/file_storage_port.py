@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from src.features.file_storage.application.errors import FileStorageError
-from src.platform.shared.result import Result
+from app_platform.shared.result import Result
+from features.file_storage.application.errors import FileStorageError
 
 
 class FileStoragePort(Protocol):

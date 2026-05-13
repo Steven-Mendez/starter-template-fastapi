@@ -18,36 +18,36 @@ from __future__ import annotations
 import argparse
 import os
 
-from src.features.authentication.composition.container import (
+from app_platform.config.settings import AppSettings
+from features.authentication.composition.container import (
     AuthContainer,
     build_auth_container,
 )
-from src.features.authentication.email_templates import (
+from features.authentication.email_templates import (
     register_authentication_email_templates,
 )
-from src.features.authorization.composition import (
+from features.authorization.composition import (
     AuthorizationContainer,
     build_authorization_container,
 )
-from src.features.background_jobs.composition.container import (
+from features.background_jobs.composition.container import (
     JobsContainer,
     build_jobs_container,
 )
-from src.features.background_jobs.composition.settings import JobsSettings
-from src.features.email.composition.container import (
+from features.background_jobs.composition.settings import JobsSettings
+from features.email.composition.container import (
     EmailContainer,
     build_email_container,
 )
-from src.features.email.composition.jobs import register_send_email_handler
-from src.features.email.composition.settings import EmailSettings
-from src.features.outbox.composition.container import build_outbox_container
-from src.features.outbox.composition.settings import OutboxSettings
-from src.features.users.composition.container import (
+from features.email.composition.jobs import register_send_email_handler
+from features.email.composition.settings import EmailSettings
+from features.outbox.composition.container import build_outbox_container
+from features.outbox.composition.settings import OutboxSettings
+from features.users.composition.container import (
     UsersContainer,
     build_user_registrar_adapter,
     build_users_container,
 )
-from src.platform.config.settings import AppSettings
 
 
 def _build_containers() -> tuple[
@@ -58,7 +58,7 @@ def _build_containers() -> tuple[
     JobsContainer,
 ]:
     """Construct auth + users + authorization + email + jobs containers from env."""
-    from src.features.authentication.adapters.outbound.persistence.sqlmodel import (
+    from features.authentication.adapters.outbound.persistence.sqlmodel import (
         SQLModelAuthRepository,
     )
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, Request
 
 if TYPE_CHECKING:
-    from src.features.users.composition.container import UsersContainer
+    from features.users.composition.container import UsersContainer
 
 USERS_CONTAINER_ATTR = "users_container"
 

@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from src.features.file_storage.application.errors import (
+from app_platform.shared.result import Err, Ok, Result
+from features.file_storage.application.errors import (
     FileStorageError,
     ObjectNotFoundError,
     StorageBackendError,
 )
-from src.platform.shared.result import Err, Ok, Result
 
 
 @dataclass(slots=True)

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, Request
 
 if TYPE_CHECKING:
-    from src.features.authorization.composition.container import (
+    from features.authorization.composition.container import (
         AuthorizationContainer,
     )
 

@@ -13,9 +13,9 @@ import fakeredis
 import pytest
 from arq import constants as arq_constants
 
-from src.features.background_jobs.adapters.outbound.arq import ArqJobQueueAdapter
-from src.features.background_jobs.application.errors import UnknownJobError
-from src.features.background_jobs.application.registry import JobHandlerRegistry
+from features.background_jobs.adapters.outbound.arq import ArqJobQueueAdapter
+from features.background_jobs.application.errors import UnknownJobError
+from features.background_jobs.application.registry import JobHandlerRegistry
 
 pytestmark = pytest.mark.unit
 

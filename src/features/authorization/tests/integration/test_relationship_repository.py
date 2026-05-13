@@ -14,17 +14,17 @@ import pytest
 from sqlalchemy import text
 from sqlmodel import Session
 
-from src.features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
+from features.authentication.adapters.outbound.persistence.sqlmodel.repository import (  # noqa: E501
     SQLModelAuthRepository,
 )
-from src.features.authorization.adapters.outbound.sqlmodel import (
+from features.authorization.adapters.outbound.sqlmodel import (
     SQLModelAuthorizationAdapter,
 )
-from src.features.authorization.application.types import Relationship
-from src.features.authorization.tests.contracts.registry_helper import (
+from features.authorization.application.types import Relationship
+from features.authorization.tests.contracts.registry_helper import (
     make_test_registry,
 )
-from src.features.users.adapters.outbound.persistence.sqlmodel.models import (
+from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
     utc_now,
 )
@@ -36,7 +36,7 @@ pytestmark = pytest.mark.integration
 def adapter(
     postgres_auth_repository: SQLModelAuthRepository,
 ) -> Iterator[SQLModelAuthorizationAdapter]:
-    from src.features.users.adapters.outbound.authz_version import (  # noqa: PLC0415
+    from features.users.adapters.outbound.authz_version import (  # noqa: PLC0415
         SQLModelUserAuthzVersionAdapter,
     )
 
@@ -170,7 +170,7 @@ def test_authz_version_bumps_on_write_against_postgres(
     postgres_auth_repository: SQLModelAuthRepository,
     adapter: SQLModelAuthorizationAdapter,
 ) -> None:
-    from src.features.users.adapters.outbound.persistence.sqlmodel.repository import (
+    from features.users.adapters.outbound.persistence.sqlmodel.repository import (
         SQLModelUserRepository,
     )
 

@@ -15,16 +15,16 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from src.features.file_storage.adapters.outbound.local import LocalFileStorageAdapter
-from src.features.file_storage.adapters.outbound.s3 import S3FileStorageAdapter
-from src.features.file_storage.application.errors import (
+from app_platform.shared.result import Err, Ok
+from features.file_storage.adapters.outbound.local import LocalFileStorageAdapter
+from features.file_storage.adapters.outbound.s3 import S3FileStorageAdapter
+from features.file_storage.application.errors import (
     ObjectNotFoundError,
 )
-from src.features.file_storage.application.ports.file_storage_port import (
+from features.file_storage.application.ports.file_storage_port import (
     FileStoragePort,
 )
-from src.features.file_storage.tests.fakes.fake_file_storage import FakeFileStorage
-from src.platform.shared.result import Err, Ok
+from features.file_storage.tests.fakes.fake_file_storage import FakeFileStorage
 
 pytestmark = pytest.mark.unit
 

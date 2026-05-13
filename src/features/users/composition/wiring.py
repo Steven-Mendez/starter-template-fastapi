@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from src.features.users.adapters.inbound.http.router import build_users_router
-from src.features.users.composition.app_state import set_users_container
-from src.features.users.composition.container import UsersContainer
+from features.users.adapters.inbound.http.router import build_users_router
+from features.users.composition.app_state import set_users_container
+from features.users.composition.container import UsersContainer
 
 
 def mount_users_routes(app: FastAPI) -> None:

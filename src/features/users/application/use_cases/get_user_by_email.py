@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.features.users.application.errors import UserError
-from src.features.users.application.ports.user_port import UserPort
-from src.features.users.domain.user import User
-from src.platform.shared.result import Err, Ok, Result
+from app_platform.shared.result import Err, Ok, Result
+from features.users.application.errors import UserError
+from features.users.application.ports.user_port import UserPort
+from features.users.domain.user import User
 
 
 @dataclass(slots=True)
