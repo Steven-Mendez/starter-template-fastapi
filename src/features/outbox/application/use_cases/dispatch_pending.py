@@ -36,6 +36,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from app_platform.observability.metrics import OUTBOX_DISPATCHED_TOTAL
 from app_platform.observability.tracing import traced
 from features.background_jobs.application.ports.job_queue_port import JobQueuePort
 from features.outbox.application.ports.outbound.outbox_repository_port import (
@@ -131,6 +132,11 @@ class DispatchPending:
                             failed_at=now,
                         )
                         failed += 1
+                        # Increment AFTER the per-row commit (the
+                        # repository's mark_failed call opens and commits
+                        # its own transaction). One increment per row
+                        # that reached a terminal failure state.
+                        OUTBOX_DISPATCHED_TOTAL.add(1, attributes={"result": "failure"})
                         _logger.exception(
                             "event=outbox.dispatch.failed id=%s job=%s attempts=%d",
                             row.id,
@@ -164,6 +170,9 @@ class DispatchPending:
                 # the second delivery.
                 self._repository.mark_delivered(row.id, delivered_at=now)
                 dispatched += 1
+                # Increment AFTER the per-row commit. One increment per
+                # row dispatched successfully.
+                OUTBOX_DISPATCHED_TOTAL.add(1, attributes={"result": "success"})
 
         _logger.info(
             "event=outbox.relay.tick claimed=%d dispatched=%d retried=%d failed=%d",

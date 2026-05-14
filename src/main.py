@@ -26,6 +26,10 @@ from app_platform.api.dependencies.container import set_app_container
 from app_platform.api.lifespan import safe_finalize
 from app_platform.config.settings import AppSettings, get_settings
 from app_platform.observability import configure_logging
+from app_platform.observability.metrics import (
+    register_db_pool_gauges,
+    register_outbox_pending_callback,
+)
 from app_platform.observability.redaction import redact_email
 from app_platform.observability.tracing import (
     configure_tracing,
@@ -198,6 +202,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             pool_recycle=app_settings.db_pool_recycle_seconds,
             pool_pre_ping=app_settings.db_pool_pre_ping,
         )
+        # Bind observable-metric callbacks now that the engine exists.
+        # The pool gauges read in-memory pool counters per scrape; the
+        # outbox pending gauge runs a bounded COUNT(*) against the same
+        # engine. Both helpers are idempotent at the SDK level.
+        register_db_pool_gauges(repository.engine)
+        register_outbox_pending_callback(repository.engine)
         email = build_email_container(
             EmailSettings.from_app_settings(
                 backend=app_settings.email_backend,

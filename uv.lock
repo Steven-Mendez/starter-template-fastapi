@@ -1520,6 +1520,20 @@ wheels = [
 ]
 
 [[package]]
+name = "opentelemetry-exporter-prometheus"
+version = "0.62b1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
+    { name = "prometheus-client" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1b/03/e1fbf14386ef171b949b71fba7c18643691a9390ab38c221df582e916569/opentelemetry_exporter_prometheus-0.62b1.tar.gz", hash = "sha256:7ecbac9aa76e7abb44082ab0ff2983e0a573e4091c4653f7db483b02bae03506", size = 15446, upload-time = "2026-04-24T13:15:43.783Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/d2/ee4002b88e20c59fae52bed008a63c6f7eff7d498f302032f6b0434a6de7/opentelemetry_exporter_prometheus-0.62b1-py3-none-any.whl", hash = "sha256:7a0b8a6402e107e1f93e38f074a668797e1103936b189561959531a67ffeba55", size = 13278, upload-time = "2026-04-24T13:15:22.485Z" },
+]
+
+[[package]]
 name = "opentelemetry-instrumentation"
 version = "0.62b1"
 source = { registry = "https://pypi.org/simple" }
@@ -2592,6 +2606,7 @@ dependencies = [
     { name = "cachetools" },
     { name = "jinja2" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-exporter-prometheus" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-redis" },
@@ -2665,6 +2680,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'resend'", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = "~=3.1" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.33.0" },
+    { name = "opentelemetry-exporter-prometheus", specifier = ">=0.62b1" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.54b0" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.54b0" },
     { name = "opentelemetry-instrumentation-redis", specifier = ">=0.54b0" },

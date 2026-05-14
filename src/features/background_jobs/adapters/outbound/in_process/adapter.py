@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from app_platform.observability.metrics import JOBS_ENQUEUED_TOTAL
 from features.background_jobs.application.errors import UnknownJobError
 from features.background_jobs.application.registry import JobHandlerRegistry
 
@@ -29,6 +30,7 @@ class InProcessJobQueueAdapter:
     def enqueue(self, job_name: str, payload: dict[str, Any]) -> None:
         """Invoke the registered handler synchronously; raise on unknown jobs."""
         handler = self._resolve(job_name)
+        JOBS_ENQUEUED_TOTAL.add(1, attributes={"handler": job_name})
         _logger.info(
             "event=jobs.in_process.dispatch job=%s",
             job_name,

@@ -7,6 +7,7 @@ from typing import Final
 from uuid import UUID, uuid4
 
 from app_platform.config.settings import AppSettings
+from app_platform.observability.metrics import AUTH_LOGINS_TOTAL
 from app_platform.observability.tracing import email_hash, traced
 from app_platform.shared.principal import Principal
 from app_platform.shared.result import Err, Ok, Result
@@ -131,6 +132,7 @@ class LoginUser:
                 user_agent=user_agent,
                 metadata={"reason": "invalid_credentials"},
             )
+            AUTH_LOGINS_TOTAL.add(1, attributes={"result": "failure"})
             return Err(InvalidCredentialsError("Invalid credentials"))
         if not user.is_active:
             self._repository.record_audit_event(
@@ -140,6 +142,7 @@ class LoginUser:
                 user_agent=user_agent,
                 metadata={"reason": "inactive_user"},
             )
+            AUTH_LOGINS_TOTAL.add(1, attributes={"result": "failure"})
             return Err(InactiveUserError("Inactive user"))
         if self._settings.auth_require_email_verification and not user.is_verified:
             self._repository.record_audit_event(
@@ -149,6 +152,7 @@ class LoginUser:
                 user_agent=user_agent,
                 metadata={"reason": "email_not_verified"},
             )
+            AUTH_LOGINS_TOTAL.add(1, attributes={"result": "failure"})
             return Err(EmailNotVerifiedError("Email not verified"))
         self._users.update_last_login(user.id, datetime.now(UTC))
         principal = _principal_from_user(user)
@@ -178,4 +182,5 @@ class LoginUser:
             token_type="bearer",  # noqa: S106 — OAuth token-type identifier
             expires_in=expires_in,
         )
+        AUTH_LOGINS_TOTAL.add(1, attributes={"result": "success"})
         return Ok((tokens, principal))

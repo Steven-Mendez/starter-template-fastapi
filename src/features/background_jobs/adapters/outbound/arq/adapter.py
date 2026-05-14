@@ -25,6 +25,7 @@ import redis as redis_lib
 from arq import constants as arq_constants
 from arq.jobs import serialize_job
 
+from app_platform.observability.metrics import JOBS_ENQUEUED_TOTAL
 from features.background_jobs.application.errors import UnknownJobError
 from features.background_jobs.application.registry import JobHandlerRegistry
 
@@ -63,6 +64,7 @@ class ArqJobQueueAdapter:
             enqueue_time_ms=enqueue_time_ms,
             score=enqueue_time_ms,
         )
+        JOBS_ENQUEUED_TOTAL.add(1, attributes={"handler": job_name})
         _logger.info(
             "event=jobs.arq.enqueued job=%s queue=%s",
             job_name,

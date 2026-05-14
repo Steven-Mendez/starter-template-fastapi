@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from app_platform.config.settings import AppSettings
+from app_platform.observability.metrics import AUTH_REFRESH_TOTAL
 from app_platform.shared.principal import Principal
 from app_platform.shared.result import Err, Ok, Result
 from features.authentication.application.crypto import (
@@ -44,6 +45,31 @@ class RotateRefreshToken:
     _settings: AppSettings
 
     def execute(
+        self,
+        *,
+        refresh_token: str | None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> Result[
+        tuple[IssuedTokens, Principal],
+        InvalidTokenError | InvalidCredentialsError | InactiveUserError,
+    ]:
+        # Single-exit wrapper around ``_execute`` so the
+        # ``app_auth_refresh_total`` counter is incremented EXACTLY once
+        # per call, regardless of which branch returns. ``_execute``
+        # contains the original early-return control flow unchanged.
+        result = self._execute(
+            refresh_token=refresh_token,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        AUTH_REFRESH_TOTAL.add(
+            1,
+            attributes={"result": "success" if isinstance(result, Ok) else "failure"},
+        )
+        return result
+
+    def _execute(
         self,
         *,
         refresh_token: str | None,

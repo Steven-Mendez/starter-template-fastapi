@@ -77,6 +77,64 @@ scrape_configs:
       - targets: ["api:8000"]
 ```
 
+### Producer pipeline
+
+The platform owns a single `opentelemetry.sdk.metrics.MeterProvider`
+wired to a `PrometheusMetricReader` from `opentelemetry-exporter-prometheus`.
+The reader registers itself against `prometheus_client.REGISTRY` and the
+`/metrics` route is an ASGI mount of `prometheus_client.make_asgi_app()`,
+so the same SDK / exporter pipeline serves both metrics and traces.
+
+Features MUST obtain a `Meter` through the platform factory:
+
+```python
+from app_platform.observability.metrics import get_app_meter
+
+meter = get_app_meter("my_feature")  # instrumentation-scope name
+counter = meter.create_counter(
+    name="app_myfeature_widgets_total",
+    description="Total widgets processed, labelled by outcome.",
+    unit="1",
+)
+```
+
+`get_app_meter(feature)` is the single contract: it builds the
+`MeterProvider` on first call and caches it module-level. Features MUST
+NOT call `opentelemetry.metrics.get_meter(...)` directly — going through
+the factory keeps naming, sampling defaults, and test isolation in one
+place.
+
+### Naming convention
+
+`app_<feature>_<noun>_<unit>`:
+
+| Element | Rule |
+| --- | --- |
+| `app_` prefix | Avoids collision with auto-instrumentation (HTTP request, DB query, etc.). |
+| `_total` suffix | Monotonic counters. |
+| `_gauge` suffix | Observable gauges. |
+| `_seconds` suffix | Durations (reserved for future histograms). |
+| Labels | Closed set, bounded cardinality. No user-id, no path-templated cardinality. |
+
+### Catalog
+
+| Metric | Type | Labels | Source |
+| --- | --- | --- | --- |
+| `app_auth_logins_total` | Counter | `result ∈ {success, failure}` | `LoginUser.execute` — exactly one increment per call. |
+| `app_auth_refresh_total` | Counter | `result ∈ {success, failure}` | `RotateRefreshToken.execute` — exactly one increment per call. |
+| `app_outbox_dispatched_total` | Counter | `result ∈ {success, failure}` | `DispatchPending.execute` — one increment per row, AFTER the per-row commit. Rows that schedule a retry are not counted (still pending). |
+| `app_jobs_enqueued_total` | Counter | `handler` (bounded by `JobHandlerRegistry`) | `InProcessJobQueueAdapter.enqueue` and `ArqJobQueueAdapter.enqueue`. |
+| `app_outbox_pending_gauge` | Observable gauge | — | Bound at composition in `main.py`; runs `SELECT COUNT(*) FROM outbox_messages WHERE status='pending'` against the engine with `SET LOCAL statement_timeout='2s'` (PostgreSQL) so a slow DB cannot stall the scrape. Query failures are logged and the gauge drops out of the scrape (no 500). |
+| `app_db_pool_checked_in` | Observable gauge | — | `engine.pool.checkedin()` — connections currently idle. |
+| `app_db_pool_checked_out` | Observable gauge | — | `engine.pool.checkedout()` — connections currently in use. |
+| `app_db_pool_overflow` | Observable gauge | — | `engine.pool.overflow()` — connections above the configured pool size. |
+| `app_db_pool_size` | Observable gauge | — | `engine.pool.size()` — configured pool size. |
+
+New metrics are added by declaring instruments against
+`get_app_meter("<feature>")` in `app_platform.observability.metrics` (or
+in the feature's own composition module if the metric is feature-local)
+and wiring exactly one production call site per increment.
+
 ## Tracing
 
 Tracing is opt-in. Set `APP_OTEL_EXPORTER_ENDPOINT` to an OTLP/HTTP trace
