@@ -95,3 +95,37 @@ class UserPort(Protocol):
     def update_last_login(self, user_id: UUID, when: datetime) -> None:
         """Stamp ``last_login_at`` and ``updated_at`` to ``when``."""
         ...
+
+    def get_raw_by_id(self, user_id: UUID) -> User | None:
+        """Read a user row even if it has been erased.
+
+        ``get_by_id`` filters out erased rows so cached principals
+        dissolve into "user not found" within the cache TTL. The
+        erasure use case needs to detect "already erased" rows for
+        idempotency, and the export endpoint needs the surviving row
+        (which by definition is not yet erased, but uses the same read
+        path so the contract is symmetric).
+        """
+        ...
+
+    def scrub_for_erasure_atomically_with(
+        self,
+        writer: object,
+        user_id: UUID,
+    ) -> bool:
+        """Stage the GDPR-Art.17 user-row scrub on ``writer``'s transaction.
+
+        Returns ``True`` if the row was scrubbed by this call, ``False``
+        if the row was missing or already erased. The scrub replaces
+        ``email`` with ``erased+{user_id}@erased.invalid``, nulls
+        ``last_login_at``, sets ``is_active=false`` and
+        ``is_erased=true``, and bumps ``authz_version`` — see the PII
+        column inventory in ``docs/operations.md`` for the exhaustive
+        list and the rule that grows it.
+
+        Mirrors :meth:`set_active_atomically_with`: writers without a
+        shared SQLModel session fall back to a single-row engine
+        transaction, and integration tests cover the writer-bound path
+        against a real PostgreSQL.
+        """
+        ...

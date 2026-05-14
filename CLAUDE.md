@@ -215,6 +215,7 @@ Run boundary checks: `make lint-arch`
 7. If the feature does deferred work, register a handler with `jobs.registry` in both `src/main.py` and `src/worker.py` before sealing.
 8. If the feature stores blobs, take a `FileStoragePort` dependency in its container; do not import a specific adapter.
 9. No feature should import another feature's modules; cross-feature work goes through application ports.
+10. If the feature adds a user-referencing column that holds PII (or anything that should not survive an Art. 17 erasure), update the PII column inventory in `docs/operations.md` AND extend the user-row scrub in `_apply_erasure_scrub` (`src/features/users/adapters/outbound/persistence/sqlmodel/repository.py`). Missing this step is a release-blocking GDPR defect.
 
 ## Testing strategy
 

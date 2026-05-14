@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 import features.users.application.use_cases.deactivate_user as deactivate_user_module
+import features.users.application.use_cases.erase_user as erase_user_module
 
 pytestmark = pytest.mark.unit
 
@@ -49,17 +50,17 @@ def test_deactivate_user_does_not_call_cleanup_port_directly() -> None:
         assert allowed in source
 
 
-def test_erase_user_is_not_yet_in_tree() -> None:
-    """``EraseUser`` ships in ``add-gdpr-erasure-and-export``.
+def test_erase_user_does_not_call_cleanup_port_directly() -> None:
+    """``EraseUser`` enqueues asset cleanup through the outbox, never inline.
 
-    When that change lands, this test should be replaced with a real
-    scan of ``erase_user.py``. Tracking the deferred work with a live
-    test means the omission cannot silently outlive the next change.
+    The same architectural rule applies as for ``DeactivateUser``:
+    storage-backend latency must never block the request transaction,
+    and the cleanup must benefit from the worker's retry backoff.
     """
-    module_file = deactivate_user_module.__file__
-    assert module_file is not None
-    erase_user_path = Path(module_file).parent / "erase_user.py"
-    assert not erase_user_path.exists(), (
-        "erase_user.py now exists — extend the static scan to cover it. "
-        "See openspec change ``add-gdpr-erasure-and-export``."
+    source = _source_for_module(erase_user_module)
+    assert _FORBIDDEN_TOKEN not in source, (
+        "EraseUser must enqueue ``delete_user_assets`` through the outbox, "
+        "never call UserAssetsCleanupPort.delete_user_assets inline."
     )
+    for allowed in _ALLOWED_REFERENCES:
+        assert allowed in source

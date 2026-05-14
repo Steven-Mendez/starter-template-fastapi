@@ -24,6 +24,9 @@ from app_platform.api.app_factory import build_fastapi_app
 from app_platform.api.dependencies.container import set_app_container
 from app_platform.config.settings import AppSettings
 from app_platform.persistence.sqlmodel.authorization.models import RelationshipTable
+from features.authentication.adapters.outbound.auth_artifacts_cleanup import (
+    SQLModelAuthArtifactsCleanupAdapter,
+)
 from features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
@@ -35,6 +38,9 @@ from features.authentication.adapters.outbound.persistence.sqlmodel.repository i
 )
 from features.authentication.adapters.outbound.principal_cache_invalidator import (
     PrincipalCacheInvalidatorAdapter,
+)
+from features.authentication.adapters.outbound.user_audit_reader import (
+    SQLModelUserAuditReaderAdapter,
 )
 from features.authentication.composition.container import build_auth_container
 from features.authentication.composition.wiring import (
@@ -70,7 +76,10 @@ from features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
 )
-from features.users.composition.jobs import register_delete_user_assets_handler
+from features.users.composition.jobs import (
+    register_delete_user_assets_handler,
+    register_erase_user_handler,
+)
 from features.users.composition.wiring import (
     attach_users_container,
     mount_users_routes,
@@ -199,7 +208,9 @@ def _build_app(
 
     cleanup_port = FileStorageUserAssetsAdapter(_storage=file_storage_port)
     register_delete_user_assets_handler(jobs_registry, cleanup_port)
-    jobs_registry.seal()
+    # ``erase_user`` is registered after we wire the use case below, so
+    # the handler captures a fully constructed ``EraseUser``. Sealing
+    # is deferred to match.
     jobs_port = InProcessJobQueueAdapter(registry=jobs_registry)
 
     # In e2e tests we dispatch outbox rows inline at enqueue time — the
@@ -226,6 +237,18 @@ def _build_app(
         auth.logout_all_sessions.execute(user_id=user_id)
 
     users.wire_refresh_token_revoker(_revoke_all_refresh_tokens)
+    users.wire_erase_user(
+        auth_artifacts=SQLModelAuthArtifactsCleanupAdapter(engine=repository.engine),
+        audit_reader=SQLModelUserAuditReaderAdapter(repository=repository),
+        outbox_uow=outbox_uow,
+        file_storage=file_storage_port,
+    )
+    users.wire_password_verifier(auth.verify_user_password)
+    users.wire_job_queue(jobs_port)
+    if users.erase_user is None:
+        raise RuntimeError("EraseUser was not wired into the users container")
+    register_erase_user_handler(jobs_registry, users.erase_user)
+    jobs_registry.seal()
     user_registrar = build_user_registrar_adapter(
         users=users, credential_writer=auth.credential_writer_adapter
     )

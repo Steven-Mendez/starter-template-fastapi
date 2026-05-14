@@ -25,6 +25,15 @@ from sqlalchemy import create_engine
 
 from app_platform.config.settings import AppSettings, get_settings
 from app_platform.observability import configure_logging
+from features.authentication.adapters.outbound.auth_artifacts_cleanup import (
+    SQLModelAuthArtifactsCleanupAdapter,
+)
+from features.authentication.adapters.outbound.persistence.sqlmodel import (
+    SQLModelAuthRepository,
+)
+from features.authentication.adapters.outbound.user_audit_reader import (
+    SQLModelUserAuditReaderAdapter,
+)
 from features.authentication.email_templates import (
     register_authentication_email_templates,
 )
@@ -44,7 +53,10 @@ from features.outbox.composition.handler_dedupe import build_handler_dedupe
 from features.outbox.composition.settings import OutboxSettings
 from features.outbox.composition.worker import build_relay_cron_jobs
 from features.users.composition.container import build_users_container
-from features.users.composition.jobs import register_delete_user_assets_handler
+from features.users.composition.jobs import (
+    register_delete_user_assets_handler,
+    register_erase_user_handler,
+)
 
 _logger = logging.getLogger("worker")
 
@@ -149,6 +161,27 @@ def build_worker_settings() -> type:
     register_delete_user_assets_handler(
         jobs.registry,
         users.user_assets_cleanup,
+        dedupe=build_handler_dedupe(engine),
+    )
+    # Wire the GDPR erase-user pipeline so the worker can process
+    # ``erase_user`` outbox rows. The worker needs its own auth
+    # repository to back the audit-reader and artifacts-cleanup
+    # adapters; the web process owns a separate one (its connection
+    # pool is distinct).
+    auth_repository_for_worker = SQLModelAuthRepository.from_engine(engine)
+    users.wire_erase_user(
+        auth_artifacts=SQLModelAuthArtifactsCleanupAdapter(engine=engine),
+        audit_reader=SQLModelUserAuditReaderAdapter(
+            repository=auth_repository_for_worker
+        ),
+        outbox_uow=outbox.unit_of_work,
+        file_storage=file_storage.port,
+    )
+    if users.erase_user is None:
+        raise RuntimeError("EraseUser was not wired into the users container")
+    register_erase_user_handler(
+        jobs.registry,
+        users.erase_user,
         dedupe=build_handler_dedupe(engine),
     )
     jobs.registry.seal()

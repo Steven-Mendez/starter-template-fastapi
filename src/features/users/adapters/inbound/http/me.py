@@ -8,12 +8,17 @@ Authentication is enforced by the platform principal resolver via the
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app_platform.api.authorization import CurrentPrincipalDep
 from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.inbound.http import clear_refresh_cookie
 from features.users.adapters.inbound.http.schemas import (
+    EraseSelfRequest,
+    ErasureAccepted,
+    ExportResponse,
     UpdateProfileRequest,
     UserPublic,
 )
@@ -24,6 +29,11 @@ from features.users.application.errors import (
 from features.users.composition.app_state import get_users_container
 
 me_router = APIRouter(tags=["me"])
+
+# Upper bound (in seconds) we promise clients the erase job will finish
+# within. The job itself is bounded by the worker's job timeout, but
+# this number is what the response body advertises.
+_ERASE_ESTIMATED_COMPLETION_SECONDS = 60
 
 
 @me_router.get("/me", response_model=UserPublic)
@@ -95,6 +105,96 @@ def delete_me(
         case Ok():
             clear_refresh_cookie(response, request)
             return
+        case Err(error=err):
+            if isinstance(err, UserNotFoundError):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)
+            )
+
+
+@me_router.delete(
+    "/me/erase",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=ErasureAccepted,
+)
+def erase_me(
+    request: Request,
+    response: Response,
+    body: EraseSelfRequest,
+    principal: CurrentPrincipalDep,
+) -> ErasureAccepted:
+    """GDPR Art. 17 self-erase.
+
+    Re-auth on current password is required — a stolen access token
+    alone cannot erase the account. Wrong password → 401. Success →
+    202 Accepted with a job id; the actual scrub runs in the worker
+    via the ``erase_user`` background job (see ``EraseUser`` use case).
+
+    A user without a password credential (future SSO-only flows) is
+    out of scope for this proposal; the password verifier returns
+    ``False`` for that case, surfacing as 401, and a follow-up change
+    can swap in a "fresh access-token issued < 5 min ago" check
+    without altering the response shape.
+    """
+    container = get_users_container(request)
+    if container.password_verifier is None or container.job_queue is None:
+        # Defensive: production wiring always provides both. If we get
+        # here in production something is mis-composed; better to 500
+        # than to silently erase without re-auth.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Erasure pipeline is not wired",
+        )
+    if not container.password_verifier(principal.user_id, body.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+    job_id = str(uuid4())
+    container.job_queue.enqueue(
+        "erase_user",
+        {
+            "user_id": str(principal.user_id),
+            "reason": "self_request",
+            "job_id": job_id,
+        },
+    )
+    response.headers["Location"] = f"/me/erase/status/{job_id}"
+    return ErasureAccepted(
+        status="accepted",
+        job_id=job_id,
+        estimated_completion_seconds=_ERASE_ESTIMATED_COMPLETION_SECONDS,
+    )
+
+
+@me_router.get("/me/export", response_model=ExportResponse)
+def export_me(
+    request: Request,
+    principal: CurrentPrincipalDep,
+) -> ExportResponse:
+    """GDPR Art. 15 self-export.
+
+    Returns a signed URL pointing at a JSON blob containing the user's
+    row, profile fields, audit events, and file metadata. The blob is
+    materialised synchronously; clients fetch it from the wired
+    file-storage backend within ``expires_at``.
+    """
+    container = get_users_container(request)
+    if container.export_user_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Export pipeline is not wired",
+        )
+    result = container.export_user_data.execute(principal.user_id)
+    match result:
+        case Ok(value=contract):
+            return ExportResponse(
+                download_url=contract.download_url,
+                expires_at=contract.expires_at,
+            )
         case Err(error=err):
             if isinstance(err, UserNotFoundError):
                 raise HTTPException(

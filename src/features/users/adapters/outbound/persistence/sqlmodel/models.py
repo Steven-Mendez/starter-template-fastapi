@@ -41,6 +41,7 @@ class UserTable(SQLModel, table=True):
     email: str = Field(index=True, nullable=False)
     is_active: bool = Field(default=True, nullable=False)
     is_verified: bool = Field(default=False, nullable=False)
+    is_erased: bool = Field(default=False, nullable=False)
     authz_version: int = Field(default=1, nullable=False)
     created_at: datetime = Field(
         default_factory=utc_now,

@@ -682,3 +682,100 @@ so they commit atomically with the surrounding business write. See
 | `APP_STORAGE_LOCAL_PATH` | unset | Required when `APP_STORAGE_BACKEND=local`. |
 | `APP_STORAGE_S3_BUCKET` | unset | Required when `APP_STORAGE_BACKEND=s3`. |
 | `APP_STORAGE_S3_REGION` | `us-east-1` | AWS region for the bucket. |
+
+## GDPR / data subject rights
+
+The platform supports both **right to erasure** (Art. 17) and **right of
+access** (Art. 15) via dedicated routes; the implementation scrubs PII
+in-place rather than hard-deleting rows so audit-trail row counts and
+foreign-key integrity survive.
+
+### Erasure routes
+
+| Route | Trigger | Re-auth | Response |
+| --- | --- | --- | --- |
+| `DELETE /me/erase` | Self-service (GDPR Art. 17) | Current password in body | `202 Accepted` with `{status, job_id, estimated_completion_seconds}` |
+| `POST /admin/users/{user_id}/erase` | Operator-driven | `manage_users` on `system:main` | Same 202 contract |
+
+Both routes enqueue an `erase_user` background job — the actual scrub
+runs in the worker process, and the HTTP response returns immediately
+with a `Location: /…/erase/status/<job_id>` header. The status
+endpoint itself is intentionally out of scope; clients accept
+"no body, you'll get notified" semantics.
+
+The self-service route requires the user's **current password** in
+the request body so a stolen access token cannot erase the account on
+its own. Users without a password credential (future SSO-only flows)
+currently get a 401 from the verifier; a follow-up change can add a
+"fresh access token issued < 5 min ago" branch without altering the
+response shape.
+
+### Export route
+
+| Route | Trigger | Response |
+| --- | --- | --- |
+| `GET /me/export` | Self-service (GDPR Art. 15) | `200 OK` with `{download_url, expires_at}` |
+| `GET /admin/users/{user_id}/export` | Operator-driven, `manage_users` on `system:main` | Same shape |
+
+The use case serialises the user row, profile fields, audit events,
+and file-storage metadata to a JSON blob written via
+`FileStoragePort.put(...)` and returns a 15-minute signed URL. The
+backend determines the URL shape: S3 issues a presigned GET; the local
+adapter returns a `file://` URI; tests return `memory://<key>`.
+
+### PII column inventory
+
+The erasure scrub MUST clear every column listed below; new
+user-referencing columns extend this table. See the rule in
+`CLAUDE.md` "Adding a new feature" — adding a PII-bearing column
+without updating the scrub or this table is a release-blocking
+defect.
+
+| Table | Column / key | Erasure action |
+| --- | --- | --- |
+| `users` | `email` | Replaced with `erased+<user_id>@erased.invalid` |
+| `users` | `last_login_at` | Set to `NULL` |
+| `users` | `is_active` | Set to `false` |
+| `users` | `is_erased` | Set to `true` (the authoritative signal) |
+| `users` | `authz_version` | Bumped (cached principals dissolve in TTL) |
+| `users` | `is_verified` | Preserved (a non-PII state fact) |
+| `auth_audit_events` | `ip_address` | Nulled |
+| `auth_audit_events` | `user_agent` | Nulled |
+| `auth_audit_events` | `event_metadata.family_id` | Key removed from JSONB |
+| `auth_audit_events` | `event_metadata.ip_address` | Key removed from JSONB |
+| `auth_audit_events` | `event_metadata.user_agent` | Key removed from JSONB |
+| `credentials` | (entire row) | Deleted |
+| `refresh_tokens` | (entire row) | Deleted |
+| `auth_internal_tokens` | (entire row) | Deleted |
+| `file_storage` | every blob under `users/{user_id}/` | Deleted via the `delete_user_assets` background job |
+
+### Runbook: handling a written request from legal
+
+1. Confirm the request identifies a single user by email or user id.
+2. Look up the user id with `SELECT id, is_active, is_erased FROM users
+   WHERE email = ...;` — if `is_erased=true` the work is already done.
+3. Invoke `POST /admin/users/{user_id}/erase` from an operator session
+   that holds `manage_users` on `system:main`.
+4. Confirm `is_erased=true` and that no rows remain in `credentials`,
+   `refresh_tokens`, `auth_internal_tokens` for the user.
+5. Confirm the `delete_user_assets` outbox row reached `delivered`
+   (check `SELECT status FROM outbox_messages WHERE job_name =
+   'delete_user_assets' AND payload->>'user_id' = '<user_id>';`). If
+   it stayed `pending` past one retry cycle, see the
+   [outbox runbook](outbox.md#failed-rows).
+6. If legal requires *hard delete* with no row stub, follow up with a
+   direct `DELETE FROM users WHERE id = '<user_id>'` — the
+   `is_erased` row's column values are scrubbed, so a follow-up
+   delete is safe (no PII to leak) and FK cascades remove dependent
+   rows.
+
+### Non-goals
+
+- **Third-party data erasure.** Operators must kick off downstream
+  erasure (analytics, mail-provider, SaaS integrations) out-of-band.
+- **Regulator-grade audit logging.** The `user.erased` event lives in
+  the existing `auth_audit_events` table; promote to a tamper-evident
+  store if compliance requires it.
+- **Status / progress endpoint.** The 202 response carries a
+  `Location` header; the status endpoint itself is out of scope for
+  the current change.

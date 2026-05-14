@@ -8,6 +8,7 @@ from uuid import UUID
 
 from sqlalchemy.engine import Engine
 
+from features.background_jobs.application.ports.job_queue_port import JobQueuePort
 from features.file_storage.application.ports.file_storage_port import FileStoragePort
 from features.outbox.application.ports.outbox_uow_port import OutboxUnitOfWorkPort
 from features.users.adapters.outbound.authz_version import (
@@ -22,13 +23,21 @@ from features.users.adapters.outbound.persistence.sqlmodel.repository import (
 from features.users.adapters.outbound.user_registrar import (
     SQLModelUserRegistrarAdapter,
 )
+from features.users.application.ports.auth_artifacts_cleanup_port import (
+    AuthArtifactsCleanupPort,
+)
 from features.users.application.ports.credential_writer_port import (
     CredentialWriterPort,
 )
 from features.users.application.ports.user_assets_cleanup_port import (
     UserAssetsCleanupPort,
 )
+from features.users.application.ports.user_audit_reader_port import (
+    UserAuditReaderPort,
+)
 from features.users.application.use_cases.deactivate_user import DeactivateUser
+from features.users.application.use_cases.erase_user import EraseUser
+from features.users.application.use_cases.export_user_data import ExportUserData
 from features.users.application.use_cases.get_user_by_email import (
     GetUserByEmail,
 )
@@ -36,6 +45,12 @@ from features.users.application.use_cases.get_user_by_id import GetUserById
 from features.users.application.use_cases.list_users import ListUsers
 from features.users.application.use_cases.register_user import RegisterUser
 from features.users.application.use_cases.update_profile import UpdateProfile
+
+# Verifies a user's current password — used to gate ``DELETE /me/erase``
+# against a stolen access token. Returns ``True`` when the password
+# matches the stored credential. Implemented in the authentication
+# feature and wired in via :meth:`UsersContainer.wire_password_verifier`.
+PasswordVerifier = Callable[[UUID, str], bool]
 
 
 @dataclass(slots=True)
@@ -51,11 +66,61 @@ class UsersContainer:
     update_profile: UpdateProfile
     deactivate_user: DeactivateUser
     list_users: ListUsers
+    erase_user: EraseUser | None = None
+    export_user_data: ExportUserData | None = None
+    # Optional collaborator injected by the auth container at composition
+    # time; the HTTP route reads it to gate ``DELETE /me/erase`` on
+    # current-password re-auth.
+    password_verifier: PasswordVerifier | None = None
+    # ``JobQueuePort`` injected at composition; the erase routes enqueue
+    # an ``erase_user`` job (via the in-process queue in tests / arq in
+    # production) and return ``202 Accepted`` while the worker runs the
+    # actual scrub. Kept optional so unit tests can construct the
+    # container without a queue.
+    job_queue: JobQueuePort | None = None
 
     def shutdown(self) -> None:
         # The engine is shared with the authentication container; it is
         # disposed there. Nothing per-feature to release.
         return None
+
+    def wire_erase_user(
+        self,
+        *,
+        auth_artifacts: AuthArtifactsCleanupPort,
+        audit_reader: UserAuditReaderPort,
+        outbox_uow: OutboxUnitOfWorkPort,
+        file_storage: FileStoragePort,
+    ) -> None:
+        """Wire the erase/export use cases now that auth-side ports exist.
+
+        The ``EraseUser`` and ``ExportUserData`` use cases need
+        authentication-side collaborators (the artifacts-cleanup
+        adapter that scrubs ``auth_audit_events`` / ``credentials`` /
+        ``refresh_tokens`` / ``auth_internal_tokens``, and the audit
+        reader that lists the user's history). Those adapters are only
+        constructible after the auth container exists, so the users
+        container starts without them and the composition root attaches
+        them here.
+        """
+        self.erase_user = EraseUser(
+            _users=self.user_repository,
+            _auth_artifacts=auth_artifacts,
+            _outbox_uow=outbox_uow,
+        )
+        self.export_user_data = ExportUserData(
+            _users=self.user_repository,
+            _file_storage=file_storage,
+            _audit_reader=audit_reader,
+        )
+
+    def wire_password_verifier(self, verifier: PasswordVerifier) -> None:
+        """Inject the auth-side password verifier for ``DELETE /me/erase``."""
+        self.password_verifier = verifier
+
+    def wire_job_queue(self, job_queue: JobQueuePort) -> None:
+        """Inject the job-queue port the erase routes enqueue against."""
+        self.job_queue = job_queue
 
     def wire_refresh_token_revoker(
         self, revoke_all_refresh_tokens: Callable[[UUID], None]

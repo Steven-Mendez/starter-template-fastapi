@@ -35,11 +35,19 @@ class FakeUserPort:
         self._s = _Stores()
 
     def get_by_id(self, user_id: UUID) -> User | None:
-        return self._s.users.get(user_id)
+        existing = self._s.users.get(user_id)
+        if existing is None or existing.is_erased:
+            return None
+        return existing
 
     def get_by_email(self, email: str) -> User | None:
         user_id = self._s.users_by_email.get(email.lower())
-        return self._s.users.get(user_id) if user_id else None
+        if user_id is None:
+            return None
+        existing = self._s.users.get(user_id)
+        if existing is None or existing.is_erased:
+            return None
+        return existing
 
     def create(self, *, email: str) -> Result[User, UserError]:
         normalized = email.lower()
@@ -134,6 +142,34 @@ class FakeUserPort:
         if existing is None:
             return
         self._s.users[user_id] = replace(existing, last_login_at=when, updated_at=when)
+
+    def get_raw_by_id(self, user_id: UUID) -> User | None:
+        return self._s.users.get(user_id)
+
+    def scrub_for_erasure_atomically_with(
+        self,
+        writer: object,
+        user_id: UUID,
+    ) -> bool:
+        _ = writer  # fake has no real transaction
+        existing = self._s.users.get(user_id)
+        if existing is None or existing.is_erased:
+            return False
+        scrubbed = replace(
+            existing,
+            email=f"erased+{existing.id}@erased.invalid",
+            is_active=False,
+            is_erased=True,
+            last_login_at=None,
+            authz_version=existing.authz_version + 1,
+            updated_at=_aware_now(),
+        )
+        # Free the original email so a fresh registration can claim it.
+        if existing.email in self._s.users_by_email:
+            del self._s.users_by_email[existing.email]
+        self._s.users[user_id] = scrubbed
+        self._s.users_by_email[scrubbed.email] = user_id
+        return True
 
     @property
     def stored_users(self) -> dict[UUID, User]:

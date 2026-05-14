@@ -21,11 +21,17 @@ from app_platform.api.dependencies.container import set_app_container
 from app_platform.config.settings import AppSettings, get_settings
 from app_platform.observability import configure_logging
 from app_platform.observability.tracing import configure_tracing, instrument_fastapi_app
+from features.authentication.adapters.outbound.auth_artifacts_cleanup import (
+    SQLModelAuthArtifactsCleanupAdapter,
+)
 from features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
 from features.authentication.adapters.outbound.principal_cache_invalidator import (
     PrincipalCacheInvalidatorAdapter,
+)
+from features.authentication.adapters.outbound.user_audit_reader import (
+    SQLModelUserAuditReaderAdapter,
 )
 from features.authentication.composition.container import build_auth_container
 from features.authentication.composition.wiring import (
@@ -61,7 +67,10 @@ from features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
 )
-from features.users.composition.jobs import register_delete_user_assets_handler
+from features.users.composition.jobs import (
+    register_delete_user_assets_handler,
+    register_erase_user_handler,
+)
 from features.users.composition.wiring import (
     attach_users_container,
     mount_users_routes,
@@ -204,7 +213,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             users.user_assets_cleanup,
             dedupe=build_handler_dedupe(repository.engine),
         )
-        jobs.registry.seal()
+        # ``erase_user`` is registered after we wire the use case below,
+        # so the handler closes over a fully-constructed ``EraseUser``.
+        # Sealing is similarly deferred to after that wiring.
         auth = build_auth_container(
             settings=app_settings,
             users=users.user_repository,
@@ -221,6 +232,33 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             auth.logout_all_sessions.execute(user_id=user_id)
 
         users.wire_refresh_token_revoker(_revoke_all_refresh_tokens)
+        # Wire the GDPR Art. 17 / Art. 15 use cases now that the auth
+        # container exists. The artifacts-cleanup adapter scrubs
+        # authentication-owned PII inside the erasure transaction; the
+        # audit-reader adapter feeds the export blob. Both are
+        # constructed here because they reach into the auth schema and
+        # cannot live in the users container's default wiring.
+        users.wire_erase_user(
+            auth_artifacts=SQLModelAuthArtifactsCleanupAdapter(
+                engine=repository.engine
+            ),
+            audit_reader=SQLModelUserAuditReaderAdapter(repository=repository),
+            outbox_uow=outbox.unit_of_work,
+            file_storage=file_storage.port,
+        )
+        users.wire_password_verifier(auth.verify_user_password)
+        users.wire_job_queue(jobs.port)
+        # Now that ``EraseUser`` is wired, register its job handler and
+        # seal the jobs registry so producers cannot enqueue unknown
+        # payloads.
+        if users.erase_user is None:
+            raise RuntimeError("EraseUser was not wired into the users container")
+        register_erase_user_handler(
+            jobs.registry,
+            users.erase_user,
+            dedupe=build_handler_dedupe(repository.engine),
+        )
+        jobs.registry.seal()
         user_registrar = build_user_registrar_adapter(
             users=users,
             credential_writer=auth.credential_writer_adapter,

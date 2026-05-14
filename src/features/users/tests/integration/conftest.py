@@ -19,6 +19,12 @@ from sqlalchemy.engine import Engine
 from sqlmodel import create_engine
 
 # Import the table side-effects so ``SQLModel.metadata`` knows about them.
+from features.authentication.adapters.outbound.persistence.sqlmodel.models import (
+    AuthAuditEventTable,
+    AuthInternalTokenTable,
+    CredentialTable,
+    RefreshTokenTable,
+)
 from features.outbox.adapters.outbound.sqlmodel.models import (
     OutboxMessageTable,
     ProcessedOutboxMessageTable,
@@ -29,6 +35,13 @@ from features.users.adapters.outbound.persistence.sqlmodel.models import (
 
 _TABLES: list[Any] = [
     UserTable,
+    # Auth tables — required for the GDPR erasure integration tests
+    # that assert auth_audit_events scrub + credential/refresh-token
+    # deletion happen atomically with the user-row scrub.
+    CredentialTable,
+    RefreshTokenTable,
+    AuthAuditEventTable,
+    AuthInternalTokenTable,
     OutboxMessageTable,
     ProcessedOutboxMessageTable,
 ]

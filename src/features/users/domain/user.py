@@ -32,6 +32,7 @@ class User:
     email: str
     is_active: bool = True
     is_verified: bool = False
+    is_erased: bool = False
     authz_version: int = 1
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)

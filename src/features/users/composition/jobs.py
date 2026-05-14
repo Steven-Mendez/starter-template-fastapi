@@ -33,13 +33,15 @@ from features.background_jobs.application.registry import JobHandlerRegistry
 from features.users.application.ports.user_assets_cleanup_port import (
     UserAssetsCleanupPort,
 )
+from features.users.application.use_cases.erase_user import EraseUser
 
 _logger = logging.getLogger("features.users.jobs")
 
-# Job name — mirrors the constant on the use case to keep enqueue and
-# handler-registration in agreement. Re-defined here (rather than
+# Job names — mirror the constants on the use cases so enqueue and
+# handler-registration stay in agreement. Re-defined here (rather than
 # imported) so the composition module stays in the outermost ring.
 DELETE_USER_ASSETS_JOB = "delete_user_assets"
+ERASE_USER_JOB = "erase_user"
 
 # Reserved payload key the outbox relay injects.
 _OUTBOX_MESSAGE_ID_KEY = "__outbox_message_id"
@@ -95,3 +97,55 @@ def register_delete_user_assets_handler(
             raise RuntimeError(f"delete_user_assets failed: {result.error}")  # noqa: TRY004 — Result-type pattern match, not a type guard
 
     registry.register_handler(DELETE_USER_ASSETS_JOB, _handler)
+
+
+def register_erase_user_handler(
+    registry: JobHandlerRegistry,
+    erase_user: EraseUser,
+    *,
+    dedupe: HandlerDedupe | None = None,
+) -> None:
+    """Register the ``erase_user`` handler on ``registry``.
+
+    The handler unpacks ``user_id`` and ``reason`` from the payload and
+    calls :meth:`EraseUser.execute`. The use case is idempotent on an
+    already-erased user, so the relay's at-least-once redelivery is
+    safe even without the optional ``dedupe`` callable; wiring code
+    passes one anyway so duplicate cleanup-job enqueues are avoided.
+    """
+
+    def _handler(payload: dict[str, Any]) -> None:
+        message_id = payload.get(_OUTBOX_MESSAGE_ID_KEY)
+        if (
+            dedupe is not None
+            and isinstance(message_id, str)
+            and not dedupe(message_id)
+        ):
+            _logger.info(
+                "event=jobs.erase_user.deduped outbox_message_id=%s",
+                message_id,
+            )
+            return
+        raw_user_id = payload["user_id"]
+        try:
+            user_id = UUID(str(raw_user_id))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"erase_user received invalid user_id={raw_user_id!r}"
+            ) from exc
+        reason = payload.get("reason", "self_request")
+        if reason not in ("self_request", "admin_request"):
+            # Defensive: reject unknown reasons rather than recording an
+            # audit row with garbage. The producer side controls the
+            # value and this is the canary if it ever drifts.
+            raise RuntimeError(f"erase_user received unknown reason={reason!r}")
+        result = erase_user.execute(user_id, reason)
+        if isinstance(result, Err):
+            _logger.error(
+                "event=jobs.erase_user.failed user_id=%s reason=%s",
+                user_id,
+                result.error,
+            )
+            raise RuntimeError(f"erase_user failed: {result.error}")  # noqa: TRY004 — Result-type pattern match, not a type guard
+
+    registry.register_handler(ERASE_USER_JOB, _handler)

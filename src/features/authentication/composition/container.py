@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from uuid import UUID
 
 from app_platform.config.settings import AppSettings
 from features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
@@ -87,6 +88,11 @@ class AuthContainer:
     # Credential-writer adapter the users-feature registrar uses to write the
     # initial password for the bootstrap admin.
     credential_writer_adapter: SQLModelCredentialWriterAdapter
+    # Callable verifying a user's current password — used by the
+    # users-feature ``DELETE /me/erase`` route to gate erasure on
+    # current-password re-auth (defense in depth against stolen session
+    # tokens).
+    verify_user_password: Callable[[UUID, str], bool]
     shutdown: Callable[[], None]
     # Auth use cases
     register_user: RegisterUser
@@ -189,6 +195,26 @@ def build_auth_container(
         limiter.close()
         cache.close()
 
+    def _verify_user_password(user_id: UUID, password: str) -> bool:
+        """Return True when ``password`` matches the user's stored credential.
+
+        Compares against a stable dummy hash when no credential exists
+        so the call site cannot infer "user has password" / "user has
+        no password" from response timing. Used by the users feature's
+        self-erase route to gate ``DELETE /me/erase`` on current-
+        password re-auth.
+        """
+        credential = repo.get_credential_for_user(user_id)
+        if credential is None:
+            # Constant-time comparison against the dummy hash so the
+            # password-less branch is timing-indistinguishable from a
+            # wrong-password branch. The password-less path itself is
+            # documented as a known-deferred branch in the
+            # ``add-gdpr-erasure-and-export`` proposal.
+            password_service.verify_password(dummy_hash, password)
+            return False
+        return password_service.verify_password(credential.hash, password)
+
     return AuthContainer(
         settings=settings,
         repository=repo,
@@ -196,6 +222,7 @@ def build_auth_container(
         principal_cache=cache,
         audit_adapter=audit_adapter,
         credential_writer_adapter=credential_writer_adapter,
+        verify_user_password=_verify_user_password,
         shutdown=_shutdown,
         register_user=register_user,
         login_user=LoginUser(
