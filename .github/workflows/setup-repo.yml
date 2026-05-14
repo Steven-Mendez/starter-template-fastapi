@@ -17,6 +17,12 @@ name: Setup Repository
 on:
   workflow_dispatch:
 
+# Default this workflow to a read-only token. The branch-protection step uses
+# a separate ``REPO_ADMIN_TOKEN`` (classic PAT) — it does not rely on the
+# default GITHUB_TOKEN, so dropping the default scope to read-only is safe.
+permissions:
+  contents: read
+
 jobs:
   branch-protection:
     name: Apply branch protection rules

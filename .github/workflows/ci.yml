@@ -6,6 +6,11 @@ on:
     branches:
       - main
 
+# Default the workflow to read-only token scope. Jobs that need to write
+# (upload SARIF, comment on PRs, etc.) raise their own permissions block.
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: "3.12"
 
@@ -14,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         run: uv python install ${{ env.PYTHON_VERSION }}
@@ -36,10 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         run: uv python install ${{ env.PYTHON_VERSION }}
@@ -54,10 +59,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         run: uv python install ${{ env.PYTHON_VERSION }}
@@ -72,14 +77,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
         with:
           # gitleaks-action scans the commit range pushed; with a shallow
           # clone the "before" SHA is not present and git log fails.
           fetch-depth: 0
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         run: uv python install ${{ env.PYTHON_VERSION }}
@@ -94,7 +99,7 @@ jobs:
             --severity-level medium
 
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -103,10 +108,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         run: uv python install ${{ env.PYTHON_VERSION }}
@@ -136,10 +141,10 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         run: uv python install ${{ env.PYTHON_VERSION }}
@@ -198,21 +203,37 @@ jobs:
   docker:
     needs: quality
     runs-on: ubuntu-latest
+    # Build, smoke-test, scan (Trivy), and SBOM the image in one job so the
+    # scan and SBOM operate on the exact image that was just built.
+    strategy:
+      fail-fast: false
+      matrix:
+        # The Dockerfile currently exposes a single ``runtime`` stage. The
+        # ``add-worker-image-target`` change adds a ``runtime-worker`` stage;
+        # once it lands, append another entry to this matrix and the scan
+        # picks the worker image up automatically.
+        target:
+          - runtime
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - name: Build runtime image
-        run: docker build --target runtime -t starter-template-fastapi:ci .
+      - name: Build ${{ matrix.target }} image
+        run: |
+          docker build \
+            --target ${{ matrix.target }} \
+            -t starter-template-fastapi:ci-${{ matrix.target }} \
+            .
 
       - name: Smoke-test runtime image
+        if: matrix.target == 'runtime'
         run: |
           docker run -d --name ci-smoke \
             -e APP_AUTH_JWT_SECRET_KEY=ci-test-secret-key-min-32-chars \
             -e APP_ENVIRONMENT=development \
             -e APP_STORAGE_LOCAL_PATH=/tmp/storage \
             -p 8000:8000 \
-            starter-template-fastapi:ci
+            starter-template-fastapi:ci-${{ matrix.target }}
           # Wait for the process to start before probing.
           for i in $(seq 1 15); do
             if curl -sf http://localhost:8000/health/live; then
@@ -224,12 +245,58 @@ jobs:
           curl -sf http://localhost:8000/health/live
           docker stop ci-smoke
 
+      - name: Scan ${{ matrix.target }} image for HIGH/CRITICAL CVEs (Trivy)
+        # Trivy fails the build on HIGH or CRITICAL findings. Documented
+        # exceptions go in a ``.trivyignore`` file at the repo root.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: starter-template-fastapi:ci-${{ matrix.target }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          vuln-type: os,library
+
+      - name: Generate SBOM (SPDX JSON) for ${{ matrix.target }} image
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
+        with:
+          image: starter-template-fastapi:ci-${{ matrix.target }}
+          format: spdx-json
+          artifact-name: sbom-${{ matrix.target }}.spdx.json
+          output-file: ${{ runner.temp }}/sbom-${{ matrix.target }}.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sbom-${{ matrix.target }}
+          path: ${{ runner.temp }}/sbom-${{ matrix.target }}.spdx.json
+          if-no-files-found: error
+          retention-days: 30
+
+  dependency-review:
+    # ``dependency-review-action`` only supports pull_request / merge_group
+    # events — it diffs the base against the head. Skip it on push to main.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      # Read is enough for the scan itself; ``pull-requests: write`` is what
+      # lets the action post the inline summary comment on failure.
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Review dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294  # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
   # Single aggregator job used as the required status check in branch protection.
   # Requiring one check instead of enumerating every job keeps branch
   # protection stable when the workflow changes.
   ci-gate:
     name: CI Gate
-    needs: [quality, tests, audit, sast, integration, migrations, docker]
+    needs: [quality, tests, audit, sast, integration, migrations, docker, dependency-review]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -237,6 +304,8 @@ jobs:
         run: |
           results="${{ join(needs.*.result, ' ') }}"
           for result in $results; do
+            # ``skipped`` is allowed because ``dependency-review`` only runs on
+            # pull_request events; on push-to-main it is skipped by design.
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               echo "A required job failed or was cancelled: $results"
               exit 1
