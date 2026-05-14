@@ -72,4 +72,22 @@ class ConfigurationError(AuthError):
 
 
 class RateLimitExceededError(AuthError):
-    """Raised when auth endpoint attempts exceed the per-window limit."""
+    """Raised when auth endpoint attempts exceed the per-window limit.
+
+    Carries ``retry_after_seconds`` so the HTTP layer can set the RFC 7231
+    §7.1.3 ``Retry-After`` header on the 429 response. The value is computed
+    by the rate-limit dependency from the limiter's window size, since the
+    HTTP error mapping does not have access to the limiter configuration.
+    """
+
+    def __init__(self, message: str, retry_after_seconds: int) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+    def __reduce__(
+        self,
+    ) -> tuple[type[RateLimitExceededError], tuple[str, int]]:
+        # Custom reduce so the error round-trips through pickle (and therefore
+        # the arq Redis boundary): ``Exception.__reduce__`` only carries
+        # ``self.args`` and would drop ``retry_after_seconds``.
+        return (type(self), (self.args[0], self.retry_after_seconds))

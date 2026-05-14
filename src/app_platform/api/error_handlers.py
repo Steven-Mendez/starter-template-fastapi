@@ -79,6 +79,7 @@ def problem_json_response(
     detail: str | None = None,
     type_uri: str = "about:blank",
     extra: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """Build an RFC 9457 Problem Details JSON response.
 
@@ -94,6 +95,10 @@ def problem_json_response(
         type_uri: URI identifying the problem type. ``"about:blank"`` is the
             RFC-recommended default when no specific type exists.
         extra: Optional extra fields merged into the payload (e.g. ``code``).
+        headers: Optional response headers to attach. Used by the platform
+            exception handlers to preserve ``WWW-Authenticate`` on 401 and
+            ``Retry-After`` on 429, both of which travel on
+            :attr:`HTTPException.headers`.
 
     Returns:
         A ``JSONResponse`` with ``application/problem+json`` media type.
@@ -115,6 +120,7 @@ def problem_json_response(
         status_code=status_code,
         content=jsonable_encoder(payload),
         media_type=PROBLEM_JSON,
+        headers=headers,
     )
 
 
@@ -150,6 +156,7 @@ def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
             detail=str(exc.detail),
             type_uri=exc.type_uri,
             extra={"code": exc.code},
+            headers=getattr(exc, "headers", None),
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -161,6 +168,7 @@ def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
             status_code=exc.status_code,
             request=request,
             detail=detail_out,
+            headers=getattr(exc, "headers", None),
         )
 
     @app.exception_handler(RequestValidationError)

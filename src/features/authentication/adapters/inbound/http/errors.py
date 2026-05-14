@@ -141,6 +141,7 @@ def raise_http_from_auth_error(exc: AuthError) -> NoReturn:
             detail="Rate limit exceeded",
             code="rate_limit_exceeded",
             type_uri=ProblemType.AUTH_RATE_LIMITED,
+            headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     if isinstance(exc, ConfigurationError):
         # 503 rather than 500 signals that the service is temporarily

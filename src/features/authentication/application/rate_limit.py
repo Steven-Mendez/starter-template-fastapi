@@ -84,7 +84,10 @@ class FixedWindowRateLimiter:
         attempts = [ts for ts in self._attempts.get(key, []) if ts >= window_start]
         if len(attempts) >= self.max_attempts:
             self._attempts[key] = attempts
-            raise RateLimitExceededError("Rate limit exceeded")
+            raise RateLimitExceededError(
+                "Rate limit exceeded",
+                retry_after_seconds=int(self.window_seconds),
+            )
         attempts.append(now)
         self._attempts[key] = attempts
 
@@ -190,7 +193,10 @@ class RedisRateLimiter:
             ),
         )
         if result == 1:
-            raise RateLimitExceededError("Rate limit exceeded")
+            raise RateLimitExceededError(
+                "Rate limit exceeded",
+                retry_after_seconds=max(1, int(self._window_ms // 1000)),
+            )
 
     def reset(self) -> None:
         """Delete all rate-limit keys from Redis.
