@@ -83,3 +83,29 @@ class OutboxRepositoryPort(Protocol):
     ) -> None:
         """Mark a row ``status='failed'`` after exhausting retries."""
         ...
+
+    def delete_delivered_before(self, *, cutoff: datetime, limit: int) -> int:
+        """Delete up to ``limit`` ``delivered`` rows older than ``cutoff``.
+
+        Returns the row count actually deleted in this transaction.
+        Callers loop until the return value is 0 to drain the eligible
+        set without ever holding more than ``limit`` rows in a single
+        transaction (autovacuum / replica friendly).
+        """
+        ...
+
+    def delete_failed_before(self, *, cutoff: datetime, limit: int) -> int:
+        """Delete up to ``limit`` ``failed`` rows older than ``cutoff``.
+
+        Returns the row count actually deleted in this transaction.
+        Callers loop until the return value is 0.
+        """
+        ...
+
+    def delete_processed_marks_before(self, *, cutoff: datetime, limit: int) -> int:
+        """Delete up to ``limit`` dedup marks older than ``cutoff``.
+
+        Operates on ``processed_outbox_messages``. Returns the row count
+        actually deleted in this transaction; callers loop until 0.
+        """
+        ...

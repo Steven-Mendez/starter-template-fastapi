@@ -7,7 +7,7 @@ BRANCH_COVERAGE_FLOOR ?= 60
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev worker format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check migrations-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports check-branch-coverage
+.PHONY: help sync dev worker outbox-retry-failed outbox-prune format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check migrations-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports check-branch-coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -23,6 +23,9 @@ worker: ## Run the arq background-jobs worker (requires APP_JOBS_BACKEND=arq)
 
 outbox-retry-failed: ## Re-arm outbox rows that reached APP_OUTBOX_MAX_ATTEMPTS
 	PYTHONPATH=src uv run python -m features.outbox.management retry-failed
+
+outbox-prune: ## Prune terminal outbox rows and stale dedup marks past their retention
+	PYTHONPATH=src uv run python -m cli.outbox_prune
 
 format: ## Format code with Ruff formatter
 	uv run ruff format .

@@ -29,6 +29,7 @@ from features.outbox.adapters.outbound.sqlmodel.unit_of_work import (
 )
 from features.outbox.application.ports.outbox_uow_port import OutboxUnitOfWorkPort
 from features.outbox.application.use_cases.dispatch_pending import DispatchPending
+from features.outbox.application.use_cases.maintenance.prune_outbox import PruneOutbox
 from features.outbox.composition.settings import OutboxSettings
 
 
@@ -39,6 +40,7 @@ class OutboxContainer:
     settings: OutboxSettings
     unit_of_work: OutboxUnitOfWorkPort
     dispatch_pending: DispatchPending
+    prune_outbox: PruneOutbox
     shutdown: Callable[[], None]
 
 
@@ -70,6 +72,8 @@ def build_outbox_container(
         _retry_max=timedelta(seconds=settings.retry_max_seconds),
     )
 
+    prune_outbox = PruneOutbox(_repository=repository)
+
     def _shutdown() -> None:
         # The container does not own the engine or the job-queue client;
         # those are disposed by their respective owners. Nothing to do
@@ -81,5 +85,6 @@ def build_outbox_container(
         settings=settings,
         unit_of_work=unit_of_work,
         dispatch_pending=dispatch_pending,
+        prune_outbox=prune_outbox,
         shutdown=_shutdown,
     )

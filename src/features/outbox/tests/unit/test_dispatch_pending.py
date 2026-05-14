@@ -89,6 +89,24 @@ class _FakeRepository:
     ) -> None:
         self.failed_calls.append((id, attempts, last_error, failed_at))
 
+    # Prune-related methods declared on the port but unused by the
+    # dispatch use case. Implemented as no-ops so the structural
+    # ``OutboxRepositoryPort`` Protocol stays satisfied.
+    def delete_delivered_before(
+        self, *, cutoff: datetime, limit: int
+    ) -> int:  # pragma: no cover
+        return 0
+
+    def delete_failed_before(
+        self, *, cutoff: datetime, limit: int
+    ) -> int:  # pragma: no cover
+        return 0
+
+    def delete_processed_marks_before(
+        self, *, cutoff: datetime, limit: int
+    ) -> int:  # pragma: no cover
+        return 0
+
 
 @dataclass(slots=True)
 class _StubJobQueue:

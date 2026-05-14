@@ -11,10 +11,13 @@ feature-internal defaults and gives the feature its own
 
 from __future__ import annotations
 
+import logging
 import os
 import socket
 from dataclasses import dataclass
 from typing import Protocol
+
+_logger = logging.getLogger("features.outbox.settings")
 
 
 class _OutboxAppSettings(Protocol):
@@ -32,6 +35,9 @@ class _OutboxAppSettings(Protocol):
     outbox_retry_base_seconds: float
     outbox_retry_max_seconds: float
     outbox_worker_id: str | None
+    outbox_retention_delivered_days: int
+    outbox_retention_failed_days: int
+    outbox_prune_batch_size: int
 
 
 def _default_worker_id() -> str:
@@ -57,6 +63,9 @@ class OutboxSettings:
     retry_base_seconds: float
     retry_max_seconds: float
     worker_id: str
+    retention_delivered_days: int
+    retention_failed_days: int
+    prune_batch_size: int
 
     @classmethod
     def from_app_settings(
@@ -70,6 +79,9 @@ class OutboxSettings:
         retry_base_seconds: float | None = None,
         retry_max_seconds: float | None = None,
         worker_id: str | None = None,
+        retention_delivered_days: int | None = None,
+        retention_failed_days: int | None = None,
+        prune_batch_size: int | None = None,
     ) -> OutboxSettings:
         """Construct from either an :class:`AppSettings` or flat kwargs."""
         if app is not None:
@@ -80,6 +92,9 @@ class OutboxSettings:
             retry_base_seconds = app.outbox_retry_base_seconds
             retry_max_seconds = app.outbox_retry_max_seconds
             worker_id = app.outbox_worker_id
+            retention_delivered_days = app.outbox_retention_delivered_days
+            retention_failed_days = app.outbox_retention_failed_days
+            prune_batch_size = app.outbox_prune_batch_size
         if enabled is None:
             raise ValueError("OutboxSettings: 'enabled' is required")
         return cls(
@@ -96,7 +111,29 @@ class OutboxSettings:
                 900.0 if retry_max_seconds is None else retry_max_seconds
             ),
             worker_id=worker_id or _default_worker_id(),
+            retention_delivered_days=int(
+                7 if retention_delivered_days is None else retention_delivered_days
+            ),
+            retention_failed_days=int(
+                30 if retention_failed_days is None else retention_failed_days
+            ),
+            prune_batch_size=int(
+                1000 if prune_batch_size is None else prune_batch_size
+            ),
         )
+
+    @property
+    def dedup_retention_seconds(self) -> float:
+        """Derived dedup-mark retention window.
+
+        Pegged to ``2 * retry_max_seconds`` so by the time a mark would
+        be deleted, the corresponding outbox row has already reached a
+        terminal state (delivered or failed) and could not be redelivered
+        even if the mark vanished. Exposing this as a property keeps the
+        knob count down — operators only tune ``retry_max_seconds`` and
+        the dedup retention follows automatically.
+        """
+        return 2.0 * self.retry_max_seconds
 
     def validate(self, errors: list[str]) -> None:
         if self.relay_interval_seconds <= 0:
@@ -112,6 +149,31 @@ class OutboxSettings:
         if self.retry_max_seconds < self.retry_base_seconds:
             errors.append(
                 "APP_OUTBOX_RETRY_MAX_SECONDS must be >= APP_OUTBOX_RETRY_BASE_SECONDS"
+            )
+        if self.retention_delivered_days <= 0:
+            errors.append("APP_OUTBOX_RETENTION_DELIVERED_DAYS must be > 0")
+        if self.retention_failed_days <= 0:
+            errors.append("APP_OUTBOX_RETENTION_FAILED_DAYS must be > 0")
+        if self.prune_batch_size <= 0:
+            errors.append("APP_OUTBOX_PRUNE_BATCH_SIZE must be > 0")
+        if (
+            self.retention_delivered_days > 0
+            and self.retention_failed_days > 0
+            and self.retention_failed_days < self.retention_delivered_days
+        ):
+            # Warning rather than hard error: operators may deliberately
+            # configure aggressive failed-row pruning (e.g. when a separate
+            # alerting pipeline captures the failure detail elsewhere). The
+            # standard ops pattern is the opposite — failures are kept
+            # longer than successes — so we surface a hint via the
+            # validator output without refusing the configuration.
+            _logger.warning(
+                "APP_OUTBOX_RETENTION_FAILED_DAYS (%d) < "
+                "APP_OUTBOX_RETENTION_DELIVERED_DAYS (%d): failed rows are "
+                "operator-actionable evidence and are typically kept "
+                "longer than delivered rows.",
+                self.retention_failed_days,
+                self.retention_delivered_days,
             )
 
     def validate_production(self, errors: list[str]) -> None:

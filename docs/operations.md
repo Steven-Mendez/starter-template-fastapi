@@ -672,6 +672,9 @@ so they commit atomically with the surrounding business write. See
 | `APP_OUTBOX_WORKER_ID` | `<hostname>:<pid>` | Stamped onto `locked_by` for operator visibility. |
 | `APP_OUTBOX_RETRY_BASE_SECONDS` | `30.0` | Base delay for the relay's exponential retry backoff (`min(base * 2^(attempts-1), max)`). |
 | `APP_OUTBOX_RETRY_MAX_SECONDS` | `900.0` | Cap on the retry backoff so a poison row does not stall the queue indefinitely. |
+| `APP_OUTBOX_RETENTION_DELIVERED_DAYS` | `7` | Delivered rows older than this are pruned by the hourly worker cron. |
+| `APP_OUTBOX_RETENTION_FAILED_DAYS` | `30` | Failed rows older than this are pruned by the hourly worker cron. Operator-actionable evidence is kept longer than delivered audit trail. |
+| `APP_OUTBOX_PRUNE_BATCH_SIZE` | `1000` | Max rows the prune cron deletes per transaction; the use case loops until the eligible set is empty. |
 
 ### File storage (`StorageSettings`)
 

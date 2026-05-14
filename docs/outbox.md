@@ -172,6 +172,9 @@ claimed yet.
 | `APP_OUTBOX_WORKER_ID` | `<hostname>:<pid>` | Stamped onto `locked_by` for operator visibility. |
 | `APP_OUTBOX_RETRY_BASE_SECONDS` | `30.0` | Base delay for the exponential retry backoff. |
 | `APP_OUTBOX_RETRY_MAX_SECONDS` | `900.0` | Cap on the retry backoff. |
+| `APP_OUTBOX_RETENTION_DELIVERED_DAYS` | `7` | Delivered rows older than this are pruned by the hourly cron. |
+| `APP_OUTBOX_RETENTION_FAILED_DAYS` | `30` | Failed rows older than this are pruned by the hourly cron. |
+| `APP_OUTBOX_PRUNE_BATCH_SIZE` | `1000` | Max rows the prune cron deletes per transaction. The use case loops internally until the eligible set is empty. |
 
 The web process does NOT need any of these set — the request-path
 producers always write to the outbox regardless. The relay only
@@ -212,19 +215,27 @@ into an outbox-backed flow:
   budget. To re-arm them, run `make outbox-retry-failed` (or
   manually: `UPDATE outbox_messages SET status='pending',
   attempts=0, available_at=now() WHERE status='failed';`).
-- **Retention**: Delivered rows accumulate. The starter ships no
-  GC job; run a periodic cleanup if your write volume warrants:
-  ```sql
-  DELETE FROM outbox_messages
-  WHERE status = 'delivered'
-    AND delivered_at < now() - interval '7 days';
-  ```
-  The handler-side `processed_outbox_messages` table grows in
-  lockstep; trim it on the same cadence:
-  ```sql
-  DELETE FROM processed_outbox_messages
-  WHERE processed_at < now() - interval '7 days';
-  ```
+- **Retention**: The worker schedules an hourly cron (`outbox-prune`)
+  that drains terminal-state rows and stale dedup marks via the
+  `PruneOutbox` use case. Defaults:
+  - `delivered` rows older than `APP_OUTBOX_RETENTION_DELIVERED_DAYS`
+    (default 7 days) are deleted. These are best-effort audit trail
+    and are pruned aggressively.
+  - `failed` rows older than `APP_OUTBOX_RETENTION_FAILED_DAYS`
+    (default 30 days) are deleted. Failed rows are operator-actionable
+    evidence of dead-lettered work and are kept longer.
+  - `processed_outbox_messages` rows older than
+    `2 × APP_OUTBOX_RETRY_MAX_SECONDS` are deleted. The dedup window
+    is pegged to the retry budget rather than a separate knob: by the
+    time we delete a mark, the corresponding outbox row has already
+    reached a terminal state.
+
+  Each delete runs in its own short transaction bounded by
+  `APP_OUTBOX_PRUNE_BATCH_SIZE` (default 1000); the use case loops
+  internally until the eligible set is empty, keeping each transaction
+  autovacuum and replica friendly. For a one-shot manual sweep (e.g.
+  before a maintenance window), run `make outbox-prune` — it invokes
+  the same use case as the cron, using the same settings.
 
 ## Not in scope
 

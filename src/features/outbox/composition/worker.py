@@ -49,6 +49,15 @@ def build_relay_cron_jobs(container: OutboxContainer) -> Sequence[CronJob]:
     Empty when ``settings.enabled`` is false — the web/worker boot
     sequence treats the empty list as "no relay scheduled" and the
     worker process therefore does not poll the outbox.
+
+    Two crons are registered while enabled:
+
+    - ``outbox-relay`` — fires every ``relay_interval_seconds`` and
+      drains pending rows by calling ``DispatchPending``.
+    - ``outbox-prune`` — fires hourly (minute 0) and trims terminal
+      ``delivered`` / ``failed`` rows + stale dedup marks via
+      :class:`PruneOutbox`. Disjoint row set from the relay so the two
+      do not contend on the same rows.
     """
     if not container.settings.enabled:
         _logger.info("event=outbox.relay.disabled APP_OUTBOX_ENABLED=false")
@@ -67,6 +76,25 @@ def build_relay_cron_jobs(container: OutboxContainer) -> Sequence[CronJob]:
         # synchronous and self-contained, so we ignore it.
         container.dispatch_pending.execute()
 
+    settings = container.settings
+    _logger.info(
+        "event=outbox.prune.scheduled retention_delivered_days=%d "
+        "retention_failed_days=%d prune_batch_size=%d "
+        "dedup_retention_seconds=%.1f",
+        settings.retention_delivered_days,
+        settings.retention_failed_days,
+        settings.prune_batch_size,
+        settings.dedup_retention_seconds,
+    )
+
+    async def _prune_tick(ctx: dict[str, Any]) -> None:  # noqa: ARG001
+        container.prune_outbox.execute(
+            retention_delivered_days=settings.retention_delivered_days,
+            retention_failed_days=settings.retention_failed_days,
+            dedup_retention_seconds=settings.dedup_retention_seconds,
+            batch_size=settings.prune_batch_size,
+        )
+
     return [
         cron(
             _tick,
@@ -74,5 +102,11 @@ def build_relay_cron_jobs(container: OutboxContainer) -> Sequence[CronJob]:
             second=seconds,
             run_at_startup=True,
             unique=True,
-        )
+        ),
+        cron(
+            _prune_tick,
+            name="outbox-prune",
+            minute={0},
+            unique=True,
+        ),
     ]

@@ -197,6 +197,19 @@ class AppSettings(BaseSettings):
     # worker holds a row mid-flight. Defaults to ``hostname:pid`` at
     # OutboxSettings construction when unset here.
     outbox_worker_id: str | None = None
+    # Retention windows for the prune cron. ``delivered`` rows are
+    # best-effort audit trail and are pruned aggressively (7 days
+    # default); ``failed`` rows are operator-actionable evidence of
+    # dead-lettered work and are kept longer (30 days default). The
+    # dedup table (``processed_outbox_messages``) retention is derived
+    # from ``retry_max_seconds`` so operators tune one knob.
+    outbox_retention_delivered_days: int = 7
+    outbox_retention_failed_days: int = 30
+    # Maximum rows the prune use case deletes per transaction. The use
+    # case loops internally until the eligibility set is empty, so a
+    # backlog larger than this value still fully drains — each
+    # transaction just stays autovacuum-friendly.
+    outbox_prune_batch_size: int = 1000
     # ---------------------------------------------------------------------------
     # File storage
     # ---------------------------------------------------------------------------

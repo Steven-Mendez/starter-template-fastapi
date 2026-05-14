@@ -169,6 +169,79 @@ class SQLModelOutboxRepository:
                 )
             )
 
+    def delete_delivered_before(self, *, cutoff: datetime, limit: int) -> int:
+        """Delete up to ``limit`` delivered rows older than ``cutoff``.
+
+        Uses the ``DELETE ... WHERE id IN (SELECT id ... LIMIT)``
+        idiom so each transaction touches at most ``limit`` rows —
+        bounded enough that autovacuum and replicas keep up even when
+        the eligibility set is large. Returns ``rowcount``.
+        """
+        if limit <= 0:
+            return 0
+        with self._write_session() as session:
+            result = session.execute(
+                sa.text(
+                    """
+                    DELETE FROM outbox_messages
+                    WHERE id IN (
+                        SELECT id FROM outbox_messages
+                        WHERE status = 'delivered'
+                          AND delivered_at IS NOT NULL
+                          AND delivered_at < :cutoff
+                        ORDER BY delivered_at
+                        LIMIT :limit
+                    )
+                    """
+                ),
+                {"cutoff": cutoff, "limit": limit},
+            )
+            return int(getattr(result, "rowcount", 0) or 0)
+
+    def delete_failed_before(self, *, cutoff: datetime, limit: int) -> int:
+        """Delete up to ``limit`` failed rows older than ``cutoff``."""
+        if limit <= 0:
+            return 0
+        with self._write_session() as session:
+            result = session.execute(
+                sa.text(
+                    """
+                    DELETE FROM outbox_messages
+                    WHERE id IN (
+                        SELECT id FROM outbox_messages
+                        WHERE status = 'failed'
+                          AND failed_at IS NOT NULL
+                          AND failed_at < :cutoff
+                        ORDER BY failed_at
+                        LIMIT :limit
+                    )
+                    """
+                ),
+                {"cutoff": cutoff, "limit": limit},
+            )
+            return int(getattr(result, "rowcount", 0) or 0)
+
+    def delete_processed_marks_before(self, *, cutoff: datetime, limit: int) -> int:
+        """Delete up to ``limit`` dedup marks older than ``cutoff``."""
+        if limit <= 0:
+            return 0
+        with self._write_session() as session:
+            result = session.execute(
+                sa.text(
+                    """
+                    DELETE FROM processed_outbox_messages
+                    WHERE id IN (
+                        SELECT id FROM processed_outbox_messages
+                        WHERE processed_at < :cutoff
+                        ORDER BY processed_at
+                        LIMIT :limit
+                    )
+                    """
+                ),
+                {"cutoff": cutoff, "limit": limit},
+            )
+            return int(getattr(result, "rowcount", 0) or 0)
+
 
 def _coerce_status(value: str) -> OutboxStatus:
     if value in ("pending", "delivered", "failed"):
