@@ -8,6 +8,39 @@ This guide describes how to run and operate the service outside a test process.
 - PostgreSQL reachable through `APP_POSTGRESQL_DSN`.
 - Applied Alembic migrations.
 
+## Python Install Matrix
+
+After `trim-runtime-deps`, `pyproject.toml` splits runtime dependencies into a
+small **core** set plus role / adapter extras. Pick the extras that match the
+process you are running and the optional adapters it uses. Local development
+keeps a single fat install via the `dev` dependency-group.
+
+| Install command | Brings | Use it for |
+| --- | --- | --- |
+| `uv sync` | core only (pydantic, sqlmodel, alembic, argon2, OTel, …) | Tooling that just imports the core layers (rare). Does **not** start the API or worker. |
+| `uv sync --extra api` | + `fastapi[standard]` (uvicorn, starlette extras, `python-multipart`) | API host |
+| `uv sync --extra worker` | + `arq`, `redis` | Background-jobs worker host |
+| `uv sync --extra api --extra worker` | + both of the above | Single-host deployments running both roles in one venv |
+| `uv sync --extra resend` | + `httpx` | Any host that sets `APP_EMAIL_BACKEND=resend` |
+| `uv sync --extra s3` | + `boto3` | Any host that sets `APP_STORAGE_BACKEND=s3` |
+| `uv sync` (with the `dev` group) | everything above + test/lint tooling | Local development (`uv sync` reads `[dependency-groups] dev` by default) |
+
+If the API process is configured with `APP_AUTH_REDIS_URL` (distributed rate
+limiter or the shared principal cache), install `--extra worker` alongside
+`--extra api` — auth imports `redis` lazily but the import must succeed when the
+Redis-backed limiter / cache is selected.
+
+If the wrong extra is missing the app fails loudly at startup naming the extra,
+for example:
+
+- `APP_EMAIL_BACKEND=resend` without `--extra resend` → `httpx is not installed; the Resend email adapter requires it. Install with: uv sync --extra resend`
+- `APP_STORAGE_BACKEND=s3` without `--extra s3` → `boto3 is not installed; the S3 file-storage adapter requires it. Install with: uv sync --extra s3`
+
+> **Backwards-compatibility note.** Deployments that previously ran a bare
+> `uv sync` (no extras) and relied on FastAPI being present must now choose at
+> least `--extra api` (and `--extra worker` for the worker host). See the
+> changelog entry for `trim-runtime-deps`.
+
 ## Local Docker Compose
 
 Run the database only:

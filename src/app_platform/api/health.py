@@ -86,8 +86,10 @@ async def _probe_s3(bucket: str, region: str) -> None:
     """
     try:
         import boto3
-    except ImportError as exc:  # pragma: no cover - boto3 is a hard dep
-        raise RuntimeError("boto3 is not installed") from exc
+    except ImportError as exc:  # pragma: no cover - dev install has boto3
+        raise RuntimeError(
+            "boto3 is not installed; install with: uv sync --extra s3"
+        ) from exc
 
     def _run() -> None:
         client = boto3.client("s3", region_name=region)

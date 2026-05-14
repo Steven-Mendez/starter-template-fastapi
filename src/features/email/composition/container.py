@@ -12,11 +12,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from features.email.adapters.outbound.console import ConsoleEmailAdapter
-from features.email.adapters.outbound.resend import ResendEmailAdapter
 from features.email.adapters.outbound.smtp import SmtpEmailAdapter
 from features.email.application.ports.email_port import EmailPort
 from features.email.application.registry import EmailTemplateRegistry
 from features.email.composition.settings import EmailSettings
+
+# ``ResendEmailAdapter`` lives behind the ``resend`` extra (it imports
+# ``httpx``). Deferred import avoids loading ``httpx`` at module-load
+# time so deployments that do not use Resend can skip the extra
+# entirely. See ``trim-runtime-deps``.
 
 
 @dataclass(slots=True)
@@ -62,6 +66,16 @@ def build_email_container(settings: EmailSettings) -> EmailContainer:
             raise RuntimeError(
                 "APP_EMAIL_RESEND_API_KEY is required when APP_EMAIL_BACKEND=resend"
             )
+        try:
+            from features.email.adapters.outbound.resend import ResendEmailAdapter
+        except ImportError as exc:
+            # ``httpx`` ships with the ``resend`` extra. Fail loudly at
+            # composition time naming the extra so operators know exactly
+            # which install command fixes the gap (see ``trim-runtime-deps``).
+            raise RuntimeError(
+                "httpx is not installed; the Resend email adapter requires it. "
+                "Install with: uv sync --extra resend"
+            ) from exc
         port = ResendEmailAdapter(
             registry=registry,
             api_key=settings.resend_api_key,

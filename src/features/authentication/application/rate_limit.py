@@ -12,11 +12,26 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import cast
-
-import redis as redis_lib
+from typing import TYPE_CHECKING, Any, cast
 
 from features.authentication.application.errors import RateLimitExceededError
+
+if TYPE_CHECKING:
+    import redis as redis_lib
+
+# ``redis`` ships with the ``worker`` extra (or the dev group). The
+# ``api`` extra deliberately omits it; an API process that selects the
+# Redis-backed rate limiter must also install ``--extra worker`` (or
+# the dev group). We attempt the import here so the module attribute
+# ``redis_lib`` is set when the package IS available — that lets tests
+# patch ``rate_limit.redis_lib.Redis.from_url`` without changing the
+# patch target. When the package is NOT available the attribute stays
+# ``None`` and ``RedisRateLimiter.from_url`` raises a clear error
+# naming the extra. See ``trim-runtime-deps``.
+try:
+    import redis as redis_lib
+except ImportError:  # pragma: no cover - dev install always has redis
+    redis_lib = cast(Any, None)
 
 # Lua script: atomic sliding-window check using a sorted set.
 #
@@ -157,7 +172,14 @@ class RedisRateLimiter:
 
         Raises:
             redis.exceptions.ConnectionError: If the Redis server is not reachable.
+            RuntimeError: If the ``redis`` package is not installed (install
+                with ``uv sync --extra worker``).
         """
+        if redis_lib is None:  # pragma: no cover - dev install always has redis
+            raise RuntimeError(
+                "redis is not installed; install with: uv sync --extra worker"
+            )
+
         client: redis_lib.Redis = redis_lib.Redis.from_url(url, decode_responses=False)
         # Ping at construction so a misconfigured URL fails loudly at startup
         # rather than silently on the first auth request.
