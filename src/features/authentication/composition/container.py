@@ -235,9 +235,29 @@ def build_auth_container(
         )
         if settings.auth_rate_limit_enabled:
             if settings.auth_require_distributed_rate_limit:
-                raise RuntimeError(
-                    "APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT is true but "
-                    "APP_AUTH_REDIS_URL is not configured"
+                # Defense-in-depth: production must never silently fall
+                # back to the in-process limiter. The
+                # ``AuthenticationSettings.validate_production`` gate is
+                # the spec-aligned refusal point, but a second runtime
+                # check here keeps a misconfigured production image from
+                # booting even if validation is bypassed.
+                #
+                # In non-production environments (dev, test) the default
+                # flip of ``auth_require_distributed_rate_limit=True``
+                # would otherwise prevent ``docker compose up`` /
+                # ``docker-smoke`` from booting without a Redis side-car,
+                # so we degrade to the in-process limiter and log a
+                # warning instead. See ``harden-rate-limiting``.
+                if settings.environment == "production":
+                    raise RuntimeError(
+                        "APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT is true but "
+                        "APP_AUTH_REDIS_URL is not configured"
+                    )
+                _logger.warning(
+                    "event=auth.rate_limiter.fallback_in_process "
+                    "environment=%s message=APP_AUTH_REDIS_URL not set; "
+                    "using in-process limiter",
+                    settings.environment,
                 )
             _logger.error(
                 "event=auth.rate_limit.degraded backend=in_memory "
