@@ -252,6 +252,13 @@ class AppSettings(BaseSettings):
     otel_instrument_redis: bool = True
     # Set to false to disable the /metrics Prometheus endpoint.
     metrics_enabled: bool = True
+    # Per-dependency timeout for the ``/health/ready`` probe (seconds).
+    # Each probe is bounded by this timeout independently and they run
+    # in parallel, so the worst-case probe latency is bounded by the
+    # slowest single dependency. Kubelet readiness probes typically run
+    # every 10 s, so the 1.0 s default leaves a healthy margin. A probe
+    # slower than this is itself an "almost-failure" we want to surface.
+    health_ready_probe_timeout_seconds: float = 1.0
     # ---------------------------------------------------------------------------
     # Error reporting (Sentry)
     # ---------------------------------------------------------------------------

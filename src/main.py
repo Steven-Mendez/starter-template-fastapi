@@ -309,9 +309,26 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             )
         lifespan_app.state.redis_client = redis_client
 
+        # Expose the shared engine on app.state so the /health/ready probe
+        # can run ``SELECT 1`` without reaching into any feature container.
+        # The engine outlives every feature container — auth.shutdown
+        # disposes it last — so this reference is safe for the whole
+        # request lifetime.
+        lifespan_app.state.health_db_engine = repository.engine
+
+        # Readiness flag is set as the LAST step of startup so the probe
+        # only flips green once every registry is sealed and every
+        # container is attached. It is cleared as the FIRST step of
+        # shutdown (below) so kubelets drop traffic the instant SIGTERM
+        # lands — the contract paired with ``add-graceful-shutdown``.
+        lifespan_app.state.ready = True
+
         try:
             yield
         finally:
+            # Drop readiness FIRST so in-flight kubelet probes return 503
+            # before we tear down dependent resources.
+            lifespan_app.state.ready = False
             # Shutdown order is reverse of startup so dependent resources
             # (e.g. connection pools) are closed after the services that use them.
             outbox.shutdown()
@@ -323,6 +340,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 redis_client.close()
             lifespan_app.state.container = None
             lifespan_app.state.redis_client = None
+            lifespan_app.state.health_db_engine = None
 
     app.router.lifespan_context = lifespan
     return app

@@ -16,6 +16,45 @@ logs.
 | `APP_OTEL_INSTRUMENT_HTTPX` | `true` | Toggle HTTPX auto-instrumentation. |
 | `APP_OTEL_INSTRUMENT_REDIS` | `true` | Toggle Redis auto-instrumentation (only loaded when a Redis URL is set). |
 | `APP_LOG_LEVEL` | `INFO` | Root Python log level used by the application. |
+| `APP_HEALTH_READY_PROBE_TIMEOUT_SECONDS` | `1.0` | Per-dependency timeout for `GET /health/ready`. Must be in `(0.0, 30.0]`. |
+
+## Health probes
+
+The service exposes two health endpoints with different semantics. Configure
+the kubelet to point liveness at `/health/live` and readiness at
+`/health/ready`; do not collapse them onto a single URL.
+
+| Endpoint | Purpose | Touches dependencies? | Use for |
+| --- | --- | --- | --- |
+| `GET /health/live` | "Is the process able to serve any request?" | No — process-only, returns 200 unconditionally. | `livenessProbe`. The kubelet restarts the pod when this fails. |
+| `GET /health/ready` | "Should the load balancer send this pod traffic?" | Yes — pings every configured dependency. | `readinessProbe`. The kubelet drops the pod from the Service when this fails. |
+
+`/health/ready` runs in parallel:
+
+- `SELECT 1` against PostgreSQL.
+- `PING` against Redis when `APP_AUTH_REDIS_URL` (or `APP_JOBS_REDIS_URL`) is configured.
+- `head_bucket` against S3 when `APP_STORAGE_ENABLED=true` and `APP_STORAGE_BACKEND=s3`.
+
+Each probe is bounded by `APP_HEALTH_READY_PROBE_TIMEOUT_SECONDS` (default
+`1.0`). Probes run via `asyncio.gather`, so the worst-case probe latency is
+the slowest single dependency — not the sum.
+
+Response shapes:
+
+| Condition | Status | Body | Headers |
+| --- | --- | --- | --- |
+| Lifespan startup not yet complete (registries unsealed, containers unwired). | `503` | `{"status":"starting"}` | none |
+| Every configured dependency responds within its timeout. | `200` | `{"status":"ok","deps":{...}}` | none |
+| Any configured dependency times out or raises. | `503` | `{"status":"fail","deps":{"<name>":{"status":"fail","reason":"..."}, ...}}` | `Retry-After: 1` |
+
+The readiness flag flips at the END of FastAPI lifespan startup (after every
+feature registry is sealed and every container is attached) and is cleared at
+the START of shutdown, so `SIGTERM` immediately drops the pod from rotation
+even before in-flight requests drain. This is the contract `add-graceful-shutdown`
+depends on.
+
+Both `/health/live` and `/health/ready` are excluded from Prometheus HTTP
+metrics and OTel spans so kubelet polling does not flood your dashboards.
 
 ## Metrics
 

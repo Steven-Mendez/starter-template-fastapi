@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app_platform.api.health import health_router
 from app_platform.api.operation_ids import feature_operation_id
 
 root_router = APIRouter(
     tags=["root"],
     generate_unique_id_function=feature_operation_id,
 )
+root_router.include_router(health_router)
 
 
 @root_router.get("/")

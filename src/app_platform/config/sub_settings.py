@@ -87,6 +87,7 @@ class ObservabilitySettings:
     otel_instrument_httpx: bool
     otel_instrument_redis: bool
     metrics_enabled: bool
+    health_ready_probe_timeout_seconds: float
     auth_redis_url: str | None
     jobs_redis_url: str | None
     environment: str
@@ -103,6 +104,7 @@ class ObservabilitySettings:
             otel_instrument_httpx=app.otel_instrument_httpx,
             otel_instrument_redis=app.otel_instrument_redis,
             metrics_enabled=app.metrics_enabled,
+            health_ready_probe_timeout_seconds=app.health_ready_probe_timeout_seconds,
             auth_redis_url=app.auth_redis_url,
             jobs_redis_url=app.jobs_redis_url,
             environment=app.environment,
@@ -114,6 +116,16 @@ class ObservabilitySettings:
             errors.append(
                 "APP_OTEL_TRACES_SAMPLER_RATIO must be between 0.0 and 1.0 "
                 f"(got {self.otel_traces_sampler_ratio})"
+            )
+        # Kubelet readiness probes run on a ~10 s cadence; 30 s is already
+        # generous. The lower bound is strict because a zero/negative timeout
+        # would short-circuit ``asyncio.wait_for`` and report false negatives.
+        _max_ready_timeout = 30.0
+        if not (0.0 < self.health_ready_probe_timeout_seconds <= _max_ready_timeout):
+            errors.append(
+                "APP_HEALTH_READY_PROBE_TIMEOUT_SECONDS must be in "
+                f"(0.0, {_max_ready_timeout}] "
+                f"(got {self.health_ready_probe_timeout_seconds})"
             )
 
     def validate_production(self, errors: list[str]) -> None:  # noqa: ARG002
