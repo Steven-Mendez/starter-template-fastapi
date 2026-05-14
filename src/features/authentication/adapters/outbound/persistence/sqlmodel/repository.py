@@ -15,6 +15,7 @@ from types import TracebackType
 from typing import Any, Self, cast, overload
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -280,6 +281,30 @@ class _SessionIssueTokenTransaction:
         self._session.flush()
         self._session.refresh(token)
         return _to_internal_token(token)
+
+    def invalidate_unused_tokens_for(self, user_id: UUID, purpose: str) -> int:
+        """Stamp ``used_at = now()`` on every prior unused token for the pair.
+
+        Returns the number of rows updated. Runs inside the same session
+        as the subsequent ``create_internal_token`` call, so the
+        invalidation and the new token insert commit atomically (or roll
+        back atomically).
+        """
+        # ``synchronize_session=False`` avoids fetching matching rows
+        # just to expire them in the identity map — this writer is
+        # always followed by an insert and a commit, so there is no need
+        # to reconcile in-memory ORM state.
+        result = self._session.exec(
+            update(AuthInternalTokenTable)
+            .where(
+                cast(Any, AuthInternalTokenTable.user_id) == user_id,
+                cast(Any, AuthInternalTokenTable.purpose) == purpose,
+                cast(Any, AuthInternalTokenTable.used_at).is_(None),
+            )
+            .values(used_at=utc_now())
+            .execution_options(synchronize_session=False)
+        )
+        return int(result.rowcount or 0)
 
     def record_audit_event(
         self,

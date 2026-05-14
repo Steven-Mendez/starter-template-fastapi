@@ -158,6 +158,20 @@ class FakeAuthRepository:
         self._s.internal_token_by_hash[(token_hash, purpose)] = token.id
         return token
 
+    def invalidate_unused_tokens_for(self, user_id: UUID, purpose: str) -> int:
+        """Stamp ``used_at`` on every unused token for ``(user_id, purpose)``."""
+        now = _aware_now()
+        updated = 0
+        for token_id, token in list(self._s.internal_tokens.items()):
+            if (
+                token.user_id == user_id
+                and token.purpose == purpose
+                and token.used_at is None
+            ):
+                self._s.internal_tokens[token_id] = _replace(token, used_at=now)
+                updated += 1
+        return updated
+
     def get_internal_token(
         self, *, token_hash: str, purpose: str
     ) -> InternalToken | None:
@@ -286,6 +300,9 @@ class _FakeIssueTokenTx:
             expires_at=expires_at,
             created_ip=created_ip,
         )
+
+    def invalidate_unused_tokens_for(self, user_id: UUID, purpose: str) -> int:
+        return self._repo.invalidate_unused_tokens_for(user_id, purpose)
 
     def record_audit_event(
         self,

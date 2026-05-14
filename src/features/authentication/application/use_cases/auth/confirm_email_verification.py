@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 from app_platform.shared.result import Err, Ok, Result
 from features.authentication.application.cache import PrincipalCachePort
 from features.authentication.application.crypto import hash_token
-from features.authentication.application.errors import AuthError, InvalidTokenError
+from features.authentication.application.errors import (
+    AuthError,
+    InvalidTokenError,
+    TokenAlreadyUsedError,
+)
 from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
@@ -31,12 +35,13 @@ class ConfirmEmailVerification:
         record = self._repository.get_internal_token(
             token_hash=hash_token(token), purpose=EMAIL_VERIFY_PURPOSE
         )
-        if (
-            record is None
-            or record.used_at is not None
-            or record.expires_at <= datetime.now(UTC)
-        ):
+        if record is None or record.expires_at <= datetime.now(UTC):
             return Err(InvalidTokenError("Invalid token"))
+        if record.used_at is not None:
+            # Distinguish "consumed" from "unknown / expired" so callers
+            # (and the integration suite that exercises re-issuance
+            # invalidation) can react to the two cases independently.
+            return Err(TokenAlreadyUsedError("Token already used"))
         if record.user_id is None:
             return Err(InvalidTokenError("Invalid token"))
 

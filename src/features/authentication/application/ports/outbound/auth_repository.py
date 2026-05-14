@@ -72,6 +72,8 @@ class AuthIssueTokenTransactionPort(Protocol):
         created_ip: str | None,
     ) -> InternalToken: ...
 
+    def invalidate_unused_tokens_for(self, user_id: UUID, purpose: str) -> int: ...
+
     def record_audit_event(
         self,
         *,

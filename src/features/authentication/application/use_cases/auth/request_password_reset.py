@@ -53,6 +53,12 @@ class RequestPasswordReset:
             minutes=self._settings.auth_password_reset_token_expire_minutes
         )
         with self._repository.issue_internal_token_transaction() as tx:
+            # Stamp ``used_at = now()`` on any prior unused
+            # password-reset tokens for this user *before* inserting the
+            # new one, inside the same transaction. This closes the
+            # phishing surface where a captured older email retains a
+            # live token after the user clicks "Send again".
+            tx.invalidate_unused_tokens_for(user.id, "password_reset")
             tx.create_internal_token(
                 user_id=user.id,
                 purpose="password_reset",
