@@ -13,6 +13,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app_platform.api.error_handlers import register_problem_details
@@ -107,8 +108,8 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
     # Starlette executes middleware in reverse-add order: the LAST added
     # is the OUTERMOST. We add innermost-first so the runtime chain is:
     #
-    #   request → CORS → TrustedHost → ContentSizeLimit
-    #          → SecurityHeaders → RequestContext → router
+    #   request → CORS → TrustedHost → SecurityHeaders → GZip
+    #          → ContentSizeLimit → RequestContext → router
     #
     # Order rationale:
     # * CORS is outermost so OPTIONS preflight short-circuits before any
@@ -116,15 +117,31 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
     #   TrustedHost or content-size guards).
     # * TrustedHost runs next so unknown hosts are dropped before we
     #   spend cycles measuring body size or stamping headers.
-    # * ContentSizeLimit and SecurityHeaders wrap the application proper.
+    # * SecurityHeaders sits OUTSIDE ContentSizeLimit so the strict CSP /
+    #   Referrer-Policy / X-Content-Type-Options / Permissions-Policy
+    #   headers are also attached to 400 / 411 / 413 short-circuit
+    #   responses from ContentSizeLimit — every response carries the
+    #   baseline regardless of which layer terminated it.
+    # * GZip sits between SecurityHeaders and ContentSizeLimit. It only
+    #   honours ``minimum_size`` when the inner response is
+    #   non-streaming, which is why SecurityHeaders, RequestContext, and
+    #   ContentSizeLimit are implemented as pure ASGI middlewares (not
+    #   ``BaseHTTPMiddleware``-derived). Compression fires for payloads
+    #   ≥ 1024 bytes so small replies skip the CPU cost.
+    # * ContentSizeLimit wraps the application so 411/413 fire before
+    #   the inner handler ever sees the request.
     # * RequestContext is innermost so its access log records the final
-    #   response status set by the inner handler.
+    #   response status set by the inner handler and so its
+    #   ``request.state.request_id`` is visible to ContentSizeLimit's
+    #   problem-body builder via ``scope["state"]``.
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(ContentSizeLimitMiddleware, max_bytes=settings.max_request_bytes)
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(
         SecurityHeadersMiddleware,
         hsts=(settings.environment == "production"),
+        docs_enabled=settings.enable_docs,
     )
-    app.add_middleware(ContentSizeLimitMiddleware, max_bytes=settings.max_request_bytes)
 
     if settings.environment != "development":
         app.add_middleware(
@@ -145,12 +162,20 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
             allow_headers=["*"],
         )
     elif settings.cors_origins:
+        # Credentialed CORS: enumerate methods and headers explicitly
+        # rather than reflecting the request. Wildcards work with
+        # credentials in some browsers, but the enumeration tightens
+        # what cross-origin JS can probe and is the OWASP-recommended
+        # posture. ``expose_headers`` lets SPAs read ``X-Request-ID``
+        # (for log correlation) and ``Retry-After`` (for rate-limit
+        # backoff) from JS without preflight indirection.
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origins,
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+            expose_headers=["X-Request-ID", "Retry-After"],
         )
 
     # Select the error reporter before installing error handlers so the

@@ -15,8 +15,8 @@ help: ## Show available targets
 sync: ## Sync dependencies (uv lock + install)
 	uv sync
 
-dev: ## Run API with auto-reload (FastAPI CLI)
-	uv run fastapi dev src/main.py --host 0.0.0.0 --port $(PORT)
+dev: ## Run API with auto-reload (uvicorn; --no-server-header to strip stack identity)
+	PYTHONPATH=src uv run uvicorn main:app --reload --host 0.0.0.0 --port $(PORT) --no-server-header
 
 worker: ## Run the arq background-jobs worker (requires APP_JOBS_BACKEND=arq)
 	PYTHONPATH=src uv run python -m worker

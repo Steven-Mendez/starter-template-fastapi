@@ -76,7 +76,7 @@ Dockerfiles.
 
 | Stage | Built with | Runs | Listens on |
 | --- | --- | --- | --- |
-| `runtime` | `docker build --target runtime …` | `uvicorn main:app --timeout-graceful-shutdown 30` | TCP 8000 |
+| `runtime` | `docker build --target runtime …` | `uvicorn main:app --no-server-header --timeout-graceful-shutdown 30` | TCP 8000 |
 | `runtime-worker` | `docker build --target runtime-worker …` | `python -m worker` (arq) | none |
 
 The `runtime-worker` stage is declared `FROM runtime AS runtime-worker`,
@@ -122,6 +122,16 @@ docker run --env-file .env worker:latest
 The API image default command starts Uvicorn and does not run
 migrations. The worker image default command starts the arq worker and
 does not bind a TCP listener.
+
+The API `uvicorn` invocation MUST include `--no-server-header` in
+production. Uvicorn adds the `Server: uvicorn` response header at the
+HTTP layer **after** the ASGI middleware chain runs, so the in-process
+`SecurityHeadersMiddleware` cannot strip it — only the CLI flag
+suppresses it at the source. The Dockerfile bakes the flag into both
+the `dev` and `runtime` stages. If you replace the default `CMD` with a
+custom invocation (e.g. Gunicorn supervising Uvicorn workers), preserve
+`--no-server-header` (or its equivalent) so stack identity is not
+leaked.
 
 ### Kubernetes deployment shape
 
