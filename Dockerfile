@@ -79,3 +79,28 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 ENTRYPOINT ["tini", "--"]
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
+
+# ---------------------------------------------------------------------------
+# Worker stage
+#
+# Extends ``runtime`` so the worker image inherits every hardening layer
+# (digest-pinned base, tini PID 1, UID/GID 10001, the prebuilt /app/.venv
+# from ``builder``). Only the CMD (and HEALTHCHECK) differ — the worker
+# has no HTTP listener, so the API liveness probe must not be inherited.
+#
+# Build with:  docker build --target runtime-worker -t worker:latest .
+# ---------------------------------------------------------------------------
+FROM runtime AS runtime-worker
+
+# The worker exposes no TCP listener. Clearing the inherited HEALTHCHECK
+# prevents the orchestrator from probing http://localhost:8000/health/live
+# against a process that will never answer. ``redis-cli`` is not present
+# on ``python:3.12-slim`` and pulling it in only for HEALTHCHECK is
+# overkill; rely on the orchestrator's exit-code-based liveness instead.
+HEALTHCHECK NONE
+
+# The worker does not bind a TCP listener; the inherited ``EXPOSE 8000``
+# from the ``runtime`` stage is harmless metadata and is left in place
+# (Docker provides no directive to revoke an exposed port from a parent).
+
+CMD ["python", "-m", "worker"]

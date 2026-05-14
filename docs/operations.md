@@ -34,27 +34,73 @@ Docker Compose sets these environment variables for the app and migrate services
 | `APP_ENABLE_DOCS` | `true` |
 | `APP_POSTGRESQL_DSN` | `${APP_POSTGRESQL_DSN_DOCKER:-postgresql+psycopg://postgres:postgres@db:5432/kanban}` |
 
-## Container Image
+## Container Images
 
-Build the runtime image:
+The `Dockerfile` ships **two deployable targets**: one image per process
+role. Both stages share a base layer (`runtime`), so deployments get a
+clear separation between the API and worker without maintaining two
+Dockerfiles.
+
+| Stage | Built with | Runs | Listens on |
+| --- | --- | --- | --- |
+| `runtime` | `docker build --target runtime …` | `uvicorn main:app --timeout-graceful-shutdown 30` | TCP 8000 |
+| `runtime-worker` | `docker build --target runtime-worker …` | `python -m worker` (arq) | none |
+
+The `runtime-worker` stage is declared `FROM runtime AS runtime-worker`,
+so it inherits every hardening layer of the API image (digest-pinned
+base, UID/GID 10001, tini PID 1, the prebuilt `/app/.venv`) and only
+overrides `CMD`. The API HEALTHCHECK is cleared (`HEALTHCHECK NONE`) on
+the worker stage because the worker has no HTTP listener — rely on the
+orchestrator's exit-code-based liveness check instead.
+
+Build the API image:
 
 ```bash
 docker build --target runtime -t starter-template-fastapi:prod .
 ```
 
-Run migrations as a separate deployment step:
+Build the worker image (or use `make docker-build-worker`):
+
+```bash
+docker build --target runtime-worker -t worker:latest .
+```
+
+Run migrations as a separate deployment step (the API image carries
+`alembic`; the worker image does too, but the API image is the canonical
+release artifact for migrations):
 
 ```bash
 docker run --rm --env-file .env starter-template-fastapi:prod alembic upgrade head
 ```
 
-Run the app:
+Run the API:
 
 ```bash
 docker run --env-file .env -p 8000:8000 starter-template-fastapi:prod
 ```
 
-The runtime image default command starts Uvicorn and does not run migrations.
+Run the worker (no port; requires `APP_JOBS_BACKEND=arq` and a reachable
+`APP_JOBS_REDIS_URL`):
+
+```bash
+docker run --env-file .env worker:latest
+```
+
+The API image default command starts Uvicorn and does not run
+migrations. The worker image default command starts the arq worker and
+does not bind a TCP listener.
+
+### Kubernetes deployment shape
+
+A typical production deployment is one `Deployment` per image, sharing
+the same `Secret`/`ConfigMap` for `APP_*` environment variables:
+
+- API `Deployment` runs the `runtime` image with a `livenessProbe` /
+  `readinessProbe` against `/health/live` and `/health/ready`.
+- Worker `Deployment` runs the `runtime-worker` image with **no HTTP
+  probes**; the kubelet restarts the pod on non-zero exit. Set
+  `terminationGracePeriodSeconds` ≥ the worker's longest job timeout so
+  arq can drain in-flight jobs cleanly on SIGTERM.
 
 ## Deployment Checklist
 
@@ -498,9 +544,11 @@ The production `Dockerfile` is hardened for least-privilege execution:
 
 ## Operational Limitations
 
-- The runtime Docker image starts only the API server. Migrations are separate.
+- The `runtime` Docker image starts only the API server. Migrations are separate.
 - A background worker (`make worker` / `python -m worker`) is required in
-  production but is **not** started by the API image; run it as its own process.
+  production but is **not** started by the API image; deploy the dedicated
+  `runtime-worker` image (`docker build --target runtime-worker …` or
+  `make docker-build-worker`) as its own process.
 - There is no built-in backup or restore automation.
 
 ## Pool sizing

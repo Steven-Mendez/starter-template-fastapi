@@ -7,7 +7,7 @@ BRANCH_COVERAGE_FLOOR ?= 60
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev worker outbox-retry-failed outbox-prune format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check migrations-check docker-smoke ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports check-branch-coverage
+.PHONY: help sync dev worker outbox-retry-failed outbox-prune format lint lint-arch lint-fix typecheck quality check app-import-smoke audit sast migration-check migrations-check docker-smoke docker-build-worker ci ci-local precommit-install precommit-run prepush-run precommit-update test test-integration test-e2e test-feature cov cov-html cov-xml cov-open report report-open clean-reports check-branch-coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -67,6 +67,9 @@ migrations-check: ## Enforce migration policy (destructive ops must raise on dow
 
 docker-smoke: ## Build and smoke-test the runtime Docker image
 	scripts/docker-smoke.sh
+
+docker-build-worker: ## Build the worker Docker image (runtime-worker stage)
+	docker build --target runtime-worker --tag worker:latest .
 
 test: ## Run unit + e2e tests (no docker)
 	uv run pytest -m "not integration"

@@ -208,12 +208,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The Dockerfile currently exposes a single ``runtime`` stage. The
-        # ``add-worker-image-target`` change adds a ``runtime-worker`` stage;
-        # once it lands, append another entry to this matrix and the scan
-        # picks the worker image up automatically.
+        # Both deployable images are built, smoke-tested where applicable,
+        # scanned with Trivy, and SBOM'd in parallel. The ``runtime`` stage
+        # is the API image (uvicorn); the ``runtime-worker`` stage is the
+        # arq worker image (``python -m worker``), declared as
+        # ``FROM runtime AS runtime-worker`` in the Dockerfile so it
+        # inherits every hardening layer of the API image.
         target:
           - runtime
+          - runtime-worker
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
