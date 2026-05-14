@@ -15,7 +15,9 @@ from fastapi import APIRouter, Query, Request, Response, status
 
 from app_platform.api.authorization import require_authorization
 from app_platform.api.error_handlers_app_exception import ApplicationHTTPException
+from app_platform.api.operation_ids import feature_operation_id
 from app_platform.api.problem_types import ProblemType
+from app_platform.api.responses import ADMIN_RESPONSES
 from app_platform.shared.result import Err, Ok
 from features.users.adapters.inbound.http.cursor import (
     InvalidCursorError,
@@ -31,7 +33,11 @@ from features.users.adapters.inbound.http.schemas import (
 )
 from features.users.composition.app_state import get_users_container
 
-admin_router = APIRouter(prefix="/admin", tags=["admin"])
+admin_router = APIRouter(
+    prefix="/admin",
+    tags=["users"],
+    generate_unique_id_function=feature_operation_id,
+)
 
 _ERASE_ESTIMATED_COMPLETION_SECONDS = 60
 
@@ -40,8 +46,9 @@ _ERASE_ESTIMATED_COMPLETION_SECONDS = 60
     "/users",
     response_model=UserListPage,
     dependencies=[require_authorization("manage_users", "system", None)],
+    responses=ADMIN_RESPONSES,
 )
-def list_users(
+def admin_list_users(
     request: Request,
     cursor: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
@@ -94,6 +101,7 @@ def list_users(
     status_code=status.HTTP_202_ACCEPTED,
     response_model=ErasureAccepted,
     dependencies=[require_authorization("manage_users", "system", None)],
+    responses=ADMIN_RESPONSES,
 )
 def admin_erase_user(
     request: Request,
@@ -138,6 +146,7 @@ def admin_erase_user(
     "/users/{user_id}/export",
     response_model=ExportResponse,
     dependencies=[require_authorization("manage_users", "system", None)],
+    responses=ADMIN_RESPONSES,
 )
 def admin_export_user(
     request: Request,

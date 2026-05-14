@@ -19,6 +19,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 
+from app_platform.api.operation_ids import feature_operation_id
+from app_platform.api.responses import AUTH_RESPONSES
 from app_platform.observability.tracing import traced
 from app_platform.shared.principal import Principal
 from app_platform.shared.result import Err, Ok
@@ -48,7 +50,11 @@ from features.authentication.application.errors import RateLimitExceededError
 from features.authentication.application.types import IssuedTokens
 from features.authentication.composition.app_state import get_auth_container
 
-auth_router = APIRouter(prefix="/auth", tags=["auth"])
+auth_router = APIRouter(
+    prefix="/auth",
+    tags=["auth"],
+    generate_unique_id_function=feature_operation_id,
+)
 
 
 def _client_ip(request: Request) -> str | None:
@@ -153,6 +159,7 @@ def _check_rate_limit(request: Request, key: str) -> None:
     "/register",
     response_model=UserPublic,
     status_code=status.HTTP_201_CREATED,
+    responses=AUTH_RESPONSES,
 )
 def register(body: RegisterRequest, request: Request) -> UserPublic:
     """Register a new user account and return the created user's public data."""
@@ -173,7 +180,7 @@ def register(body: RegisterRequest, request: Request) -> UserPublic:
     return None
 
 
-@auth_router.post("/login", response_model=TokenResponse)
+@auth_router.post("/login", response_model=TokenResponse, responses=AUTH_RESPONSES)
 def login(body: LoginRequest, request: Request, response: Response) -> TokenResponse:
     """Authenticate credentials and return a token pair.
 
@@ -201,7 +208,7 @@ def login(body: LoginRequest, request: Request, response: Response) -> TokenResp
     return None
 
 
-@auth_router.post("/refresh", response_model=TokenResponse)
+@auth_router.post("/refresh", response_model=TokenResponse, responses=AUTH_RESPONSES)
 def refresh(
     request: Request,
     response: Response,
@@ -232,7 +239,7 @@ def refresh(
     return None
 
 
-@auth_router.post("/logout", response_model=MessageResponse)
+@auth_router.post("/logout", response_model=MessageResponse, responses=AUTH_RESPONSES)
 def logout(
     request: Request,
     response: Response,
@@ -245,7 +252,9 @@ def logout(
     return MessageResponse(message="Logged out")
 
 
-@auth_router.post("/logout-all", response_model=MessageResponse)
+@auth_router.post(
+    "/logout-all", response_model=MessageResponse, responses=AUTH_RESPONSES
+)
 def logout_all(
     principal: CurrentPrincipalDep,
     request: Request,
@@ -266,14 +275,17 @@ def logout_all(
     return None
 
 
-@auth_router.get("/me", response_model=PrincipalPublic)
+@auth_router.get("/me", response_model=PrincipalPublic, responses=AUTH_RESPONSES)
 def me(principal: CurrentPrincipalDep) -> PrincipalPublic:
     """Return the authenticated user's identity, roles, and permissions."""
     return _principal_response(principal)
 
 
 @auth_router.post(
-    "/password/forgot", response_model=InternalTokenResponse, status_code=202
+    "/password/forgot",
+    response_model=InternalTokenResponse,
+    status_code=202,
+    responses=AUTH_RESPONSES,
 )
 def forgot_password(
     body: PasswordForgotRequest, request: Request
@@ -303,7 +315,9 @@ def forgot_password(
     return None
 
 
-@auth_router.post("/password/reset", response_model=MessageResponse)
+@auth_router.post(
+    "/password/reset", response_model=MessageResponse, responses=AUTH_RESPONSES
+)
 def reset_password(body: PasswordResetRequest, request: Request) -> MessageResponse:
     """Apply a new password using a single-use reset token.
 
@@ -326,7 +340,10 @@ def reset_password(body: PasswordResetRequest, request: Request) -> MessageRespo
 
 
 @auth_router.post(
-    "/email/verify/request", response_model=InternalTokenResponse, status_code=202
+    "/email/verify/request",
+    response_model=InternalTokenResponse,
+    status_code=202,
+    responses=AUTH_RESPONSES,
 )
 def request_email_verify(
     principal: CurrentPrincipalDep, request: Request
@@ -349,7 +366,9 @@ def request_email_verify(
     return None
 
 
-@auth_router.post("/email/verify", response_model=MessageResponse)
+@auth_router.post(
+    "/email/verify", response_model=MessageResponse, responses=AUTH_RESPONSES
+)
 def verify_email(body: EmailVerifyRequest, request: Request) -> MessageResponse:
     """Consume a single-use verification token and mark the account as verified."""
     result = get_auth_container(request).confirm_email_verification.execute(

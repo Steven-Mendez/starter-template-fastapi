@@ -14,6 +14,8 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app_platform.api.authorization import require_authorization
+from app_platform.api.operation_ids import feature_operation_id
+from app_platform.api.responses import ADMIN_RESPONSES
 from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.inbound.http.cursor import (
     InvalidCursorError,
@@ -29,15 +31,20 @@ from features.authentication.adapters.inbound.http.schemas import (
 )
 from features.authentication.composition.app_state import get_auth_container
 
-admin_router = APIRouter(prefix="/admin", tags=["admin"])
+admin_router = APIRouter(
+    prefix="/admin",
+    tags=["auth"],
+    generate_unique_id_function=feature_operation_id,
+)
 
 
 @admin_router.get(
     "/audit-log",
     response_model=AuditLogRead,
     dependencies=[require_authorization("read_audit", "system", None)],
+    responses=ADMIN_RESPONSES,
 )
-def list_audit_log(
+def admin_list_audit_events(
     request: Request,
     user_id: Annotated[UUID | None, Query()] = None,
     event_type: Annotated[str | None, Query(min_length=1, max_length=150)] = None,

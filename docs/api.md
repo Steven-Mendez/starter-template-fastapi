@@ -23,6 +23,50 @@ When `APP_ENABLE_DOCS=true`, Swagger UI and ReDoc are available at:
 `/openapi.json` is disabled together with the interactive docs when
 `APP_ENABLE_DOCS=false`.
 
+### Operation IDs
+
+Every route has a stable `operationId` produced by the convention
+`{router_tag}_{handler_name}` in snake_case, where `router_tag` is the
+router's first `tags` entry (or `root` if unset) and `handler_name` is
+the snake_case Python name of the handler function (preserved by
+FastAPI on `route.name`). The convention is implemented in
+`src/app_platform/api/operation_ids.py` and installed on every
+`APIRouter` via `generate_unique_id_function`.
+
+Examples produced:
+
+| Path | operationId |
+| --- | --- |
+| `POST /auth/login` | `auth_login` |
+| `POST /auth/logout` | `auth_logout` |
+| `GET /me` | `users_get_me` |
+| `PATCH /me` | `users_patch_me` |
+| `DELETE /me` | `users_delete_me` |
+| `GET /admin/users` | `users_admin_list_users` |
+| `GET /admin/audit-log` | `auth_admin_list_audit_events` |
+| `GET /health/live` | `root_health_live` |
+
+The OpenAPI schema-presence test under `src/features/authentication/tests/e2e/test_openapi_problem_details.py`
+enforces the convention: every `operationId` must match
+`^[a-z_]+_[a-z_]+$`, and no two operations may share the same ID.
+
+### Reusable error-response constants
+
+Every route's `responses=` dict is spread from a feature-scoped
+constant defined in `src/app_platform/api/responses.py`:
+
+| Constant | Status codes declared | Used by |
+| --- | --- | --- |
+| `AUTH_RESPONSES` | `401`, `403`, `409`, `422`, `429` | `/auth/*` routes |
+| `USERS_RESPONSES` | `401`, `403`, `404`, `422` | `/me`, `/me/*` routes |
+| `ADMIN_RESPONSES` | `400`, `401`, `403`, `404`, `422` | `/admin/*` routes |
+
+Every entry references `ProblemDetails` (declared in
+`src/app_platform/api/schemas.py`) as `application/problem+json`, so
+generated SDKs emit a typed error branch for each declared status.
+Add a new route by spreading the matching constant into its decorator,
+e.g. `responses=USERS_RESPONSES`.
+
 ## Authentication
 
 Read endpoints do not require authentication.

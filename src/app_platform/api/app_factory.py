@@ -17,9 +17,12 @@ from app_platform.api.error_handlers import register_problem_details
 from app_platform.api.middleware.content_size_limit import ContentSizeLimitMiddleware
 from app_platform.api.middleware.request_context import RequestContextMiddleware
 from app_platform.api.middleware.security_headers import SecurityHeadersMiddleware
+from app_platform.api.operation_ids import feature_operation_id
 from app_platform.api.root import root_router
 from app_platform.config.settings import AppSettings
 from app_platform.observability.metrics import configure_metrics
+
+__all__ = ["build_fastapi_app", "feature_operation_id"]
 
 
 def build_fastapi_app(settings: AppSettings) -> FastAPI:

@@ -14,7 +14,9 @@ from fastapi import APIRouter, Request, Response, status
 
 from app_platform.api.authorization import CurrentPrincipalDep
 from app_platform.api.error_handlers_app_exception import ApplicationHTTPException
+from app_platform.api.operation_ids import feature_operation_id
 from app_platform.api.problem_types import ProblemType
+from app_platform.api.responses import USERS_RESPONSES
 from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.inbound.http import clear_refresh_cookie
 from features.users.adapters.inbound.http.errors import raise_http_from_user_error
@@ -27,7 +29,10 @@ from features.users.adapters.inbound.http.schemas import (
 )
 from features.users.composition.app_state import get_users_container
 
-me_router = APIRouter(tags=["me"])
+me_router = APIRouter(
+    tags=["users"],
+    generate_unique_id_function=feature_operation_id,
+)
 
 # Upper bound (in seconds) we promise clients the erase job will finish
 # within. The job itself is bounded by the worker's job timeout, but
@@ -35,7 +40,7 @@ me_router = APIRouter(tags=["me"])
 _ERASE_ESTIMATED_COMPLETION_SECONDS = 60
 
 
-@me_router.get("/me", response_model=UserPublic)
+@me_router.get("/me", response_model=UserPublic, responses=USERS_RESPONSES)
 def get_me(request: Request, principal: CurrentPrincipalDep) -> UserPublic:
     """Return the calling user's profile."""
     container = get_users_container(request)
@@ -48,8 +53,8 @@ def get_me(request: Request, principal: CurrentPrincipalDep) -> UserPublic:
     return None
 
 
-@me_router.patch("/me", response_model=UserPublic)
-def update_me(
+@me_router.patch("/me", response_model=UserPublic, responses=USERS_RESPONSES)
+def patch_me(
     request: Request,
     body: UpdateProfileRequest,
     principal: CurrentPrincipalDep,
@@ -68,7 +73,9 @@ def update_me(
     return None
 
 
-@me_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+@me_router.delete(
+    "/me", status_code=status.HTTP_204_NO_CONTENT, responses=USERS_RESPONSES
+)
 def delete_me(
     request: Request,
     response: Response,
@@ -98,6 +105,7 @@ def delete_me(
     "/me/erase",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=ErasureAccepted,
+    responses=USERS_RESPONSES,
 )
 def erase_me(
     request: Request,
@@ -153,7 +161,7 @@ def erase_me(
     )
 
 
-@me_router.get("/me/export", response_model=ExportResponse)
+@me_router.get("/me/export", response_model=ExportResponse, responses=USERS_RESPONSES)
 def export_me(
     request: Request,
     principal: CurrentPrincipalDep,

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-root_router = APIRouter(tags=["root"])
+from app_platform.api.operation_ids import feature_operation_id
+
+root_router = APIRouter(
+    tags=["root"],
+    generate_unique_id_function=feature_operation_id,
+)
 
 
 @root_router.get("/")
@@ -20,8 +25,8 @@ def read_root() -> dict[str, str]:
     }
 
 
-@root_router.get("/health/live", tags=["health"])
-def liveness() -> dict[str, str]:
+@root_router.get("/health/live")
+def health_live() -> dict[str, str]:
     """Process liveness probe.
 
     Returns 200 as long as the ASGI app can serve a request. Does not
