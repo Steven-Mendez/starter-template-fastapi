@@ -36,7 +36,26 @@ def _wrap(
         # time. ``ArqJobQueueAdapter`` always passes the payload as a
         # single positional argument, so unpacking it here is safe.
         del ctx, kwargs
-        handler(args[0])
+        payload: dict[str, Any] = args[0]
+        # Extract the W3C trace carrier the relay injected under
+        # ``__trace`` (if any) and attach it before invoking the
+        # handler so the handler's spans become children of the
+        # originating request's trace. Detach in ``finally`` so the
+        # active OTel context is restored even when the handler
+        # raises — arq's executor reuses worker coroutines across
+        # jobs and a leaked context token would taint the next one.
+        from opentelemetry import context as otel_context
+        from opentelemetry.trace.propagation.tracecontext import (
+            TraceContextTextMapPropagator,
+        )
+
+        carrier = payload.get("__trace") or {}
+        otel_ctx = TraceContextTextMapPropagator().extract(carrier=carrier)
+        token = otel_context.attach(otel_ctx)
+        try:
+            handler(payload)
+        finally:
+            otel_context.detach(token)
 
     _runner.__name__ = name
     return func(_runner, name=name, keep_result=keep_result_seconds)

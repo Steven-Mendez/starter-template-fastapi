@@ -17,6 +17,7 @@ from app_platform.api.error_handlers_app_exception import ApplicationHTTPExcepti
 from app_platform.api.operation_ids import feature_operation_id
 from app_platform.api.problem_types import ProblemType
 from app_platform.api.responses import USERS_RESPONSES
+from app_platform.observability.tracing import propagator_inject_current
 from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.inbound.http import clear_refresh_cookie
 from features.users.adapters.inbound.http.errors import raise_http_from_user_error
@@ -145,14 +146,17 @@ def erase_me(
             type_uri=ProblemType.AUTH_INVALID_CREDENTIALS,
         )
     job_id = str(uuid4())
-    container.job_queue.enqueue(
-        "erase_user",
-        {
-            "user_id": str(principal.user_id),
-            "reason": "self_request",
-            "job_id": job_id,
-        },
-    )
+    # Direct (non-outbox) enqueue: inject the W3C trace carrier so the
+    # handler-side spans become children of this request's trace.
+    trace_carrier = propagator_inject_current()
+    erase_payload: dict[str, object] = {
+        "user_id": str(principal.user_id),
+        "reason": "self_request",
+        "job_id": job_id,
+    }
+    if trace_carrier:
+        erase_payload["__trace"] = trace_carrier
+    container.job_queue.enqueue("erase_user", erase_payload)
     response.headers["Location"] = f"/me/erase/status/{job_id}"
     return ErasureAccepted(
         status="accepted",

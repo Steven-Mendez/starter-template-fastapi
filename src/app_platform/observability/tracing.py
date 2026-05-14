@@ -290,6 +290,30 @@ def traced(
     return _decorator
 
 
+def propagator_inject_current() -> dict[str, str]:
+    """Capture the active OTel context as a W3C carrier dict.
+
+    Used by producers (the outbox enqueue path and any direct
+    ``JobQueuePort.enqueue`` caller) to record the current trace
+    context at the moment a side-effect intent is captured. The
+    resulting carrier is later forwarded to the job handler so the
+    handler-side spans become children of the originating request's
+    trace, unifying the request -> outbox -> relay -> handler ->
+    side-effect causal chain.
+
+    Returns an empty dict when no trace context is active, which is
+    the same value the relay tolerates for legacy rows persisted
+    before this propagation seam existed.
+    """
+    from opentelemetry.trace.propagation.tracecontext import (
+        TraceContextTextMapPropagator,
+    )
+
+    carrier: dict[str, str] = {}
+    TraceContextTextMapPropagator().inject(carrier)
+    return carrier
+
+
 def email_hash(email: str) -> str:
     """Return a deterministic short hash of ``email`` for span attributes.
 

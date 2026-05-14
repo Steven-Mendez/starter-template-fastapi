@@ -65,8 +65,8 @@ class SQLModelOutboxRepository:
             rows = session.execute(
                 sa.text(
                     """
-                    SELECT id, job_name, payload, available_at, status,
-                           attempts, last_error, locked_at, locked_by,
+                    SELECT id, job_name, payload, trace_context, available_at,
+                           status, attempts, last_error, locked_at, locked_by,
                            created_at, delivered_at
                     FROM outbox_messages
                     WHERE status = 'pending' AND available_at <= :now
@@ -103,6 +103,7 @@ class SQLModelOutboxRepository:
                 locked_by=worker_id,
                 created_at=row.created_at,
                 delivered_at=row.delivered_at,
+                trace_context=dict(row.trace_context or {}),
             )
             for row in rows
         ]

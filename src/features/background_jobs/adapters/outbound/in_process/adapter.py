@@ -33,7 +33,24 @@ class InProcessJobQueueAdapter:
             "event=jobs.in_process.dispatch job=%s",
             job_name,
         )
-        handler(payload)
+        # Extract the W3C trace carrier the relay injected under
+        # ``__trace`` (if any) and attach the resulting context around
+        # the handler invocation so its spans become children of the
+        # originating request's trace. The handler payload itself is
+        # passed through unchanged — handlers must treat ``__trace``
+        # as opaque and preserve it when re-enqueuing.
+        from opentelemetry import context as otel_context
+        from opentelemetry.trace.propagation.tracecontext import (
+            TraceContextTextMapPropagator,
+        )
+
+        carrier = payload.get("__trace") or {}
+        ctx = TraceContextTextMapPropagator().extract(carrier=carrier)
+        token = otel_context.attach(ctx)
+        try:
+            handler(payload)
+        finally:
+            otel_context.detach(token)
 
     def enqueue_at(
         self,

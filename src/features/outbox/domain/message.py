@@ -8,7 +8,7 @@ SQLModel table directly.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -31,3 +31,4 @@ class OutboxMessage:
     locked_by: str | None
     created_at: datetime
     delivered_at: datetime | None
+    trace_context: dict[str, Any] = field(default_factory=dict)

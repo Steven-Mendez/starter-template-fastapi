@@ -69,6 +69,16 @@ class OutboxMessageTable(SQLModel, table=True):
             nullable=False,
         ),
     )
+    trace_context: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(
+            sa.JSON().with_variant(
+                postgresql.JSONB(astext_type=sa.Text()), "postgresql"
+            ),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+    )
     available_at: datetime = Field(
         default_factory=_utc_now,
         sa_column=Column(sa.DateTime(timezone=True), nullable=False),

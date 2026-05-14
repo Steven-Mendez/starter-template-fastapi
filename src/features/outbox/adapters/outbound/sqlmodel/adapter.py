@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlmodel import Session
 
+from app_platform.observability.tracing import propagator_inject_current
 from features.outbox.adapters.outbound.sqlmodel.models import OutboxMessageTable
 
 
@@ -56,9 +57,17 @@ class SessionSQLModelOutboxAdapter:
     ) -> None:
         if available_at is not None and available_at.tzinfo is None:
             raise ValueError("OutboxPort.enqueue: available_at must be timezone-aware")
+        # Capture the active W3C trace context at enqueue time so the
+        # relay can later forward it into the dispatched payload's
+        # reserved ``__trace`` key. An empty carrier (no active trace
+        # context) is preserved as ``{}``; the relay tolerates that
+        # case identically to legacy rows persisted before this column
+        # existed.
+        carrier = propagator_inject_current()
         row = OutboxMessageTable(
             job_name=job_name,
             payload=dict(payload),
+            trace_context=carrier,
         )
         if available_at is not None:
             row.available_at = available_at

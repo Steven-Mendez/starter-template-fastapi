@@ -141,7 +141,9 @@ tick:
    `(available_at, id)` partial index supports the claim path; the
    `id` tiebreaker gives SKIP LOCKED a deterministic scan order.
 2. For each claimed row, opens a per-row writer transaction,
-   injects `__outbox_message_id` into the payload, calls
+   injects `__outbox_message_id` into the payload (and `__trace`
+   from `outbox_messages.trace_context` when present, so handler
+   spans become children of the originating request's trace), calls
    `JobQueuePort.enqueue(name, payload)`, and marks the row
    `delivered` in the same transaction. A crash between the enqueue
    and the commit leaves the row `pending` for the next tick to

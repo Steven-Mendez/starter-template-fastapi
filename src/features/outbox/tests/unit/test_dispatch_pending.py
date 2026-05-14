@@ -30,6 +30,7 @@ def _msg(
     attempts: int = 0,
     available_at: datetime | None = None,
     payload: dict[str, Any] | None = None,
+    trace_context: dict[str, Any] | None = None,
 ) -> OutboxMessage:
     return OutboxMessage(
         id=uuid4(),
@@ -43,6 +44,7 @@ def _msg(
         locked_by=None,
         created_at=datetime.now(UTC),
         delivered_at=None,
+        trace_context=dict(trace_context) if trace_context is not None else {},
     )
 
 
@@ -257,6 +259,49 @@ def test_retry_delay_is_exponential_and_capped() -> None:
         assert abs(actual.total_seconds() - expected) < 2.0, (
             f"expected ~{expected}s, got {actual.total_seconds()}s"
         )
+
+
+def test_dispatched_payload_carries_trace_context_when_populated() -> None:
+    """The relay copies ``trace_context`` into the payload under ``__trace``."""
+    carrier = {"traceparent": "00-" + "0" * 32 + "-" + "1" * 16 + "-01"}
+    msg = _msg(payload={"to": "a@example.com"}, trace_context=carrier)
+    repo = _FakeRepository(ready=[msg])
+    queue = _StubJobQueue()
+    use_case = _make_use_case(repo, queue)
+    use_case.execute()
+    _, payload = queue.enqueued[0]
+    assert payload["__trace"] == carrier
+    # ``trace_context`` is *copied* into the payload, not aliased. The
+    # relay holds the row briefly and a mutation here must not bleed
+    # back into the source dict.
+    assert payload["__trace"] is not msg.trace_context
+
+
+def test_empty_trace_context_does_not_inject_trace_key() -> None:
+    """Legacy rows with ``trace_context = {}`` leave the payload untouched."""
+    msg = _msg(payload={"to": "a@example.com"}, trace_context={})
+    repo = _FakeRepository(ready=[msg])
+    queue = _StubJobQueue()
+    use_case = _make_use_case(repo, queue)
+    use_case.execute()
+    _, payload = queue.enqueued[0]
+    assert "__trace" not in payload
+
+
+def test_existing_payload_trace_key_is_not_overwritten() -> None:
+    """Producer-set ``__trace`` (manual replay) wins over the row's column."""
+    payload_trace = {"traceparent": "00-" + "a" * 32 + "-" + "b" * 16 + "-01"}
+    column_trace = {"traceparent": "00-" + "c" * 32 + "-" + "d" * 16 + "-01"}
+    msg = _msg(
+        payload={"to": "a@example.com", "__trace": payload_trace},
+        trace_context=column_trace,
+    )
+    repo = _FakeRepository(ready=[msg])
+    queue = _StubJobQueue()
+    use_case = _make_use_case(repo, queue)
+    use_case.execute()
+    _, payload = queue.enqueued[0]
+    assert payload["__trace"] == payload_trace
 
 
 def test_mixed_batch_reports_each_outcome() -> None:

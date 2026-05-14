@@ -50,6 +50,12 @@ _logger = logging.getLogger("features.outbox.dispatch")
 # top of this one. The ``__*`` prefix is the relay's namespace — the
 # handler's original payload keys never start with ``__``.
 _OUTBOX_MESSAGE_ID_KEY = "__outbox_message_id"
+# Reserved key carrying the W3C trace context captured at enqueue time
+# (``traceparent`` + optional ``tracestate``). The job entrypoint
+# extracts this carrier and attaches the resulting context around the
+# handler call so handler spans become children of the originating
+# request's trace.
+_TRACE_KEY = "__trace"
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +108,14 @@ class DispatchPending:
             # if a producer somehow already wrote it.
             dispatched_payload = {**row.payload}
             dispatched_payload.setdefault(_OUTBOX_MESSAGE_ID_KEY, str(row.id))
+            # Forward the W3C trace carrier captured at enqueue time.
+            # Empty rows (no active context at enqueue, or legacy rows
+            # persisted before the column existed) skip the injection
+            # so the handler-side span starts a fresh trace. An
+            # existing ``__trace`` already in the payload (manual
+            # re-enqueue, redrive tooling) is preserved verbatim.
+            if row.trace_context and _TRACE_KEY not in dispatched_payload:
+                dispatched_payload[_TRACE_KEY] = dict(row.trace_context)
             with tracer.start_as_current_span("outbox.dispatch_row") as row_span:
                 row_span.set_attribute("outbox.message_id", str(row.id))
                 row_span.set_attribute("outbox.handler", row.job_name)

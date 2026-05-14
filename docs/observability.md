@@ -104,6 +104,45 @@ Hot-path use cases emit application-layer spans:
 | `outbox.dispatch_row` | per-row child of `outbox.dispatch_pending` | `outbox.message_id`, `outbox.handler` |
 | `auth.rate_limit` | `_check_rate_limit` dependency | `rate_limit.key_hash` |
 
+### Trace propagation across the queue boundary
+
+A request that enqueues background work (e.g. a password-reset that
+queues `send_email` through the outbox) propagates the W3C
+`traceparent`/`tracestate` carrier so the handler's spans become
+children of the originating request's trace. The full causal chain is:
+
+```
+HTTP request span
+   └─ outbox.enqueue (column captures traceparent)
+        └─ outbox.dispatch_pending  (relay tick)
+             └─ outbox.dispatch_row (injects payload["__trace"])
+                  └─ jobs.in_process|arq.handler (extracts + attaches)
+                       └─ handler-side spans (email send, file write, …)
+```
+
+Mechanism:
+
+1. `SessionSQLModelOutboxAdapter.enqueue` calls
+   `propagator_inject_current()` to capture the active context as a
+   W3C carrier dict and persists it into the
+   `outbox_messages.trace_context` JSONB column inside the producer
+   transaction.
+2. `DispatchPending` copies the column into the dispatched payload
+   under the reserved key `__trace` (alongside `__outbox_message_id`).
+   See `docs/outbox.md` for the reserved-key table.
+3. The job entrypoint (in-process adapter or the arq handler wrapper)
+   extracts the carrier and calls `context.attach(ctx)` before
+   invoking the handler, then `context.detach(token)` in a `finally`
+   block so the active context is restored even on handler errors.
+
+Direct (non-outbox) `JobQueuePort.enqueue` call sites — the GDPR
+`erase_user` HTTP routes today — inject `__trace` inline via the same
+`propagator_inject_current()` helper.
+
+Legacy outbox rows that predate the `trace_context` column carry an
+empty carrier (`'{}'::jsonb`); the relay tolerates this and the
+handler simply starts a fresh trace.
+
 PII MUST NOT appear in span attributes. Email addresses are reduced to a
 deterministic short hash (`user.email_hash` = `sha256(email)[:16]`); raw
 emails, raw tokens, and passwords are never recorded. The `@traced`

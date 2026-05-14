@@ -18,6 +18,7 @@ from app_platform.api.error_handlers_app_exception import ApplicationHTTPExcepti
 from app_platform.api.operation_ids import feature_operation_id
 from app_platform.api.problem_types import ProblemType
 from app_platform.api.responses import ADMIN_RESPONSES
+from app_platform.observability.tracing import propagator_inject_current
 from app_platform.shared.result import Err, Ok
 from features.users.adapters.inbound.http.cursor import (
     InvalidCursorError,
@@ -126,14 +127,17 @@ def admin_erase_user(
             type_uri=ProblemType.ABOUT_BLANK,
         )
     job_id = str(uuid4())
-    container.job_queue.enqueue(
-        "erase_user",
-        {
-            "user_id": str(user_id),
-            "reason": "admin_request",
-            "job_id": job_id,
-        },
-    )
+    # Direct (non-outbox) enqueue: inject the W3C trace carrier so the
+    # handler-side spans become children of this request's trace.
+    trace_carrier = propagator_inject_current()
+    erase_payload: dict[str, object] = {
+        "user_id": str(user_id),
+        "reason": "admin_request",
+        "job_id": job_id,
+    }
+    if trace_carrier:
+        erase_payload["__trace"] = trace_carrier
+    container.job_queue.enqueue("erase_user", erase_payload)
     response.headers["Location"] = f"/admin/users/{user_id}/erase/status/{job_id}"
     return ErasureAccepted(
         status="accepted",
