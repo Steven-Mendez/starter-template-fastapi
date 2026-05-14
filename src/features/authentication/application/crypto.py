@@ -3,6 +3,22 @@
 Argon2id is preferred over bcrypt/scrypt because it resists both GPU-based
 brute-force and side-channel attacks while staying tunable for future
 hardware improvements without changing the stored hash format.
+
+Argon2id parameters are pinned in source rather than env-tunable so that
+two production deploys with different ``argon2-cffi`` library versions
+rehash at the same cost. The chosen values follow the OWASP Password
+Storage Cheat Sheet recommendations (`m=64 MiB, t=3, p=4`, dated 2024-09)
+and target ~150 ms per hash on a modern CPU:
+
+* ``time_cost=3`` — number of Argon2 iterations.
+* ``memory_cost=65536`` — KiB of memory used per hash (64 MiB).
+* ``parallelism=4`` — number of parallel lanes.
+* ``hash_len=32`` — 256-bit derived key length.
+* ``salt_len=16`` — 128-bit salt length.
+
+Rotating these parameters is a deliberate, reviewable change: bump them
+here, deploy, and rely on ``PasswordService.needs_rehash`` to upgrade
+each user's hash on their next successful login.
 """
 
 from __future__ import annotations
@@ -13,6 +29,13 @@ from typing import Final
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
+
+# OWASP 2024-09 Argon2id recommendations — see module docstring.
+_ARGON2_TIME_COST: Final[int] = 3
+_ARGON2_MEMORY_COST_KIB: Final[int] = 65536
+_ARGON2_PARALLELISM: Final[int] = 4
+_ARGON2_HASH_LEN: Final[int] = 32
+_ARGON2_SALT_LEN: Final[int] = 16
 
 # Module-level fixed-cost Argon2id hash used on miss branches across the
 # authentication feature so the dominant wall-clock cost (~150 ms Argon2
@@ -36,7 +59,15 @@ class PasswordService:
     """
 
     def __init__(self) -> None:
-        self._hasher = PasswordHasher()
+        # Parameters pinned in source — see module docstring for the
+        # OWASP-derived rationale.
+        self._hasher = PasswordHasher(
+            time_cost=_ARGON2_TIME_COST,
+            memory_cost=_ARGON2_MEMORY_COST_KIB,
+            parallelism=_ARGON2_PARALLELISM,
+            hash_len=_ARGON2_HASH_LEN,
+            salt_len=_ARGON2_SALT_LEN,
+        )
 
     def hash_password(self, password: str) -> str:
         """Hash a plaintext password with Argon2id.

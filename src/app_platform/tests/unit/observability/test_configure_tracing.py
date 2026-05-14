@@ -104,6 +104,12 @@ def test_production_ratio_one_emits_warning(caplog: pytest.LogCaptureFixture) ->
         # real client IPs.
         auth_redis_url="redis://localhost:6379",
         trusted_proxy_ips=["10.0.0.0/8"],
+        # ``strengthen-production-validators`` (Wave 4): wildcard
+        # trusted hosts are refused in production, and ``app_public_url``
+        # must be set to an HTTPS URL whose host appears in
+        # ``cors_origins``.
+        trusted_hosts=["example.com"],
+        app_public_url="https://example.com",
         outbox_enabled=True,
         otel_exporter_endpoint="http://collector:4318/v1/traces",
         otel_traces_sampler_ratio=1.0,

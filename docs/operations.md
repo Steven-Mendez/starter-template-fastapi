@@ -163,7 +163,7 @@ to match (always `+5` slack).
 - Set `APP_POSTGRESQL_DSN` to the production DSN.
 - Run `alembic upgrade head` as a release step before starting the app.
 - Set `APP_ENVIRONMENT=production`.
-- Set `APP_TRUSTED_HOSTS` to the public hostnames accepted by the app.
+- Set `APP_TRUSTED_HOSTS` to the public hostnames accepted by the app. **Wildcard entries (`*` or `*.example.com`) are refused in production** — list the explicit public hostnames.
 - Set `APP_CORS_ORIGINS` to explicit browser origins if browsers call the API.
 - Set `APP_ENABLE_DOCS=false` so Swagger UI, ReDoc, and `/openapi.json` are not exposed.
 - Set `APP_WRITE_API_KEY` if write routes should require a shared key.
@@ -746,7 +746,7 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_APP_PUBLIC_URL` | `http://localhost:8000` | Base URL embedded in transactional email links. |
 | `APP_APP_DISPLAY_NAME` | `Starter` | Product name used in email subjects/signatures. |
 | `APP_CORS_ORIGINS` | `["*"]` | JSON list. **Must not contain `*` in production.** |
-| `APP_TRUSTED_HOSTS` | `["*"]` | JSON list of accepted `Host` headers. |
+| `APP_TRUSTED_HOSTS` | `["*"]` | JSON list of accepted `Host` headers. **Must not contain wildcard entries (`*` or `*.example.com`) in production** — wildcards turn `TrustedHostMiddleware` into a no-op and remove Host-header spoofing protection. |
 | `APP_TRUSTED_PROXY_IPS` | `[]` | JSON list of CIDR ranges of upstream proxies whose `X-Forwarded-For` is honored. **Must be non-empty in production.** Never set to `0.0.0.0/0` — that lets any caller spoof their client IP. Empty in development (single-machine, no proxy). |
 | `APP_MAX_REQUEST_BYTES` | `4194304` | Body-size limit for `ContentSizeLimitMiddleware`. |
 

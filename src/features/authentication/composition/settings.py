@@ -9,7 +9,12 @@ composition root has a self-documenting dependency.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Final, Literal
+
+# Minimum length (in characters) for an HMAC-SHA JWT secret in production.
+# 32 chars is the floor at which a single captured HS256 token is not
+# brute-forceable on commodity GPU hardware.
+_MIN_HS_JWT_SECRET_LEN: Final[int] = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +116,22 @@ class AuthenticationSettings:
         """Append production-only validation errors for this feature."""
         if not self.jwt_secret_key:
             errors.append("APP_AUTH_JWT_SECRET_KEY must be set in production")
+        elif (
+            self.jwt_algorithm.startswith("HS")
+            and len(self.jwt_secret_key) < _MIN_HS_JWT_SECRET_LEN
+        ):
+            # HMAC-SHA secrets are brute-forceable from a single captured
+            # token when the key is short or low-entropy. 32 bytes is the
+            # minimum for HS256 to resist offline brute-force on commodity
+            # GPU hardware; HS384/HS512 should use proportionally longer
+            # secrets but the validator pins the floor at 32 to keep the
+            # error message actionable.
+            errors.append(
+                "APP_AUTH_JWT_SECRET_KEY must be at least 32 characters "
+                "when APP_AUTH_JWT_ALGORITHM is an HMAC algorithm "
+                f"(got {len(self.jwt_secret_key)} chars). Generate a "
+                "strong secret with: openssl rand -hex 32"
+            )
         if not self.jwt_issuer:
             errors.append("APP_AUTH_JWT_ISSUER must be set in production")
         if not self.jwt_audience:

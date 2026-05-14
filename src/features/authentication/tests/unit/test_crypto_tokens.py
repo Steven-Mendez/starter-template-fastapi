@@ -27,6 +27,34 @@ from features.authentication.application.rate_limit import FixedWindowRateLimite
 pytestmark = pytest.mark.unit
 
 
+def test_password_service_pins_argon2_parameters() -> None:
+    """Task 4.3: the PasswordService MUST construct PasswordHasher with the
+    OWASP-recommended Argon2id parameters explicitly, not the library default.
+
+    Two production deploys with different ``argon2-cffi`` versions would
+    otherwise rehash at materially different cost. Pinning makes the
+    parameters a reviewable change rather than a silent upgrade artefact.
+    """
+    service = PasswordService()
+    hasher = service._hasher
+
+    assert hasher.time_cost == 3, (
+        f"time_cost must be pinned to 3 (got {hasher.time_cost})"
+    )
+    assert hasher.memory_cost == 65536, (
+        f"memory_cost must be pinned to 65536 KiB (got {hasher.memory_cost})"
+    )
+    assert hasher.parallelism == 4, (
+        f"parallelism must be pinned to 4 (got {hasher.parallelism})"
+    )
+    assert hasher.hash_len == 32, (
+        f"hash_len must be pinned to 32 bytes (got {hasher.hash_len})"
+    )
+    assert hasher.salt_len == 16, (
+        f"salt_len must be pinned to 16 bytes (got {hasher.salt_len})"
+    )
+
+
 def test_password_hash_verifies_and_is_not_plaintext() -> None:
     service = PasswordService()
     password_hash = service.hash_password("CorrectHorseBattery123!")

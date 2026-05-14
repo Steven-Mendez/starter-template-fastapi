@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +75,18 @@ class ApiSettings:
             )
         if self.enable_docs:
             errors.append("APP_ENABLE_DOCS must be False in production")
+        # ``TrustedHostMiddleware`` matches ``Host`` against this list; a
+        # ``"*"`` entry (or any other wildcard pattern) turns the middleware
+        # into a no-op and removes the Host-header spoofing defence.
+        # Production MUST name the public hostnames explicitly.
+        if any("*" in host for host in self.trusted_hosts):
+            errors.append(
+                "APP_TRUSTED_HOSTS must not contain wildcard entries "
+                "(e.g. '*' or '*.example.com') in production; list the "
+                "explicit public hostnames the app accepts. A wildcard "
+                "entry turns TrustedHostMiddleware into a no-op and "
+                "removes Host-header spoofing protection."
+            )
         if not self.trusted_proxy_ips:
             errors.append(
                 "APP_TRUSTED_PROXY_IPS must be set in production to a "
@@ -84,6 +97,49 @@ class ApiSettings:
                 "Do NOT set this to '0.0.0.0/0' — that allows any caller to "
                 "spoof their client IP via X-Forwarded-For."
             )
+        # ``app_public_url`` is interpolated verbatim into password-reset
+        # and email-verification links. A misconfigured (or attacker-
+        # influenced) value silently directs reset tokens off-platform.
+        # Require HTTPS + a non-empty host, and pin the host to the
+        # already-trusted ``cors_origins`` set so there is a single
+        # source of truth for "we trust this surface".
+        parsed = urlparse(self.public_url) if self.public_url else None
+        if not self.public_url or parsed is None:
+            errors.append(
+                "APP_APP_PUBLIC_URL must be set in production to the public "
+                "HTTPS URL the app is reachable at; it is interpolated "
+                "into password-reset and email-verification links."
+            )
+        elif parsed.scheme != "https":
+            errors.append(
+                "APP_APP_PUBLIC_URL must use the https:// scheme in production "
+                f"(got scheme {parsed.scheme!r}); password-reset and "
+                "email-verification links must not be served over cleartext."
+            )
+        elif not parsed.hostname:
+            errors.append(
+                "APP_APP_PUBLIC_URL must include a non-empty host in production "
+                f"(got {self.public_url!r}); a missing host silently sends "
+                "password-reset tokens to the wrong destination."
+            )
+        else:
+            # Membership test against ``cors_origins`` (after stripping
+            # scheme/port). The CORS origin list is the explicit "we
+            # trust this surface" declaration; the public URL host must
+            # be on that surface so reset tokens never leave it.
+            origin_hosts = {
+                urlparse(o).hostname for o in self.cors_origins if "://" in o
+            }
+            origin_hosts.discard(None)
+            if parsed.hostname not in origin_hosts:
+                errors.append(
+                    f"APP_APP_PUBLIC_URL host {parsed.hostname!r} must appear "
+                    "in APP_CORS_ORIGINS in production; the CORS origin "
+                    "list is the canonical declaration of trusted surfaces "
+                    "and password-reset / email-verification links must "
+                    "land on one of them. Add the public URL's origin "
+                    "(scheme + host[:port]) to APP_CORS_ORIGINS."
+                )
 
 
 @dataclass(frozen=True, slots=True)

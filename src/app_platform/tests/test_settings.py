@@ -17,7 +17,9 @@ _VALID_PROD_ENV = {
     "APP_AUTH_JWT_ISSUER": "https://issuer.example.com",
     "APP_AUTH_JWT_AUDIENCE": "starter-template-fastapi",
     "APP_CORS_ORIGINS": '["https://example.com"]',
+    "APP_TRUSTED_HOSTS": '["example.com"]',
     "APP_TRUSTED_PROXY_IPS": '["10.0.0.0/8"]',
+    "APP_APP_PUBLIC_URL": "https://example.com",
     "APP_AUTH_COOKIE_SECURE": "true",
     "APP_AUTH_REDIS_URL": "redis://localhost:6379/0",
     "APP_EMAIL_BACKEND": "smtp",
@@ -375,4 +377,206 @@ def test_production_requires_redis_for_principal_cache(
     )
     assert "principal cache" in message.lower(), (
         f"validator error must mention the principal cache; got: {message}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# strengthen-production-validators (tasks 5.1-5.3): cover three existing
+# refusals that previously had no test. A silent regression on any of these
+# would let a production deploy boot with an unsafe default.
+# ---------------------------------------------------------------------------
+
+
+def test_production_rejects_rbac_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Task 5.1: ``APP_AUTH_RBAC_ENABLED=false`` is refused in production.
+
+    Disabling RBAC removes every authorization check; the validator must
+    fail loudly so a flipped flag does not silently ship.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_AUTH_RBAC_ENABLED", "false")
+    with pytest.raises(ValidationError, match="APP_AUTH_RBAC_ENABLED"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_rejects_local_storage_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 5.2: ``APP_STORAGE_BACKEND=local`` with storage ENABLED is refused.
+
+    Local-disk storage is per-pod state; multi-replica deploys would
+    silently lose blobs on the wrong node. The validator only refuses
+    when storage is actually wired (``storage_enabled=True``), so
+    deployments that do not use file storage are not forced to set up S3.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_STORAGE_ENABLED", "true")
+    monkeypatch.setenv("APP_STORAGE_BACKEND", "local")
+    with pytest.raises(ValidationError, match="APP_STORAGE_BACKEND"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_rejects_distributed_rate_limit_without_redis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 5.3: ``APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=true`` without
+    ``APP_AUTH_REDIS_URL`` is refused in production.
+
+    This overlaps with the harden-rate-limiting Redis-required test, but
+    pinning the specific (require_distributed=true, no Redis) combination
+    catches a regression that flips Redis off while leaving the
+    distributed-required flag on.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT", "true")
+    monkeypatch.delenv("APP_AUTH_REDIS_URL", raising=False)
+    with pytest.raises(ValidationError, match="APP_AUTH_REDIS_URL"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# strengthen-production-validators (tasks 6.1-6.5): four new refusals close
+# previously-unenforced gaps — short HS JWT secrets, wildcard trusted hosts,
+# unset/non-HTTPS ``app_public_url``, and ``app_public_url`` host not present
+# in the CORS origin list.
+# ---------------------------------------------------------------------------
+
+
+def test_production_rejects_short_jwt_hs_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 6.1: short HS-algorithm JWT secrets are refused in production.
+
+    A 32-character floor blocks brute-force from a single captured HS256
+    token. The error message MUST point at ``APP_AUTH_JWT_SECRET_KEY`` so
+    the operator knows which knob to fix.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_AUTH_JWT_ALGORITHM", "HS256")
+    monkeypatch.setenv("APP_AUTH_JWT_SECRET_KEY", "short")
+    with pytest.raises(ValidationError, match="APP_AUTH_JWT_SECRET_KEY"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_accepts_short_secret_with_non_hs_algorithm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 6.2: the length floor only applies to HS-family algorithms.
+
+    For asymmetric algorithms (RS256, etc.) the secret_key field is not
+    used as an HMAC key, so the length check should not fire. Other
+    checks may still fail for an RS256 deploy, but this particular check
+    must not raise on a short secret when the algorithm is non-HS.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_AUTH_JWT_ALGORITHM", "RS256")
+    monkeypatch.setenv("APP_AUTH_JWT_SECRET_KEY", "short")
+
+    # Either construction succeeds OR it fails for some other reason —
+    # but the HS-length check must NOT be the source of the failure.
+    try:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    except ValidationError as exc:
+        message = str(exc)
+        assert "at least 32 characters" not in message, (
+            f"HS-length check must not fire for RS256 algorithm; got error: {message}"
+        )
+        assert "HMAC algorithm" not in message, (
+            f"HS-length check must not fire for RS256 algorithm; got error: {message}"
+        )
+
+
+def test_production_rejects_wildcard_trusted_hosts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 6.3: ``APP_TRUSTED_HOSTS=['*']`` is refused in production.
+
+    A wildcard turns ``TrustedHostMiddleware`` into a no-op and removes
+    Host-header spoofing defence. Production must list the explicit
+    public hostnames.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_TRUSTED_HOSTS", '["*"]')
+    with pytest.raises(ValidationError, match="APP_TRUSTED_HOSTS"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_rejects_partial_wildcard_trusted_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 6.3: any wildcard pattern (e.g. ``*.example.com``) is refused.
+
+    Starlette accepts ``*.example.com`` as a subdomain wildcard; the
+    validator refuses any entry containing a wildcard so the deployment
+    must name hosts explicitly.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_TRUSTED_HOSTS", '["foo*.example.com"]')
+    with pytest.raises(ValidationError, match="APP_TRUSTED_HOSTS"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_rejects_unset_or_non_https_app_public_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 6.4: ``APP_APP_PUBLIC_URL`` MUST be set AND use HTTPS in production.
+
+    The URL is interpolated verbatim into password-reset and email-verify
+    links; a misconfigured value silently directs reset tokens off-platform.
+    Both empty and non-HTTPS values must be refused.
+
+    Note: the pydantic-settings env prefix is ``APP_``, so the field
+    ``app_public_url`` reads from ``APP_APP_PUBLIC_URL`` (not ``APP_PUBLIC_URL``).
+    """
+    # Form 1: empty value — set to the empty string so the env var is
+    # observed but no URL is supplied.
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_APP_PUBLIC_URL", "")
+    with pytest.raises(ValidationError, match="APP_APP_PUBLIC_URL"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+    # Form 2: non-HTTPS scheme — http:// must be refused even when host
+    # matches the CORS origin list.
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_APP_PUBLIC_URL", "http://example.com")
+    with pytest.raises(ValidationError, match="APP_APP_PUBLIC_URL") as exc_info:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    assert "https" in str(exc_info.value).lower(), (
+        f"non-HTTPS refusal must reference the https scheme; got: {exc_info.value}"
+    )
+
+
+def test_production_rejects_app_public_url_host_not_in_cors_origins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 6.5: the public URL host MUST appear in ``APP_CORS_ORIGINS``.
+
+    The CORS origin list is the canonical declaration of "we trust this
+    surface". Pinning the public URL's host to that set ensures
+    password-reset / email-verify links never leave the trusted surface
+    — even when the operator forgets to mirror the values.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    # CORS origins lists ``https://example.com``, public URL points at a
+    # different host so the membership check fails.
+    monkeypatch.setenv("APP_CORS_ORIGINS", '["https://example.com"]')
+    monkeypatch.setenv("APP_APP_PUBLIC_URL", "https://attacker.example.org")
+    monkeypatch.setenv("APP_TRUSTED_HOSTS", '["example.com", "attacker.example.org"]')
+
+    with pytest.raises(ValidationError, match="APP_APP_PUBLIC_URL") as exc_info:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    message = str(exc_info.value)
+    assert "APP_CORS_ORIGINS" in message, (
+        "host-mismatch error must mention APP_CORS_ORIGINS so the "
+        f"operator knows where to add the surface; got: {message}"
     )
