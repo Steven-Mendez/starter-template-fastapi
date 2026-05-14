@@ -70,7 +70,12 @@ def exporter() -> InMemorySpanExporter:
 
 
 def _tracer() -> trace.Tracer:
-    return trace.get_tracer("test")
+    # Bind explicitly to the local provider. The global OTel provider is
+    # set-once; if another test module set it first our exporter never
+    # sees the spans we start via ``trace.get_tracer(...)``. Using the
+    # local provider's tracer guarantees spans flow through ``_EXPORTER``
+    # regardless of test ordering.
+    return _PROVIDER.get_tracer("test")
 
 
 # ---------------------------------------------------------------------------
