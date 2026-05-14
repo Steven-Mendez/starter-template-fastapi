@@ -8,6 +8,7 @@ pools and Redis connections only exist while the app is serving.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from app_platform.observability.tracing import (
     instrument_fastapi_app,
     shutdown_tracing,
 )
+from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.outbound.auth_artifacts_cleanup import (
     SQLModelAuthArtifactsCleanupAdapter,
 )
@@ -49,6 +51,10 @@ from features.authentication.composition.wiring import (
 )
 from features.authentication.email_templates import (
     register_authentication_email_templates,
+)
+from features.authorization.application.errors import (
+    BootstrapPasswordMismatchError,
+    BootstrapRefusedExistingUserError,
 )
 from features.authorization.composition import (
     AuthorizationContainer,
@@ -104,13 +110,21 @@ def _configure_logging(settings: AppSettings) -> None:
     )
 
 
+_bootstrap_logger = logging.getLogger("app.bootstrap")
+
+
 def _run_authz_bootstrap(
     authorization: AuthorizationContainer, settings: AppSettings
 ) -> None:
     """Optionally create the first ``system:main#admin`` tuple at startup.
 
-    Idempotent: re-runs against an already-bootstrapped DB simply re-write
-    the same relationship tuple (no-op via the unique constraint).
+    Idempotent: re-runs against an already-bootstrapped DB return
+    ``Ok`` without writing. Refuses with ``SystemExit(2)`` when the
+    configured email collides with a pre-existing non-admin account
+    unless the operator has opted in via
+    ``APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true`` AND supplied the
+    correct password — the default-deny posture is what closes the
+    ``fix-bootstrap-admin-escalation`` privilege-escalation hole.
     """
     if not settings.auth_seed_on_startup:
         return
@@ -122,8 +136,33 @@ def _run_authz_bootstrap(
             "APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL and "
             "APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD must be set together."
         )
-    if email and password:
-        authorization.bootstrap_system_admin.execute(email=email, password=password)
+    if not (email and password):
+        return
+
+    result = authorization.bootstrap_system_admin.execute(
+        email=email, password=password
+    )
+    match result:
+        case Ok():
+            return
+        case Err(error=BootstrapRefusedExistingUserError() as err):
+            _bootstrap_logger.error(
+                "event=auth.bootstrap.refused_existing user_id=%s email=%s "
+                "message=Refusing to promote existing non-admin user to "
+                "system admin. Set APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true "
+                "and re-supply the user's actual password to opt in.",
+                err.user_id,
+                err.email,
+            )
+            raise SystemExit(2)
+        case Err(error=BootstrapPasswordMismatchError() as err):
+            _bootstrap_logger.error(
+                "event=auth.bootstrap.password_mismatch user_id=%s "
+                "message=Bootstrap password did not match the existing "
+                "user's credential — refusing to promote.",
+                err.user_id,
+            )
+            raise SystemExit(2)
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -285,7 +324,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             user_authz_version=users.user_authz_version_adapter,
             user_registrar=user_registrar,
             audit=auth.audit_adapter,
+            credential_verifier=auth.credential_verifier_adapter,
             principal_cache_invalidator=principal_cache_invalidator,
+            promote_existing=app_settings.auth_bootstrap_promote_existing,
         )
         # Every feature has now contributed to the registry; freeze it
         # so a stray runtime ``register_…`` call surfaces as a clear error

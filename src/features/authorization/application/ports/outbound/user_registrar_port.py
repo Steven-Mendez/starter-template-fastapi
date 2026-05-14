@@ -24,3 +24,14 @@ class UserRegistrarPort(Protocol):
         a password that fails policy validation on first registration).
         """
         ...
+
+    def lookup_by_email(self, *, email: str) -> UUID | None:
+        """Return the user id for ``email`` if a user exists, else ``None``.
+
+        Side-effect-free lookup used by ``BootstrapSystemAdmin`` to
+        decide between the create-and-grant, idempotent no-op,
+        refuse-existing, and promote-existing branches without
+        accidentally creating a row on the not-found path. SHALL NOT
+        raise on a missing user — only on infrastructure failures.
+        """
+        ...

@@ -1,8 +1,10 @@
 ## MODIFIED Requirements
 
-### Requirement: BootstrapSystemAdmin refuses silent promotion of existing accounts
+### Requirement: Bootstrap depends on UserRegistrarPort
 
-The `BootstrapSystemAdmin` use case SHALL only promote a user to `system:main#admin` under one of three conditions:
+The ``BootstrapSystemAdmin`` use case SHALL live in ``src/features/authorization/application/use_cases/`` and SHALL depend on ``UserRegistrarPort`` (defined in authorization's outbound ports). It SHALL NOT import ``RegisterUser`` or any other auth-feature symbol.
+
+`BootstrapSystemAdmin` SHALL only promote a user to `system:main#admin` under one of three conditions:
 
 1. **Create-and-grant** — no user exists with the configured email; the use case creates the user and grants the relationship.
 2. **Idempotent no-op** — a user exists with the configured email AND already holds `system:main#admin`; the use case returns success without writing.
@@ -57,6 +59,13 @@ Every successful grant (paths 1 and 3) MUST emit an `authz.system_admin_bootstra
 - **WHEN** `BootstrapSystemAdmin` runs
 - **THEN** the use case returns `Ok(...)` with no side effects
 - **AND** no new audit event is recorded
+
+#### Scenario: Bootstrap composes user registration through the port
+
+- **WHEN** ``BootstrapSystemAdmin.execute(email, password)`` runs against a fresh database (no user with that email)
+- **THEN** the use case calls ``UserRegistrarPort.register_or_lookup(email=..., password=...)``
+- **AND** the returned ``user_id`` is used to write the system-admin tuple
+- **AND** the use case writes one audit event of type ``authz.system_admin_bootstrapped`` via the ``AuditPort``
 
 ## ADDED Requirements
 

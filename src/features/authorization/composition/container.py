@@ -22,6 +22,7 @@ from features.authorization.application.ports.authorization_port import (
 )
 from features.authorization.application.ports.outbound import (
     AuditPort,
+    CredentialVerifierPort,
     PrincipalCacheInvalidatorPort,
     UserAuthzVersionPort,
     UserRegistrarPort,
@@ -46,7 +47,9 @@ def build_authorization_container(
     user_authz_version: UserAuthzVersionPort,
     user_registrar: UserRegistrarPort,
     audit: AuditPort,
+    credential_verifier: CredentialVerifierPort,
     principal_cache_invalidator: PrincipalCacheInvalidatorPort,
+    promote_existing: bool = False,
 ) -> AuthorizationContainer:
     """Wire the authorization container.
 
@@ -70,8 +73,10 @@ def build_authorization_container(
     bootstrap = BootstrapSystemAdmin(
         _authorization=port,
         _user_registrar=user_registrar,
+        _credential_verifier=credential_verifier,
         _audit=audit,
         _principal_cache_invalidator=principal_cache_invalidator,
+        _promote_existing=promote_existing,
     )
 
     def _shutdown() -> None:

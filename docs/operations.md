@@ -295,6 +295,51 @@ Public registration never grants administrative permissions. Use the admin RBAC
 endpoints only after authenticating as a user with explicit permissions such as
 `roles:manage`, `permissions:manage`, or `users:roles:manage`.
 
+### Bootstrapping The First Admin
+
+`BootstrapSystemAdmin` follows a default-deny decision tree so the
+configured email cannot silently promote whatever account happens to
+own it. The four behavioral paths:
+
+1. **Create-and-grant** — no user exists with the configured email.
+   The use case creates the user, writes the `system:main#admin`
+   relationship, and emits an `authz.system_admin_bootstrapped`
+   audit event with `subevent="created"`.
+2. **Idempotent no-op** — a user exists with the configured email
+   *and* already holds `system:main#admin`. The use case returns
+   `Ok(user_id)` without writing or emitting an audit event. This is
+   the safe path for re-running the same deploy.
+3. **Refuse-existing** — a user exists with the configured email but
+   does NOT yet hold `system:main#admin`, AND
+   `APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING` is unset or `false`. The
+   use case returns `Err(BootstrapRefusedExistingUserError)`; no
+   relationship row is written and no audit event is recorded. The
+   bootstrap caller (`src/main.py` or `src/cli/create_super_admin.py`)
+   logs an ERROR line carrying the offending `user_id` and the
+   remediation hint, then exits with `SystemExit(2)` so the deploy
+   fails fast rather than starting without an admin.
+4. **Promote-existing** — a user exists, is not yet admin, AND
+   `APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true`. The use case verifies
+   the supplied bootstrap password against the user's stored
+   credential. On a match the relationship is written and an
+   `authz.system_admin_bootstrapped` audit event is emitted with
+   `subevent="promoted_existing"`. On a mismatch the use case
+   returns `Err(BootstrapPasswordMismatchError)`, writes nothing,
+   and the caller exits non-zero.
+
+This change closes a privilege-escalation hole: before it landed, a
+user who self-registered with the configured admin email was
+silently promoted on the next deploy because the supplied bootstrap
+password was never checked. Default-deny means that the only
+deploys that break on the upgrade are deploys that were silently
+exposed to that hole.
+
+The production validator does NOT refuse
+`APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true`. It is a conscious
+opt-in for the legitimate "operator pre-created the account they
+intend to promote" workflow; the password-verification step is the
+safety check.
+
 ### Authorization Cache Window
 
 Authenticated requests resolve the current principal from the access token and

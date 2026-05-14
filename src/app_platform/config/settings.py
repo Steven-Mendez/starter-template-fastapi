@@ -110,6 +110,13 @@ class AppSettings(BaseSettings):
     auth_seed_on_startup: bool = False
     auth_bootstrap_super_admin_email: str | None = None
     auth_bootstrap_super_admin_password: str | None = None
+    # Default-deny: when False (the default), the bootstrap use case
+    # refuses to promote a user who already exists with the configured
+    # email but does NOT yet hold ``system:main#admin``. Setting this to
+    # True opts in to promotion — the supplied bootstrap password is
+    # then verified against the user's stored credential before any
+    # relationship is written. See ``fix-bootstrap-admin-escalation``.
+    auth_bootstrap_promote_existing: bool = False
     auth_default_user_role: str = "user"
     auth_super_admin_role: str = "super_admin"
     # TODO: OAuth login is not implemented yet. These settings only reserve

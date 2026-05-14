@@ -268,6 +268,7 @@ See `docs/operations.md` for the full env-var reference.
 | `APP_AUTH_JWT_SECRET_KEY` | unset | Required in production; signs all JWTs |
 | `APP_AUTH_SEED_ON_STARTUP` | `false` | Seeds RBAC roles/permissions on startup |
 | `APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL/PASSWORD` | unset | Creates initial super-admin if both are set |
+| `APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING` | `false` | Default-deny: when `false`, bootstrap refuses to promote an existing account that does not already hold `system:main#admin`. Set to `true` only when intentionally promoting a pre-created account; the supplied password is then verified against the stored credential before any relationship write |
 | `APP_AUTH_RETURN_INTERNAL_TOKENS` | `false` | Exposes single-use tokens in responses — test-only; refused in production |
 | `APP_AUTH_REDIS_URL` | unset | Enables distributed Redis rate limiter and shared principal cache; also default fallback for the arq queue |
 | `APP_AUTH_RATE_LIMIT_ENABLED` | `true` | Enables auth rate limiting |

@@ -12,18 +12,25 @@ outside the feature.
   ``BootstrapSystemAdmin`` to ensure a user exists before writing the
   ``system:main#admin`` tuple.
 * :class:`AuditPort` — auth implements; receives ``authz.*`` events
-  (e.g., ``authz.bootstrap_admin_assigned``) for the audit log that
+  (e.g., ``authz.system_admin_bootstrapped``) for the audit log that
   auth already maintains.
 * :class:`PrincipalCacheInvalidatorPort` — auth implements; engine-path
   grant/revoke use cases call ``invalidate_user`` after the relationship
   write returns so the principal cache evicts every entry for the
   affected user.
+* :class:`CredentialVerifierPort` — auth implements; called by
+  ``BootstrapSystemAdmin`` on the opt-in promote-existing path to
+  confirm the supplied bootstrap password matches the user's stored
+  credential before granting ``system:main#admin``.
 """
 
 from __future__ import annotations
 
 from features.authorization.application.ports.outbound.audit_port import (
     AuditPort,
+)
+from features.authorization.application.ports.outbound.credential_verifier_port import (
+    CredentialVerifierPort,
 )
 from features.authorization.application.ports.outbound.principal_cache_invalidator_port import (  # noqa: E501
     PrincipalCacheInvalidatorPort,
@@ -37,6 +44,7 @@ from features.authorization.application.ports.outbound.user_registrar_port impor
 
 __all__ = [
     "AuditPort",
+    "CredentialVerifierPort",
     "PrincipalCacheInvalidatorPort",
     "UserAuthzVersionPort",
     "UserRegistrarPort",

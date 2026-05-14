@@ -286,8 +286,18 @@ forbidden_modules = ["features.authorization"]
 # transitive ``platform.config.settings -> authorization.composition.settings``
 # edge is not a feature-to-feature dependency, so it does not violate
 # the spirit of this contract.
+#
+# The credential-verifier adapter is the authentication-side
+# implementation of authorization's ``CredentialVerifierPort``. Its
+# return type is typed as ``Result[None, CredentialVerificationError]``
+# so the use case in authorization can match exhaustively; that forces
+# a single inbound import edge from the adapter module to the
+# authorization error class. The edge is structurally required by the
+# port contract, not a feature-to-feature coupling, so it is ignored
+# here (mirroring the auth/users port-implementation pattern).
 ignore_imports = [
     "app_platform.config.settings -> features.authorization.composition.settings",
+    "features.authentication.adapters.outbound.credential_verifier.sqlmodel -> features.authorization.application.errors",
 ]
 
 [[tool.importlinter.contracts]]

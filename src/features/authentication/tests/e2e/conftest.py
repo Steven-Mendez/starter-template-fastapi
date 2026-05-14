@@ -258,9 +258,11 @@ def _build_app(
         user_authz_version=users.user_authz_version_adapter,
         user_registrar=user_registrar,
         audit=auth.audit_adapter,
+        credential_verifier=auth.credential_verifier_adapter,
         principal_cache_invalidator=PrincipalCacheInvalidatorAdapter(
             auth.principal_cache
         ),
+        promote_existing=settings.auth_bootstrap_promote_existing,
     )
     authorization.registry.seal()
     authorization.bootstrap_system_admin.execute(

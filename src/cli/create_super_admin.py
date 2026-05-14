@@ -22,9 +22,11 @@ Invocation::
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 
 from app_platform.config.settings import AppSettings
+from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
 )
@@ -37,6 +39,10 @@ from features.authentication.composition.container import (
 )
 from features.authentication.email_templates import (
     register_authentication_email_templates,
+)
+from features.authorization.application.errors import (
+    BootstrapPasswordMismatchError,
+    BootstrapRefusedExistingUserError,
 )
 from features.authorization.composition import (
     AuthorizationContainer,
@@ -64,6 +70,8 @@ from features.users.composition.container import (
     build_users_container,
 )
 from features.users.composition.jobs import register_delete_user_assets_handler
+
+_logger = logging.getLogger("cli.create_super_admin")
 
 
 def _build_containers() -> tuple[
@@ -151,9 +159,11 @@ def _build_containers() -> tuple[
         user_authz_version=users.user_authz_version_adapter,
         user_registrar=user_registrar,
         audit=auth.audit_adapter,
+        credential_verifier=auth.credential_verifier_adapter,
         principal_cache_invalidator=PrincipalCacheInvalidatorAdapter(
             auth.principal_cache
         ),
+        promote_existing=settings.auth_bootstrap_promote_existing,
     )
     # Seal the authorization registry so the bootstrap use case runs
     # against the exact same frozen graph that the live application
@@ -183,7 +193,30 @@ def create_super_admin(email: str, password_env: str) -> None:
         raise SystemExit(f"Environment variable {password_env} is required")
     auth, users, authorization, _email, jobs = _build_containers()
     try:
-        authorization.bootstrap_system_admin.execute(email=email, password=password)
+        result = authorization.bootstrap_system_admin.execute(
+            email=email, password=password
+        )
+        match result:
+            case Ok():
+                pass
+            case Err(error=BootstrapRefusedExistingUserError() as err):
+                _logger.error(
+                    "event=cli.bootstrap.refused_existing user_id=%s email=%s "
+                    "message=Refusing to promote existing non-admin user to "
+                    "system admin. Set APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true "
+                    "and re-supply the user's actual password to opt in.",
+                    err.user_id,
+                    err.email,
+                )
+                raise SystemExit(2)
+            case Err(error=BootstrapPasswordMismatchError() as err):
+                _logger.error(
+                    "event=cli.bootstrap.password_mismatch user_id=%s "
+                    "message=Bootstrap password did not match the existing "
+                    "user's credential — refusing to promote.",
+                    err.user_id,
+                )
+                raise SystemExit(2)
     finally:
         authorization.shutdown()
         jobs.shutdown()

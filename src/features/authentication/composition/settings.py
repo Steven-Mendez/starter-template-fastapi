@@ -34,6 +34,7 @@ class AuthenticationSettings:
     seed_on_startup: bool
     bootstrap_super_admin_email: str | None
     bootstrap_super_admin_password: str | None
+    bootstrap_promote_existing: bool
     default_user_role: str
     super_admin_role: str
     oauth_enabled: bool
@@ -70,6 +71,7 @@ class AuthenticationSettings:
             seed_on_startup=app.auth_seed_on_startup,
             bootstrap_super_admin_email=app.auth_bootstrap_super_admin_email,
             bootstrap_super_admin_password=app.auth_bootstrap_super_admin_password,
+            bootstrap_promote_existing=app.auth_bootstrap_promote_existing,
             default_user_role=app.auth_default_user_role,
             super_admin_role=app.auth_super_admin_role,
             oauth_enabled=app.auth_oauth_enabled,

@@ -21,6 +21,9 @@ from uuid import UUID
 
 from app_platform.config.settings import AppSettings
 from features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
+from features.authentication.adapters.outbound.credential_verifier import (
+    SQLModelCredentialVerifierAdapter,
+)
 from features.authentication.adapters.outbound.credential_writer import (
     SQLModelCredentialWriterAdapter,
 )
@@ -95,6 +98,11 @@ class AuthContainer:
     # Credential-writer adapter the users-feature registrar uses to write the
     # initial password for the bootstrap admin.
     credential_writer_adapter: SQLModelCredentialWriterAdapter
+    # Credential-verifier adapter the authorization feature consumes
+    # through ``CredentialVerifierPort`` to gate the explicit-opt-in
+    # bootstrap promotion of a pre-existing user on the supplied
+    # password matching the stored credential.
+    credential_verifier_adapter: SQLModelCredentialVerifierAdapter
     # Callable verifying a user's current password — used by the
     # users-feature ``DELETE /me/erase`` route to gate erasure on
     # current-password re-auth (defense in depth against stolen session
@@ -204,6 +212,9 @@ def build_auth_container(
     credential_writer_adapter = SQLModelCredentialWriterAdapter(
         credentials=repo, password_service=password_service
     )
+    credential_verifier_adapter = SQLModelCredentialVerifierAdapter(
+        credentials=repo, password_service=password_service
+    )
 
     register_user = RegisterUser(
         _repository=repo,
@@ -242,6 +253,7 @@ def build_auth_container(
         principal_cache=cache,
         audit_adapter=audit_adapter,
         credential_writer_adapter=credential_writer_adapter,
+        credential_verifier_adapter=credential_verifier_adapter,
         verify_user_password=_verify_user_password,
         shutdown=_shutdown,
         register_user=register_user,

@@ -2,7 +2,7 @@
 
 Re-runs the bootstrap against the same DB to confirm idempotency and
 verifies that the audit trail records exactly one bootstrap event with
-the new event type ``authz.bootstrap_admin_assigned``.
+the new event type ``authz.system_admin_bootstrapped``.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def test_bootstrap_creates_user_and_writes_system_admin_tuple(
         )
     assert len(rows) == 1
 
-    audit = repo.list_audit_events(event_type="authz.bootstrap_admin_assigned")
+    audit = repo.list_audit_events(event_type="authz.system_admin_bootstrapped")
     assert any(event.user_id == user.id for event in audit)
 
 

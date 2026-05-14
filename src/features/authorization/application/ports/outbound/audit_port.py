@@ -25,6 +25,6 @@ class AuditPort(Protocol):
 
         Implementations SHALL append a row to the auth audit log and
         SHALL NOT raise for valid input. ``event_type`` is a dotted
-        namespace (``authz.bootstrap_admin_assigned`` etc.).
+        namespace (``authz.system_admin_bootstrapped`` etc.).
         """
         ...

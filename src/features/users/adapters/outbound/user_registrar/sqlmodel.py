@@ -57,3 +57,16 @@ class SQLModelUserRegistrarAdapter:
                     if racer is not None:
                         return racer.id
                 raise RuntimeError(f"User registration failed: {err}")
+
+    def lookup_by_email(self, *, email: str) -> UUID | None:
+        """Return the user id for ``email`` if a row exists, else ``None``.
+
+        Side-effect-free counterpart to :meth:`register_or_lookup` that
+        ``BootstrapSystemAdmin`` calls first so it can branch on
+        existence without creating a row when no account is found.
+        """
+        normalized = email.strip().lower()
+        existing = self._users.get_by_email(normalized)
+        if existing is None:
+            return None
+        return existing.id

@@ -98,3 +98,21 @@ def test_email_is_normalised(adapter: SQLModelUserRegistrarAdapter) -> None:
         email="  ALICE@Example.com ", password="GoodPassword123!"
     )
     assert first == second
+
+
+def test_lookup_by_email_returns_none_when_user_missing(
+    adapter: SQLModelUserRegistrarAdapter,
+    credential_writer: _RecordingCredentialWriter,
+) -> None:
+    assert adapter.lookup_by_email(email="nobody@example.com") is None
+    # No registration side effect happened.
+    assert credential_writer.writes == []
+
+
+def test_lookup_by_email_returns_id_when_user_exists(
+    adapter: SQLModelUserRegistrarAdapter,
+) -> None:
+    user_id = adapter.register_or_lookup(
+        email="alice@example.com", password="GoodPassword123!"
+    )
+    assert adapter.lookup_by_email(email="ALICE@example.com") == user_id
