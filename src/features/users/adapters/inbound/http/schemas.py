@@ -22,6 +22,27 @@ class UserPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserPublicSelf(BaseModel):
+    """Self-view projection of a user row.
+
+    Mirrors :class:`UserPublic` minus internal fields a user should not
+    see about themselves. The redacted set is exactly ``{"authz_version"}``
+    — an internal cache-invalidation counter whose history would leak
+    permission-change events (e.g. a role granted then revoked) to the
+    user. Admin views keep :class:`UserPublic` because operators need the
+    counter for cache reasoning.
+    """
+
+    id: UUID
+    email: str
+    is_active: bool
+    is_verified: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ErasureAccepted(BaseModel):
     """Response body for ``DELETE /me/erase`` and admin erase endpoints.
 

@@ -650,6 +650,27 @@ Errors:
 - `409` with `code=invalid_card_move` when a move violates domain rules.
 - `422` with `code=patch_no_changes` when no fields are provided.
 
+### Self-view vs admin-view user schemas
+
+`GET /me` and `PATCH /me` respond with `UserPublicSelf`. `GET /admin/users`
+and other admin user endpoints respond with `UserPublic`. The two schemas
+are intentionally distinct so that internal bookkeeping fields a user
+should not see about themselves never appear on self-views.
+
+The redacted field set on self-views — the exhaustive list of fields
+present on `UserPublic` and removed from `UserPublicSelf` — is:
+
+- `authz_version` — internal ReBAC cache-invalidation counter. Returning
+  it on `/me` would leak permission-change history to the user (a role
+  granted then revoked manifests as a bumped counter). Admin views keep
+  the field because operators need it for cache reasoning.
+
+All other fields (`id`, `email`, `is_active`, `is_verified`,
+`created_at`, `updated_at`) are present on both schemas. A unit test
+pins the symmetric difference of the two schemas' `model_fields` to
+exactly `{"authz_version"}` so any future addition to either schema
+forces a deliberate decision about which view it belongs on.
+
 ### DELETE /me
 
 Deactivates the calling user's own account (soft delete). Authentication is

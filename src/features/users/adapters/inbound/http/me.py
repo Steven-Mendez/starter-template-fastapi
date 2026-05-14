@@ -26,7 +26,7 @@ from features.users.adapters.inbound.http.schemas import (
     ErasureAccepted,
     ExportResponse,
     UpdateProfileRequest,
-    UserPublic,
+    UserPublicSelf,
 )
 from features.users.composition.app_state import get_users_container
 
@@ -41,25 +41,25 @@ me_router = APIRouter(
 _ERASE_ESTIMATED_COMPLETION_SECONDS = 60
 
 
-@me_router.get("/me", response_model=UserPublic, responses=USERS_RESPONSES)
-def get_me(request: Request, principal: CurrentPrincipalDep) -> UserPublic:
+@me_router.get("/me", response_model=UserPublicSelf, responses=USERS_RESPONSES)
+def get_me(request: Request, principal: CurrentPrincipalDep) -> UserPublicSelf:
     """Return the calling user's profile."""
     container = get_users_container(request)
     result = container.get_user_by_id.execute(principal.user_id)
     match result:
         case Ok(value=user):
-            return UserPublic.model_validate(user)
+            return UserPublicSelf.model_validate(user)
         case Err(error=err):
             raise_http_from_user_error(err)
     return None
 
 
-@me_router.patch("/me", response_model=UserPublic, responses=USERS_RESPONSES)
+@me_router.patch("/me", response_model=UserPublicSelf, responses=USERS_RESPONSES)
 def patch_me(
     request: Request,
     body: UpdateProfileRequest,
     principal: CurrentPrincipalDep,
-) -> UserPublic:
+) -> UserPublicSelf:
     """Update the caller's profile (currently only email)."""
     container = get_users_container(request)
     result = container.update_profile.execute(
@@ -68,7 +68,7 @@ def patch_me(
     )
     match result:
         case Ok(value=user):
-            return UserPublic.model_validate(user)
+            return UserPublicSelf.model_validate(user)
         case Err(error=err):
             raise_http_from_user_error(err)
     return None
