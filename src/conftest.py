@@ -22,4 +22,9 @@ def test_settings() -> AppSettings:
         # Explicitly null out the Redis URL so tests never require a running
         # Redis instance (the .env file may configure one for local dev).
         auth_redis_url=None,
+        # ``harden-rate-limiting`` flipped the production-safety default
+        # to True, which would refuse container construction in test mode
+        # (no Redis). Test-only override: env-prefixed envs in production
+        # still trip the validator via ``validate_production``.
+        auth_require_distributed_rate_limit=False,
     )

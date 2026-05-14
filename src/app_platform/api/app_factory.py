@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app_platform.api.error_handlers import register_problem_details
 from app_platform.api.middleware.access_log import AccessLogMiddleware
@@ -181,6 +182,29 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
             allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
             expose_headers=["X-Request-ID", "Retry-After"],
+        )
+
+    # ProxyHeadersMiddleware MUST be the outermost middleware: it
+    # rewrites ``scope["client"]`` from ``X-Forwarded-For`` before any
+    # downstream code reads ``request.client.host`` (the auth rate
+    # limiter, audit logs, access logs, …). Because Starlette executes
+    # middleware in reverse-add order, "outermost" means added LAST.
+    #
+    # ``trusted_hosts`` accepts CIDR ranges. The production validator
+    # in ``ApiSettings.validate_production`` refuses an empty list — a
+    # deploy that forgets this setting fails to boot rather than
+    # quietly letting one attacker exhaust the rate-limit bucket for
+    # the entire user base. In development the list is typically empty
+    # (no proxy in front), so the middleware is a no-op: with an empty
+    # ``trusted_hosts`` set it never rewrites ``scope["client"]``.
+    #
+    # The setting must NEVER be ``0.0.0.0/0`` — that lets any caller
+    # spoof ``X-Forwarded-For`` and bypass per-IP limits. Documented in
+    # ``.env.example`` and ``docs/operations.md``.
+    if settings.trusted_proxy_ips:
+        app.add_middleware(
+            ProxyHeadersMiddleware,
+            trusted_hosts=settings.trusted_proxy_ips,
         )
 
     # Select the error reporter before installing error handlers so the

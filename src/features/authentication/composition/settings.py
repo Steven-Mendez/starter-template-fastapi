@@ -44,6 +44,16 @@ class AuthenticationSettings:
     return_internal_tokens: bool
     auth_token_retention_days: int
     auth_token_purge_interval_minutes: int
+    # Per-account lockout limiters. Composed AND-wise with the existing
+    # per-(ip, email) limiter so a botnet of distinct IPs each under
+    # the per-IP limit still trips the per-account budget. See
+    # ``harden-rate-limiting``.
+    per_account_login_max_attempts: int
+    per_account_login_window_seconds: int
+    per_account_reset_max_attempts: int
+    per_account_reset_window_seconds: int
+    per_account_verify_max_attempts: int
+    per_account_verify_window_seconds: int
 
     @classmethod
     def from_app_settings(cls, app: Any) -> AuthenticationSettings:
@@ -83,6 +93,18 @@ class AuthenticationSettings:
             return_internal_tokens=app.auth_return_internal_tokens,
             auth_token_retention_days=app.auth_token_retention_days,
             auth_token_purge_interval_minutes=app.auth_token_purge_interval_minutes,
+            per_account_login_max_attempts=app.auth_per_account_login_max_attempts,
+            per_account_login_window_seconds=(
+                app.auth_per_account_login_window_seconds
+            ),
+            per_account_reset_max_attempts=app.auth_per_account_reset_max_attempts,
+            per_account_reset_window_seconds=(
+                app.auth_per_account_reset_window_seconds
+            ),
+            per_account_verify_max_attempts=app.auth_per_account_verify_max_attempts,
+            per_account_verify_window_seconds=(
+                app.auth_per_account_verify_window_seconds
+            ),
         )
 
     def validate_production(self, errors: list[str]) -> None:
@@ -103,10 +125,22 @@ class AuthenticationSettings:
             )
         if self.return_internal_tokens:
             errors.append("APP_AUTH_RETURN_INTERNAL_TOKENS must be False in production")
-        if self.require_distributed_rate_limit and not self.redis_url:
+        if not self.redis_url:
+            # Without Redis BOTH the rate limiter AND the principal
+            # cache fall back to in-process state — every replica
+            # maintains independent counters (effective rate limit x
+            # replicas) and revoked principals keep acting on replicas
+            # that did not see the cache invalidation. Both behaviors
+            # are silent in single-replica dev environments and
+            # production-critical at scale.
             errors.append(
-                "APP_AUTH_REDIS_URL must be set in production when "
-                "APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT is true; "
-                "set APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=false only if "
-                "the deployment is guaranteed to run as a single replica"
+                "APP_AUTH_REDIS_URL must be set in production: it is required "
+                "by both the auth rate limiter (per-IP and per-account "
+                "budgets must be shared across replicas; without Redis the "
+                "effective limit is configured_limit * num_replicas) and "
+                "the principal cache (revoked admins keep acting on "
+                "replicas that did not see the in-process cache "
+                "invalidation). Set APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=false "
+                "only if the deployment is guaranteed to run as a single "
+                "replica AND you accept the principal-cache staleness."
             )

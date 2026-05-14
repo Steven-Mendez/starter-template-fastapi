@@ -14,6 +14,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
+import cachetools
+
 from features.authentication.application.errors import RateLimitExceededError
 
 if TYPE_CHECKING:
@@ -62,12 +64,33 @@ return 0
 """
 
 
+#: Maximum number of distinct keys retained by ``FixedWindowRateLimiter``.
+#:
+#: When the cache fills, the LRU entry is evicted. The bound exists to
+#: stop an attacker who rotates the limiter key (rotating IPs and / or
+#: emails) from inflating ``_attempts`` without bound and turning the
+#: limiter into a memory-exhaustion vector. 10 000 distinct keys at
+#: ~200 bytes each is ~2 MiB of resident state — comfortable for a
+#: dev / single-instance deployment, and clearly bounded.
+_FIXED_WINDOW_MAX_KEYS = 10_000
+
+#: Slack added to ``window_seconds`` when computing the cache TTL.
+#:
+#: An entry MUST live at least as long as one full window so a
+#: legitimate attempt inside its window is not silently evicted (which
+#: would let the attacker reset their budget by waiting for the
+#: cache's TTL but not the rate-limit window). The slack covers
+#: ``time.monotonic`` jitter and the gap between the per-key timestamp
+#: list and the cache key insertion time.
+_FIXED_WINDOW_TTL_SLACK_SECONDS = 60
+
+
 @dataclass(slots=True)
 class FixedWindowRateLimiter:
     """In-process fixed-window rate limiter.
 
-    Counts attempts per key in a local dictionary. Suitable for single-instance
-    deployments only.
+    Counts attempts per key in a bounded :class:`cachetools.TTLCache`.
+    Suitable for single-instance deployments only.
 
     WARNING: This limiter is NOT distributed. In horizontally scaled
     (multi-replica) deployments each replica maintains an independent counter,
@@ -77,11 +100,30 @@ class FixedWindowRateLimiter:
     Attributes:
         max_attempts: Maximum number of allowed attempts within the window.
         window_seconds: Duration of the counting window in seconds.
+
+    Memory bound: at most ``maxsize`` (default 10 000) distinct keys
+    are retained. When the cache fills, the LRU entry is evicted. TTL
+    is ``window_seconds + 60`` so an entry inside its rate-limit window
+    is never silently dropped — see ``harden-rate-limiting``.
     """
 
     max_attempts: int = 5
     window_seconds: int = 60
-    _attempts: dict[str, list[float]] = field(default_factory=dict)
+    maxsize: int = _FIXED_WINDOW_MAX_KEYS
+    _attempts: cachetools.TTLCache[str, list[float]] = field(
+        init=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        # ``TTLCache`` requires ``maxsize`` and ``ttl`` at construction
+        # time. ``window_seconds`` is a dataclass field, so we build
+        # the cache here rather than in ``field(default_factory=...)``
+        # which has no access to sibling fields.
+        self._attempts = cachetools.TTLCache(
+            maxsize=self.maxsize,
+            ttl=self.window_seconds + _FIXED_WINDOW_TTL_SLACK_SECONDS,
+        )
 
     def check(self, key: str) -> None:
         """Record one attempt for key and raise if the limit is exceeded.

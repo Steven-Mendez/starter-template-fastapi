@@ -17,7 +17,9 @@ _VALID_PROD_ENV = {
     "APP_AUTH_JWT_ISSUER": "https://issuer.example.com",
     "APP_AUTH_JWT_AUDIENCE": "starter-template-fastapi",
     "APP_CORS_ORIGINS": '["https://example.com"]',
+    "APP_TRUSTED_PROXY_IPS": '["10.0.0.0/8"]',
     "APP_AUTH_COOKIE_SECURE": "true",
+    "APP_AUTH_REDIS_URL": "redis://localhost:6379/0",
     "APP_EMAIL_BACKEND": "smtp",
     "APP_EMAIL_SMTP_HOST": "smtp.example.com",
     "APP_EMAIL_FROM": "no-reply@example.com",
@@ -300,3 +302,77 @@ def test_outbox_max_attempts_must_be_positive(
     monkeypatch.setenv("APP_OUTBOX_MAX_ATTEMPTS", "0")
     with pytest.raises(ValidationError, match="APP_OUTBOX_MAX_ATTEMPTS"):
         AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# harden-rate-limiting (tasks 5.4, 5.5): the production validator MUST refuse
+# unsafe defaults around the rate limiter and the principal cache. Both gaps
+# are silent in development (single-machine, no proxy) and trivially
+# bypassable in production until the validator refuses to boot.
+# ---------------------------------------------------------------------------
+
+
+def test_production_rejects_empty_trusted_proxy_ips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 5.4: empty ``APP_TRUSTED_PROXY_IPS`` is refused in production.
+
+    Without trusted proxies the rate limiter sees the load balancer's
+    IP for every request — one attacker exhausts the bucket for every
+    legitimate client. Pin the refusal so a future settings refactor
+    cannot reintroduce the silent default.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    # Pydantic treats an empty JSON list as a literal empty list, which
+    # is what the dev default looks like — the worst-case configuration
+    # we want to refuse.
+    monkeypatch.setenv("APP_TRUSTED_PROXY_IPS", "[]")
+    with pytest.raises(ValidationError, match="APP_TRUSTED_PROXY_IPS"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_production_accepts_non_empty_trusted_proxy_ips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-empty CIDR list satisfies the validator.
+
+    Sanity check that the validator does NOT also reject a correct
+    configuration — without this the previous test could pass on a
+    validator that always raises.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_TRUSTED_PROXY_IPS", '["10.0.0.0/8", "192.168.0.0/16"]')
+    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.trusted_proxy_ips == ["10.0.0.0/8", "192.168.0.0/16"]
+
+
+def test_production_requires_redis_for_principal_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 5.5: missing ``APP_AUTH_REDIS_URL`` is refused in production.
+
+    The error message MUST mention BOTH the rate limiter AND the
+    principal cache — the two gaps are independent and an operator
+    reading the message needs to understand which fix is being asked
+    for. A message that only mentions one half hides the other gap.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("APP_AUTH_REDIS_URL", raising=False)
+
+    with pytest.raises(ValidationError) as exc_info:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+    message = str(exc_info.value)
+    # The validator points at the setting that needs flipping.
+    assert "APP_AUTH_REDIS_URL" in message
+    # Per task 5.5: the message MUST cover both the rate limiter AND the
+    # principal cache so an operator sees both subsystems on one line.
+    assert "rate limiter" in message.lower(), (
+        f"validator error must mention the rate limiter; got: {message}"
+    )
+    assert "principal cache" in message.lower(), (
+        f"validator error must mention the principal cache; got: {message}"
+    )

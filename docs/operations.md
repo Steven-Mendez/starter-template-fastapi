@@ -393,8 +393,45 @@ the rate limit independently, so the effective limit is `configured_limit × rep
 For single-replica deployments, set `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=false`
 to acknowledge the in-memory limiter is intentional.
 
-In production with `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=true` (the default)
-and no `APP_AUTH_REDIS_URL`, the process will refuse to start.
+In production the validator refuses to start when `APP_AUTH_REDIS_URL` is unset:
+the same Redis URL backs BOTH the rate limiter AND the principal cache, and
+without it revoked principals keep acting on workers that did not see the
+in-process cache invalidation. See the Production Checklist below.
+
+### Trusted proxies and real client IPs
+
+`request.client.host` is the direct socket peer. Behind any load
+balancer or ingress controller that is the proxy's IP, which is
+identical for every legitimate client — one attacker exhausts the
+rate-limit bucket for the entire user base. To resolve real client IPs,
+set `APP_TRUSTED_PROXY_IPS` to the CIDR range(s) of your load
+balancer(s); the platform installs
+`uvicorn.middleware.proxy_headers.ProxyHeadersMiddleware` configured
+with those ranges and rewrites `scope["client"]` from
+`X-Forwarded-For` before the rate limiter reads it.
+
+The production validator refuses to start when `APP_TRUSTED_PROXY_IPS`
+is empty — the previous default was silently bypassable behind any
+proxy.
+
+**Never set `APP_TRUSTED_PROXY_IPS=["0.0.0.0/0"]`.** That trusts every
+caller's `X-Forwarded-For` header and lets attackers spoof their
+client IP to bypass per-IP limits. Always name the explicit CIDR(s)
+of your load balancer / ingress controller.
+
+### Per-account lockout
+
+In addition to the per-(IP, email) burst limiter, each of `login`,
+`register`, password-reset, and email-verify enforces a per-account
+budget (default 20 attempts / hour) so a botnet of distinct IPs (each
+under the per-IP limit) still trips an absolute cap on a single
+targeted account. Both limiters must pass for the request to proceed;
+the two budgets are tuned independently and a per-account trip emits a
+distinct `scope=per_account` log event so dashboards can separate
+account-targeted attacks from per-IP bursts.
+
+Tune via `APP_AUTH_PER_ACCOUNT_LOGIN_MAX_ATTEMPTS` /
+`..._WINDOW_SECONDS` (and the `RESET` / `VERIFY` variants).
 
 ## Health Checks
 
@@ -710,6 +747,7 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_APP_DISPLAY_NAME` | `Starter` | Product name used in email subjects/signatures. |
 | `APP_CORS_ORIGINS` | `["*"]` | JSON list. **Must not contain `*` in production.** |
 | `APP_TRUSTED_HOSTS` | `["*"]` | JSON list of accepted `Host` headers. |
+| `APP_TRUSTED_PROXY_IPS` | `[]` | JSON list of CIDR ranges of upstream proxies whose `X-Forwarded-For` is honored. **Must be non-empty in production.** Never set to `0.0.0.0/0` — that lets any caller spoof their client IP. Empty in development (single-machine, no proxy). |
 | `APP_MAX_REQUEST_BYTES` | `4194304` | Body-size limit for `ContentSizeLimitMiddleware`. |
 
 ### Platform — Database (`DatabaseSettings`)
@@ -750,8 +788,14 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_AUTH_PASSWORD_RESET_TOKEN_EXPIRE_MINUTES` | `30` | TTL for password-reset tokens. |
 | `APP_AUTH_EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES` | `1440` | TTL for verify-email tokens. |
 | `APP_AUTH_RATE_LIMIT_ENABLED` | `true` | Toggles auth-route rate limiting. |
-| `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT` | `false` | Forces Redis-backed rate limiter; **requires `APP_AUTH_REDIS_URL` in production**. |
-| `APP_AUTH_REDIS_URL` | unset | Enables distributed rate limiter and principal cache. |
+| `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT` | `true` | Forces Redis-backed rate limiter. **Default flipped on in `harden-rate-limiting`** — set to `false` only for guaranteed-single-replica deployments. |
+| `APP_AUTH_PER_ACCOUNT_LOGIN_MAX_ATTEMPTS` | `20` | Per-account budget for login / register; AND-composed with the per-(ip, email) limiter. |
+| `APP_AUTH_PER_ACCOUNT_LOGIN_WINDOW_SECONDS` | `3600` | Window over which `LOGIN_MAX_ATTEMPTS` applies. |
+| `APP_AUTH_PER_ACCOUNT_RESET_MAX_ATTEMPTS` | `20` | Per-account budget for password-reset requests. |
+| `APP_AUTH_PER_ACCOUNT_RESET_WINDOW_SECONDS` | `3600` | Window over which `RESET_MAX_ATTEMPTS` applies. |
+| `APP_AUTH_PER_ACCOUNT_VERIFY_MAX_ATTEMPTS` | `20` | Per-account budget for email-verify requests. |
+| `APP_AUTH_PER_ACCOUNT_VERIFY_WINDOW_SECONDS` | `3600` | Window over which `VERIFY_MAX_ATTEMPTS` applies. |
+| `APP_AUTH_REDIS_URL` | unset | Enables distributed rate limiter and principal cache. **Required in production** — backs both the rate limiter (per-IP and per-account budgets shared across replicas) and the principal cache (revocation visible across replicas). |
 | `APP_AUTH_PRINCIPAL_CACHE_TTL_SECONDS` | `5` | Bounds revocation lag for the principal cache. |
 | `APP_AUTH_REQUIRE_EMAIL_VERIFICATION` | `false` | Block login until email is verified. |
 | `APP_AUTH_SEED_ON_STARTUP` | `false` | Bootstrap RBAC and (optionally) a super admin. |

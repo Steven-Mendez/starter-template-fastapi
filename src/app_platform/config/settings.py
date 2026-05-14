@@ -71,6 +71,15 @@ class AppSettings(BaseSettings):
     app_display_name: str = "Starter"
     cors_origins: list[str] = ["*"]
     trusted_hosts: list[str] = ["*"]
+    # CIDR ranges of upstream proxies whose ``X-Forwarded-For`` headers
+    # are trusted. Used by ``uvicorn.middleware.proxy_headers.ProxyHeadersMiddleware``
+    # so the rate limiter sees real client IPs instead of the load
+    # balancer's address. Empty in development (single-machine, no
+    # proxy); the production validator refuses an empty list because
+    # the rate limiter is trivially bypassable behind a proxy without
+    # it. Never set to ``0.0.0.0/0`` — that lets any caller spoof
+    # ``X-Forwarded-For`` and bypass per-IP limits.
+    trusted_proxy_ips: list[str] = []
     log_level: str = "INFO"
     postgresql_dsn: str = (
         "postgresql+psycopg://postgres:postgres@localhost:5432/starter"
@@ -104,7 +113,24 @@ class AppSettings(BaseSettings):
     auth_password_reset_token_expire_minutes: int = 30
     auth_email_verify_token_expire_minutes: int = 1440
     auth_rate_limit_enabled: bool = True
-    auth_require_distributed_rate_limit: bool = False
+    # Default flipped to True in ``harden-rate-limiting``: the previous
+    # default's silent-failure mode (multi-replica deploys silently
+    # multiplying their effective rate limit by worker count) is exactly
+    # how the gap survived. Dev is unaffected because
+    # ``validate_production`` only runs when ``APP_ENVIRONMENT=production``.
+    auth_require_distributed_rate_limit: bool = True
+    # Per-account lockout limiters. AND-composed with the existing
+    # per-(ip, email) burst limiter so an attacker with a botnet of
+    # distinct IPs (each under the per-IP limit) still trips an
+    # absolute budget on a single targeted account. Tune the window
+    # higher than the burst limiter so the absolute budget covers a
+    # full session.
+    auth_per_account_login_max_attempts: int = 20
+    auth_per_account_login_window_seconds: int = 3600
+    auth_per_account_reset_max_attempts: int = 20
+    auth_per_account_reset_window_seconds: int = 3600
+    auth_per_account_verify_max_attempts: int = 20
+    auth_per_account_verify_window_seconds: int = 3600
     auth_rbac_enabled: bool = True
     auth_require_email_verification: bool = False
     auth_seed_on_startup: bool = False

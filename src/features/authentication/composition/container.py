@@ -92,6 +92,15 @@ class AuthContainer:
     settings: AppSettings
     repository: SQLModelAuthRepository
     rate_limiter: RateLimiter
+    # Per-account lockout limiters. AND-composed with ``rate_limiter``
+    # in the route handlers so a botnet of distinct IPs (each under
+    # the per-IP burst budget) still trips an absolute per-account
+    # budget. Each action gets its own limiter so the windows can be
+    # tuned independently and so the Redis variant uses a separate
+    # sorted-set per action. See ``harden-rate-limiting``.
+    per_account_login_limiter: RateLimiter
+    per_account_reset_limiter: RateLimiter
+    per_account_verify_limiter: RateLimiter
     principal_cache: PrincipalCachePort
     # Audit-log adapter the authorization feature uses to record authz.* events.
     audit_adapter: SQLModelAuditAdapter
@@ -182,15 +191,45 @@ def build_auth_container(
     _check_internal_token_exposure(settings)
 
     limiter: RateLimiter
+    per_account_login_limiter: RateLimiter
+    per_account_reset_limiter: RateLimiter
+    per_account_verify_limiter: RateLimiter
     cache: PrincipalCachePort
     if settings.auth_redis_url:
         limiter = RedisRateLimiter.from_url(settings.auth_redis_url)
+        per_account_login_limiter = RedisRateLimiter.from_url(
+            settings.auth_redis_url,
+            max_attempts=settings.auth_per_account_login_max_attempts,
+            window_seconds=settings.auth_per_account_login_window_seconds,
+        )
+        per_account_reset_limiter = RedisRateLimiter.from_url(
+            settings.auth_redis_url,
+            max_attempts=settings.auth_per_account_reset_max_attempts,
+            window_seconds=settings.auth_per_account_reset_window_seconds,
+        )
+        per_account_verify_limiter = RedisRateLimiter.from_url(
+            settings.auth_redis_url,
+            max_attempts=settings.auth_per_account_verify_max_attempts,
+            window_seconds=settings.auth_per_account_verify_window_seconds,
+        )
         cache = RedisPrincipalCache.from_url(
             settings.auth_redis_url,
             ttl=settings.auth_principal_cache_ttl_seconds,
         )
     else:
         limiter = FixedWindowRateLimiter()
+        per_account_login_limiter = FixedWindowRateLimiter(
+            max_attempts=settings.auth_per_account_login_max_attempts,
+            window_seconds=settings.auth_per_account_login_window_seconds,
+        )
+        per_account_reset_limiter = FixedWindowRateLimiter(
+            max_attempts=settings.auth_per_account_reset_max_attempts,
+            window_seconds=settings.auth_per_account_reset_window_seconds,
+        )
+        per_account_verify_limiter = FixedWindowRateLimiter(
+            max_attempts=settings.auth_per_account_verify_max_attempts,
+            window_seconds=settings.auth_per_account_verify_window_seconds,
+        )
         cache = InProcessPrincipalCache.create(
             ttl=settings.auth_principal_cache_ttl_seconds
         )
@@ -224,6 +263,9 @@ def build_auth_container(
     def _shutdown() -> None:
         repo.close()
         limiter.close()
+        per_account_login_limiter.close()
+        per_account_reset_limiter.close()
+        per_account_verify_limiter.close()
         cache.close()
 
     def _verify_user_password(user_id: UUID, password: str) -> bool:
@@ -250,6 +292,9 @@ def build_auth_container(
         settings=settings,
         repository=repo,
         rate_limiter=limiter,
+        per_account_login_limiter=per_account_login_limiter,
+        per_account_reset_limiter=per_account_reset_limiter,
+        per_account_verify_limiter=per_account_verify_limiter,
         principal_cache=cache,
         audit_adapter=audit_adapter,
         credential_writer_adapter=credential_writer_adapter,

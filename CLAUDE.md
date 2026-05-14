@@ -256,7 +256,8 @@ The settings validator refuses to start when `APP_ENVIRONMENT=production` and an
 - `APP_JOBS_BACKEND=in_process`
 - `APP_AUTH_RETURN_INTERNAL_TOKENS=true`
 - `APP_STORAGE_ENABLED=true` with `APP_STORAGE_BACKEND=local`
-- `APP_AUTH_REQUIRE_DISTRIBUTED_RATE_LIMIT=true` and no `APP_AUTH_REDIS_URL`
+- `APP_AUTH_REDIS_URL` unset (required for both the auth rate limiter and the principal cache — without it, multi-replica deploys silently multiply rate-limit budgets by worker count and revoked principals keep acting on workers that did not see the in-process cache invalidation)
+- `APP_TRUSTED_PROXY_IPS` empty (the auth rate limiter would see the proxy IP for every request behind any load balancer; one attacker exhausts the bucket for the entire user base). Never set to `0.0.0.0/0` — that lets any caller spoof their client IP via `X-Forwarded-For`
 - `APP_OUTBOX_ENABLED=false` (request-path consumers write to the outbox unconditionally; the relay must run in production)
 
 See `docs/operations.md` for the full env-var reference.

@@ -49,6 +49,7 @@ class ApiSettings:
     enable_docs: bool
     cors_origins: list[str]
     trusted_hosts: list[str]
+    trusted_proxy_ips: list[str]
     max_request_bytes: int
     public_url: str
     display_name: str
@@ -59,6 +60,7 @@ class ApiSettings:
             enable_docs=app.enable_docs,
             cors_origins=list(app.cors_origins),
             trusted_hosts=list(app.trusted_hosts),
+            trusted_proxy_ips=list(app.trusted_proxy_ips),
             max_request_bytes=app.max_request_bytes,
             public_url=app.app_public_url,
             display_name=app.app_display_name,
@@ -72,6 +74,16 @@ class ApiSettings:
             )
         if self.enable_docs:
             errors.append("APP_ENABLE_DOCS must be False in production")
+        if not self.trusted_proxy_ips:
+            errors.append(
+                "APP_TRUSTED_PROXY_IPS must be set in production to a "
+                "non-empty list of CIDR ranges naming the load balancers / "
+                "ingress proxies in front of the app; without it, the auth "
+                "rate limiter sees the proxy IP for every request and one "
+                "attacker exhausts the bucket for every legitimate client. "
+                "Do NOT set this to '0.0.0.0/0' — that allows any caller to "
+                "spoof their client IP via X-Forwarded-For."
+            )
 
 
 @dataclass(frozen=True, slots=True)

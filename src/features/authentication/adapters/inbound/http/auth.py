@@ -15,6 +15,7 @@ are never exposed to JavaScript or sent on regular API calls.
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Annotated
 from urllib.parse import urlsplit
 
@@ -57,10 +58,33 @@ auth_router = APIRouter(
     generate_unique_id_function=feature_operation_id,
 )
 
+_rate_limit_logger = logging.getLogger("auth.rate_limit")
+
 
 def _client_ip(request: Request) -> str | None:
-    """Return the client's IP address, or ``None`` if unavailable."""
+    """Return the client's IP address, or ``None`` if unavailable.
+
+    ``request.client.host`` is rewritten upstream by
+    ``uvicorn.middleware.proxy_headers.ProxyHeadersMiddleware`` when
+    the request originated from a trusted proxy in
+    ``APP_TRUSTED_PROXY_IPS`` — so this helper returns the real client
+    IP behind a configured load balancer, and the unmodified socket
+    peer otherwise.
+    """
     return request.client.host if request.client else None
+
+
+def _account_key(action: str, identifier: str | None) -> str:
+    """Build a per-account rate-limit key.
+
+    ``action`` is one of ``"login"``, ``"register"``, ``"reset"``,
+    ``"verify"``; ``identifier`` is the email pre-resolution (or the
+    user id once resolved). Returns a key shape that does NOT include
+    the request path or client IP so the per-account budget is
+    enforced regardless of IP diversity — that is the entire point of
+    the per-account limiter.
+    """
+    return f"per_account:{action}:{identifier or 'unknown'}"
 
 
 def _user_agent(request: Request) -> str | None:
@@ -211,6 +235,60 @@ def _check_rate_limit(request: Request, key: str) -> None:
     try:
         container.rate_limiter.check(f"{request.url.path}:{_client_ip(request)}:{key}")
     except RateLimitExceededError as exc:
+        _rate_limit_logger.warning(
+            "event=auth.rate_limit.tripped scope=per_ip path=%s key_hash=%s",
+            request.url.path,
+            hashlib.sha256(f"{request.url.path}:{key}".encode()).hexdigest()[:16],
+        )
+        raise_http_from_auth_error(exc)
+
+
+def _check_per_account_rate_limit(
+    request: Request, action: str, identifier: str | None
+) -> None:
+    """Apply the per-account lockout limiter for ``action`` on ``identifier``.
+
+    AND-composed with :func:`_check_rate_limit` in the route handlers:
+    the per-(ip, email) limiter runs first (cheap, blocks single-IP
+    bursts), then this per-account limiter runs (covers botnets of
+    distinct IPs targeting one account). Both must pass for the
+    request to proceed.
+
+    On trip, a distinct log event tagged ``per_account`` is emitted so
+    dashboards can separate account-targeted attacks (botnet
+    credential-stuffing) from per-IP bursts.
+
+    Args:
+        request: Incoming request — used to resolve the auth container.
+        action: One of ``"login"``, ``"reset"``, ``"verify"`` — picks
+            which limiter to use.
+        identifier: Email (pre-resolution) or user id; falls back to
+            ``"unknown"`` when missing.
+    """
+    container = get_auth_container(request)
+    if not container.settings.auth_rate_limit_enabled:
+        return
+    if action == "login":
+        limiter = container.per_account_login_limiter
+    elif action == "reset":
+        limiter = container.per_account_reset_limiter
+    elif action == "verify":
+        limiter = container.per_account_verify_limiter
+    else:
+        raise ValueError(
+            f"unknown per-account rate-limit action: {action!r}; "
+            "expected one of 'login', 'reset', 'verify'"
+        )
+    key = _account_key(action, identifier)
+    try:
+        limiter.check(key)
+    except RateLimitExceededError as exc:
+        _rate_limit_logger.warning(
+            "event=auth.rate_limit.tripped scope=per_account action=%s "
+            "identifier_hash=%s",
+            action,
+            hashlib.sha256((identifier or "unknown").encode()).hexdigest()[:16],
+        )
         raise_http_from_auth_error(exc)
 
 
@@ -225,6 +303,11 @@ def register(body: RegisterRequest, request: Request) -> UserPublic:
     # Registration hashes passwords, so limit by IP instead of email to avoid
     # trivial bypass with random addresses.
     _check_rate_limit(request, "registration")
+    # Per-account budget: a botnet that rotates IPs to register under a
+    # single targeted email still trips this limiter. Reuses the
+    # ``login`` per-account knobs because the budget is conceptually
+    # "attempts to acquire an account for this email".
+    _check_per_account_rate_limit(request, "login", body.email)
     result = get_auth_container(request).register_user.execute(
         email=body.email,
         password=body.password,
@@ -247,6 +330,7 @@ def login(body: LoginRequest, request: Request, response: Response) -> TokenResp
     response body. Rate-limited per email per IP to slow down brute-force attacks.
     """
     _check_rate_limit(request, body.email)
+    _check_per_account_rate_limit(request, "login", body.email)
     result = get_auth_container(request).login_user.execute(
         email=body.email,
         password=body.password,
@@ -356,6 +440,7 @@ def forgot_password(
     Rate-limited per email per IP to slow down abuse.
     """
     _check_rate_limit(request, body.email)
+    _check_per_account_rate_limit(request, "reset", body.email)
     result = get_auth_container(request).request_password_reset.execute(
         email=body.email,
         ip_address=_client_ip(request),
@@ -409,6 +494,7 @@ def request_email_verify(
 ) -> InternalTokenResponse:
     """Issue an email-verification token for the authenticated user."""
     _check_rate_limit(request, str(principal.user_id))
+    _check_per_account_rate_limit(request, "verify", str(principal.user_id))
     result = get_auth_container(request).request_email_verification.execute(
         user_id=principal.user_id,
         ip_address=_client_ip(request),

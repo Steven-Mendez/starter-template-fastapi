@@ -98,6 +98,12 @@ def test_production_ratio_one_emits_warning(caplog: pytest.LogCaptureFixture) ->
         email_smtp_password="pw",
         jobs_backend="arq",
         jobs_redis_url="redis://localhost:6379",
+        # ``harden-rate-limiting`` made both of these required in
+        # production — Redis backs the rate limiter and principal cache,
+        # and trusted proxy IPs are required so the rate limiter sees
+        # real client IPs.
+        auth_redis_url="redis://localhost:6379",
+        trusted_proxy_ips=["10.0.0.0/8"],
         outbox_enabled=True,
         otel_exporter_endpoint="http://collector:4318/v1/traces",
         otel_traces_sampler_ratio=1.0,
