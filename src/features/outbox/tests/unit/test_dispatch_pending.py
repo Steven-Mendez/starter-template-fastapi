@@ -322,6 +322,58 @@ def test_existing_payload_trace_key_is_not_overwritten() -> None:
     assert payload["__trace"] == payload_trace
 
 
+def test_warn_path_log_capture_contains_no_raw_email_or_token(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Task 6.7: rendered warn/error lines carry no raw email or token.
+
+    Drives the regression scenario the redaction change is meant to
+    prevent: a transient enqueue failure on a payload that carries
+    ``to=<raw email>`` and ``token=<single-use>`` must NOT echo
+    either value into the rendered log line. The captured log
+    snapshot covers both the warn line (retry path) and the error
+    line (terminal failure path) — together they exhaust the two
+    payload-adjacent log sites in :func:`DispatchPending.execute`.
+    """
+    import logging as _logging
+
+    raw_email = "alice@example.com"
+    raw_token = "single-use-token-abc123"  # test fixture value, not a credential
+    payload = {"to": raw_email, "token": raw_token}
+
+    caplog.set_level(_logging.WARNING, logger="features.outbox.dispatch")
+    # Retry branch: attempts=0 + max_attempts=5 → warn-line on enqueue fail.
+    retry_msg = _msg(job_name="bad-retry", attempts=0, payload=payload)
+    # Terminal branch: attempts=4 + max_attempts=5 → exception-line on fail.
+    failed_msg = _msg(job_name="bad-terminal", attempts=4, payload=payload)
+    repo = _FakeRepository(ready=[retry_msg, failed_msg])
+    queue = _StubJobQueue(raise_on={"bad-retry", "bad-terminal"})
+    use_case = _make_use_case(repo, queue, max_attempts=5)
+
+    report = use_case.execute()
+
+    # Sanity: both branches actually fired so the assertions below are real.
+    assert report.retried == 1
+    assert report.failed == 1
+
+    rendered = caplog.text
+    # The raw email must NEVER appear in the warn/error lines.
+    assert raw_email not in rendered, (
+        f"raw email leaked into outbox dispatch log: {rendered!r}"
+    )
+    # The raw token must NEVER appear in the warn/error lines.
+    assert raw_token not in rendered, (
+        f"raw token leaked into outbox dispatch log: {rendered!r}"
+    )
+    # And every per-record getMessage() rendering — defends against a
+    # future change that switches to ``extra={"payload": ...}`` without
+    # piping the payload through the redaction filter.
+    for record in caplog.records:
+        message = record.getMessage()
+        assert raw_email not in message
+        assert raw_token not in message
+
+
 def test_mixed_batch_reports_each_outcome() -> None:
     repo = _FakeRepository(
         ready=[

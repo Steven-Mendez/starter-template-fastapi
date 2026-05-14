@@ -26,6 +26,7 @@ from app_platform.api.dependencies.container import set_app_container
 from app_platform.api.lifespan import safe_finalize
 from app_platform.config.settings import AppSettings, get_settings
 from app_platform.observability import configure_logging
+from app_platform.observability.redaction import redact_email
 from app_platform.observability.tracing import (
     configure_tracing,
     instrument_fastapi_app,
@@ -146,13 +147,16 @@ def _run_authz_bootstrap(
         case Ok():
             return
         case Err(error=BootstrapRefusedExistingUserError() as err):
+            # ``err.email`` is masked at the call site because positional
+            # %s args bypass the stdlib PII filter (it scans record
+            # attributes, not string args).
             _bootstrap_logger.error(
                 "event=auth.bootstrap.refused_existing user_id=%s email=%s "
                 "message=Refusing to promote existing non-admin user to "
                 "system admin. Set APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true "
                 "and re-supply the user's actual password to opt in.",
                 err.user_id,
-                err.email,
+                redact_email(err.email),
             )
             raise SystemExit(2)
         case Err(error=BootstrapPasswordMismatchError() as err):
@@ -205,7 +209,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 smtp_use_starttls=app_settings.email_smtp_use_starttls,
                 smtp_use_ssl=app_settings.email_smtp_use_ssl,
                 smtp_timeout_seconds=app_settings.email_smtp_timeout_seconds,
-            )
+                console_log_bodies=app_settings.email_console_log_bodies,
+            ),
+            environment=app_settings.environment,
         )
         register_authentication_email_templates(email.registry)
         # Every feature that contributes templates has now done so.

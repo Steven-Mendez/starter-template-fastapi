@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Any
 
+from app_platform.observability.redaction import redact_email
 from app_platform.shared.result import Err, Ok, Result
 from features.email.application.errors import (
     DeliveryError,
@@ -78,14 +79,14 @@ class SmtpEmailAdapter:
         except (smtplib.SMTPException, OSError) as exc:
             _logger.exception(
                 "event=email.smtp.failed to=%s template=%s",
-                to,
+                redact_email(to),
                 template_name,
             )
             return Err(DeliveryError(reason=str(exc)))
 
         _logger.info(
             "event=email.smtp.sent to=%s template=%s",
-            to,
+            redact_email(to),
             template_name,
         )
         return Ok(None)

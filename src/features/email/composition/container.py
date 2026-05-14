@@ -32,19 +32,29 @@ class EmailContainer:
     port: EmailPort
 
 
-def build_email_container(settings: EmailSettings) -> EmailContainer:
+def build_email_container(
+    settings: EmailSettings, *, environment: str = "development"
+) -> EmailContainer:
     """Build the email feature's container.
 
     The registry is created empty; consumer features (e.g.
     ``authentication``) register their templates during their own
     composition phase. The composition root calls ``registry.seal()``
     once every feature has run.
+
+    ``environment`` is read from ``AppSettings.environment`` and
+    forwarded to the console adapter so the opt-in full-body log line
+    only fires in development. Other backends ignore it.
     """
     registry = EmailTemplateRegistry()
 
     port: EmailPort
     if settings.backend == "console":
-        port = ConsoleEmailAdapter(registry=registry)
+        port = ConsoleEmailAdapter(
+            registry=registry,
+            log_bodies=settings.console_log_bodies,
+            environment=environment,
+        )
     elif settings.backend == "smtp":
         if settings.smtp_host is None:
             raise RuntimeError(

@@ -29,6 +29,11 @@ class EmailSettings:
     smtp_timeout_seconds: float
     resend_api_key: str | None
     resend_base_url: str
+    # When True AND ``APP_ENVIRONMENT=development``, the console adapter
+    # additionally emits the rendered body at INFO. Defaults to False so
+    # the body (which may carry single-use reset/verify tokens) never
+    # appears in logs by default. Refused outside development.
+    console_log_bodies: bool
 
     @classmethod
     def from_app_settings(
@@ -46,6 +51,7 @@ class EmailSettings:
         smtp_timeout_seconds: float | None = None,
         resend_api_key: str | None = None,
         resend_base_url: str | None = None,
+        console_log_bodies: bool | None = None,
     ) -> EmailSettings:
         """Construct from either an :class:`AppSettings` or flat kwargs.
 
@@ -64,6 +70,7 @@ class EmailSettings:
             smtp_timeout_seconds = app.email_smtp_timeout_seconds
             resend_api_key = app.email_resend_api_key
             resend_base_url = app.email_resend_base_url
+            console_log_bodies = app.email_console_log_bodies
         if backend not in ("console", "smtp", "resend"):
             raise ValueError(
                 "APP_EMAIL_BACKEND must be one of 'console', 'smtp', 'resend'; "
@@ -85,6 +92,9 @@ class EmailSettings:
             ),
             resend_api_key=resend_api_key,
             resend_base_url=resend_base_url or "https://api.resend.com",
+            console_log_bodies=bool(console_log_bodies)
+            if console_log_bodies is not None
+            else False,
         )
 
     def resolved_from_address(self) -> str:

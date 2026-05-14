@@ -55,12 +55,21 @@ def test_too_long_request_id_is_replaced(test_settings: AppSettings) -> None:
 def test_access_log_emitted(
     test_settings: AppSettings, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """The access log line is now emitted by :class:`AccessLogMiddleware`.
+
+    The logger name moved from ``api.request`` to ``api.access`` when
+    the access log was split out of :class:`RequestContextMiddleware`
+    into its own middleware (so the line is emitted AFTER the request
+    id is stamped onto the contextvar — uvicorn's built-in access log
+    ran outside that window and always emitted ``request_id=null``).
+    """
     import logging
 
-    caplog.set_level(logging.INFO, logger="api.request")
+    caplog.set_level(logging.INFO, logger="api.access")
     with TestClient(_ping_app(test_settings)) as c:
         c.get("/__ping")
-    records = [r for r in caplog.records if r.name == "api.request"]
+    records = [r for r in caplog.records if r.name == "api.access"]
+    assert records, "expected at least one api.access log record"
     assert any(getattr(r, "path", None) == "/__ping" for r in records)
     assert any(getattr(r, "status_code", None) == 200 for r in records)
     assert all(not r.getMessage().strip().startswith("{") for r in records)

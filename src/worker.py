@@ -200,6 +200,7 @@ def _email_settings(app_settings: AppSettings) -> EmailSettings:
         smtp_use_starttls=app_settings.email_smtp_use_starttls,
         smtp_use_ssl=app_settings.email_smtp_use_ssl,
         smtp_timeout_seconds=app_settings.email_smtp_timeout_seconds,
+        console_log_bodies=app_settings.email_console_log_bodies,
     )
 
 
@@ -221,7 +222,9 @@ def build_worker_settings() -> type:
     # Build email + register authentication templates so the send_email
     # handler can render its payloads against the same templates the
     # web app uses.
-    email = build_email_container(_email_settings(app_settings))
+    email = build_email_container(
+        _email_settings(app_settings), environment=app_settings.environment
+    )
     register_authentication_email_templates(email.registry)
     email.registry.seal()
 

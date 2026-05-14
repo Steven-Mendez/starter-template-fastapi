@@ -161,6 +161,14 @@ class AppSettings(BaseSettings):
     # data plane or point at a self-hosted Resend-compatible service.
     email_resend_api_key: str | None = None
     email_resend_base_url: str = "https://api.resend.com"
+    # When True AND ``APP_ENVIRONMENT=development``, the console email
+    # adapter additionally logs the full rendered body at INFO. The
+    # default-off posture exists because rendered bodies for
+    # password-reset / email-verify carry single-use tokens, and log
+    # read access SHOULD NOT be equivalent to "can complete a reset".
+    # The redacted line (``body_len`` + ``body_sha256``) is always
+    # emitted so operators can still correlate.
+    email_console_log_bodies: bool = False
     # ---------------------------------------------------------------------------
     # Background jobs
     # ---------------------------------------------------------------------------

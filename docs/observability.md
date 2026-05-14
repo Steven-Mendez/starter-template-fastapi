@@ -220,6 +220,49 @@ Unhandled exceptions are logged through `api.error` with `method`, `path`,
 Clients can pass `X-Request-ID` with up to 64 alphanumeric, dash, or underscore
 characters. Invalid or missing values are replaced with a generated UUID.
 
+Access logs are emitted by `AccessLogMiddleware` (`api.access`), mounted inner
+to `RequestContextMiddleware`. Uvicorn's built-in access log is suppressed
+(its record runs outside the request-id contextvar window and would otherwise
+emit `request_id=null` for every line).
+
+### PII / token redaction
+
+Two seams cooperate to keep PII and single-use tokens out of logs:
+
+1. **Structlog processor** —
+   `app_platform.observability.pii_filter.PiiRedactionProcessor` walks an
+   event dict by key (case-insensitive) and applies the policy below.
+   Installed in the structlog processor chain if/when structlog is wired in.
+2. **Stdlib filter** —
+   `app_platform.observability.pii_filter.PiiLogFilter` is mounted on every
+   root log handler so the same policy applies to plain-stdlib log records
+   (uvicorn, third-party libraries). It walks `record.args` (when mapping-
+   shaped) and any `extra={...}` attributes promoted onto the record.
+
+The redaction policy is a closed key-name allowlist defined in
+`app_platform.observability.redaction`:
+
+| Constant | Keys | Treatment |
+| --- | --- | --- |
+| `REDACT_STRICT_KEYS` | `password`, `password_hash`, `hash`, `token`, `access_token`, `refresh_token`, `authorization`, `cookie`, `set-cookie`, `secret`, `api_key`, `phone` | Value replaced with `"***REDACTED***"`. |
+| `REDACT_EMAIL_KEYS` | `email`, `to`, `from`, `recipient`, `cc`, `bcc` | String values passed through `redact_email` (e.g. `a***@example.com`). Non-string values left untouched. |
+| `REDACT_HEADER_NAMES` | `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, `x-api-key`, `x-auth-token` | When an event carries a `headers` / `request.headers` / `response.headers` mapping, header names in this set are replaced with `"***REDACTED***"`. The strict/email rules also apply within the headers mapping. |
+
+Matching is case-insensitive on the exact key name. **Value scanning / regex
+sweeps over message strings are explicitly out of scope** — the filter is a
+safety net, not regulatory-grade DLP. Call-site redaction
+(`to=redact_email(to)`) is the recommended approach for string-formatted log
+calls. `redact_email` is the public helper for that.
+
+`docs/email.md` documents the related rule for the console adapter: the
+rendered body is never logged by default. Operators correlate by
+`body_sha256` instead. To opt into full-body logging during local development,
+set both `APP_EMAIL_CONSOLE_LOG_BODIES=true` and `APP_ENVIRONMENT=development`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_EMAIL_CONSOLE_LOG_BODIES` | `false` | When `true` AND `APP_ENVIRONMENT=development`, the console email adapter additionally logs the rendered body. The redacted `body_len`/`body_sha256` line is always emitted regardless. |
+
 ## Error reporting
 
 Unhandled exceptions route through a pluggable `ErrorReporterPort` seam

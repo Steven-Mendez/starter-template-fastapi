@@ -27,6 +27,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from app_platform.observability.redaction import redact_email
 from app_platform.shared.result import Err
 from features.background_jobs.application.registry import JobHandlerRegistry
 from features.email.application.jobs import SEND_EMAIL_JOB
@@ -72,9 +73,13 @@ def register_send_email_handler(
             and isinstance(message_id, str)
             and not dedupe(message_id)
         ):
+            # ``to`` is logged only in redacted form: this line predates
+            # the PII filter's coverage of positional %s args, so the
+            # call site is responsible for masking the local part.
             _logger.info(
-                "event=jobs.send_email.deduped outbox_message_id=%s",
+                "event=jobs.send_email.deduped outbox_message_id=%s to=%s",
                 message_id,
+                redact_email(payload.get("to", "")),
             )
             return
         to = payload["to"]
@@ -87,10 +92,13 @@ def register_send_email_handler(
         )
         if isinstance(result, Err):
             # Surface the failure so arq treats the job as failed and
-            # retries it according to its configured policy.
+            # retries it according to its configured policy. ``to`` is
+            # passed through ``redact_email`` because positional %s args
+            # bypass the stdlib PII filter (it intentionally scans only
+            # record attributes, not string args).
             _logger.error(
                 "event=jobs.send_email.failed to=%s template=%s reason=%s",
-                to,
+                redact_email(to),
                 template_name,
                 result.error,
             )

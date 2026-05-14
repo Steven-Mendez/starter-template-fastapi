@@ -25,6 +25,8 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
+from app_platform.observability.pii_filter import PiiLogFilter
+
 REQUEST_ID_CONTEXT: ContextVar[str | None] = ContextVar("request_id", default=None)
 TRACE_ID_CONTEXT: ContextVar[str | None] = ContextVar("trace_id", default=None)
 
@@ -157,6 +159,10 @@ def configure_logging(
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
     handler = logging.StreamHandler(stream=sys.stdout)
+    # PII / token redaction runs before request-id stamping so the
+    # filter sees the caller's original ``extra`` values; the order
+    # within a handler's filter chain is the order of insertion.
+    handler.addFilter(PiiLogFilter())
     handler.addFilter(RequestIdFilter())
     if json_format:
         handler.setFormatter(
@@ -185,3 +191,9 @@ def configure_logging(
         uv_logger = logging.getLogger(name)
         uv_logger.handlers.clear()
         uv_logger.propagate = True
+    # Disable uvicorn's built-in access log: it fires OUTSIDE the
+    # ``RequestContextMiddleware`` contextvar window, so its records
+    # would always carry ``request_id=null``. The platform's own
+    # access log (emitted by :class:`AccessLogMiddleware`) runs AFTER
+    # request-id stamping and carries the correct value.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)

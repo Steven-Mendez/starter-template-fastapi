@@ -39,6 +39,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from app_platform.observability.redaction import redact_email
 from app_platform.observability.tracing import traced
 from app_platform.shared.result import Err, Ok, Result
 from features.authorization.application.errors import (
@@ -125,12 +126,15 @@ class BootstrapSystemAdmin:
             return Ok(existing_id)
 
         if not self._promote_existing:
+            # ``email`` is masked at the call site because positional
+            # %s args bypass the stdlib PII filter (it scans record
+            # attributes, not string args).
             _logger.error(
                 "event=authz.bootstrap.refused_existing user_id=%s email=%s "
                 "message=refusing to promote existing non-admin user; set "
                 "APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true to opt in",
                 existing_id,
-                email,
+                redact_email(email),
             )
             return Err(BootstrapRefusedExistingUserError(existing_id, email))
 

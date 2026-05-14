@@ -17,6 +17,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app_platform.api.error_handlers import register_problem_details
+from app_platform.api.middleware.access_log import AccessLogMiddleware
 from app_platform.api.middleware.content_size_limit import ContentSizeLimitMiddleware
 from app_platform.api.middleware.request_context import RequestContextMiddleware
 from app_platform.api.middleware.security_headers import SecurityHeadersMiddleware
@@ -109,7 +110,7 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
     # is the OUTERMOST. We add innermost-first so the runtime chain is:
     #
     #   request → CORS → TrustedHost → SecurityHeaders → GZip
-    #          → ContentSizeLimit → RequestContext → router
+    #          → ContentSizeLimit → RequestContext → AccessLog → router
     #
     # Order rationale:
     # * CORS is outermost so OPTIONS preflight short-circuits before any
@@ -130,10 +131,14 @@ def build_fastapi_app(settings: AppSettings) -> FastAPI:
     #   ≥ 1024 bytes so small replies skip the CPU cost.
     # * ContentSizeLimit wraps the application so 411/413 fire before
     #   the inner handler ever sees the request.
-    # * RequestContext is innermost so its access log records the final
-    #   response status set by the inner handler and so its
-    #   ``request.state.request_id`` is visible to ContentSizeLimit's
-    #   problem-body builder via ``scope["state"]``.
+    # * RequestContext stamps the request id onto ``scope["state"]`` and
+    #   the ``REQUEST_ID_CONTEXT`` contextvar BEFORE AccessLog runs, so
+    #   the access log line correctly carries the request id (uvicorn's
+    #   built-in access log fires outside that contextvar window and is
+    #   disabled in :mod:`app_platform.observability.logging`).
+    # * AccessLog is innermost so it sees the final response status set
+    #   by the inner handler.
+    app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(ContentSizeLimitMiddleware, max_bytes=settings.max_request_bytes)
     app.add_middleware(GZipMiddleware, minimum_size=1024)

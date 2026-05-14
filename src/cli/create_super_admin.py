@@ -26,6 +26,7 @@ import logging
 import os
 
 from app_platform.config.settings import AppSettings
+from app_platform.observability.redaction import redact_email
 from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.outbound.persistence.sqlmodel import (
     SQLModelAuthRepository,
@@ -200,13 +201,16 @@ def create_super_admin(email: str, password_env: str) -> None:
             case Ok():
                 pass
             case Err(error=BootstrapRefusedExistingUserError() as err):
+                # ``err.email`` is masked at the call site because
+                # positional %s args bypass the stdlib PII filter (it
+                # scans record attributes, not string args).
                 _logger.error(
                     "event=cli.bootstrap.refused_existing user_id=%s email=%s "
                     "message=Refusing to promote existing non-admin user to "
                     "system admin. Set APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true "
                     "and re-supply the user's actual password to opt in.",
                     err.user_id,
-                    err.email,
+                    redact_email(err.email),
                 )
                 raise SystemExit(2)
             case Err(error=BootstrapPasswordMismatchError() as err):
