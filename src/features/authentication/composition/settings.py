@@ -42,6 +42,8 @@ class AuthenticationSettings:
     oauth_google_client_secret: str | None
     oauth_google_redirect_uri: str | None
     return_internal_tokens: bool
+    auth_token_retention_days: int
+    auth_token_purge_interval_minutes: int
 
     @classmethod
     def from_app_settings(cls, app: Any) -> AuthenticationSettings:
@@ -79,6 +81,8 @@ class AuthenticationSettings:
             oauth_google_client_secret=app.auth_oauth_google_client_secret,
             oauth_google_redirect_uri=app.auth_oauth_google_redirect_uri,
             return_internal_tokens=app.auth_return_internal_tokens,
+            auth_token_retention_days=app.auth_token_retention_days,
+            auth_token_purge_interval_minutes=app.auth_token_purge_interval_minutes,
         )
 
     def validate_production(self, errors: list[str]) -> None:

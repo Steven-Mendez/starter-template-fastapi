@@ -136,6 +136,20 @@ class AppSettings(BaseSettings):
     # caching entirely. When Redis is configured, a Redis-backed cache is used
     # instead and this value controls its TTL.
     auth_principal_cache_ttl_seconds: int = 5
+    # Retention window (in days) for the worker-side ``PurgeExpiredTokens``
+    # cron. Refresh-token rows past ``expires_at``/``revoked_at`` older
+    # than this cutoff and ``auth_internal_tokens`` rows past
+    # ``used_at``/``expires_at`` older than this cutoff are deleted by the
+    # ``auth-purge-tokens`` cron. 7 days is conservative: long enough to
+    # investigate "did the user really log out at X?" incidents and
+    # short enough to keep both tables manageable on busy deployments.
+    auth_token_retention_days: int = 7
+    # Cadence of the ``auth-purge-tokens`` cron in minutes. Snapped to
+    # the nearest divisor of 60 at composition time. Set to ``0`` to
+    # disable the cron entirely (operator kill switch — the use case
+    # is then never scheduled and tokens stay on disk until the value
+    # is restored).
+    auth_token_purge_interval_minutes: int = 60
     # ---------------------------------------------------------------------------
     # Email
     # ---------------------------------------------------------------------------

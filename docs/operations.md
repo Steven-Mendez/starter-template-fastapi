@@ -764,6 +764,8 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_AUTH_OAUTH_GOOGLE_CLIENT_SECRET` | unset | Reserved for future OAuth wiring. |
 | `APP_AUTH_OAUTH_GOOGLE_REDIRECT_URI` | unset | Reserved for future OAuth wiring. |
 | `APP_AUTH_RETURN_INTERNAL_TOKENS` | `false` | Exposes single-use reset/verify tokens in API responses. **Must be `false` in production.** |
+| `APP_AUTH_TOKEN_RETENTION_DAYS` | `7` | Retention window (days) for the worker's `auth-purge-tokens` cron. Refresh-token rows past `expires_at`/`revoked_at` older than the cutoff and `auth_internal_tokens` rows past `used_at`/`expires_at` older than the cutoff are deleted in 10000-row batches. Tune up if ops needs a longer evidence window after logout; tune down to keep tables smaller. |
+| `APP_AUTH_TOKEN_PURGE_INTERVAL_MINUTES` | `60` | Cadence of the `auth-purge-tokens` cron, snapped to the nearest divisor of 60 (1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60). **Set to `0` to disable the cron entirely** — operator kill switch when a sweep is undesired (e.g. during an investigation). The use case is never scheduled and tokens stay on disk until the value is restored. |
 
 ### Authorization (`AuthorizationSettings`)
 

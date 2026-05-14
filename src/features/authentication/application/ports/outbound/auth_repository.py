@@ -191,6 +191,25 @@ class TokenRepositoryPort(Protocol):
         self, *, token_hash: str, purpose: str
     ) -> InternalToken | None: ...
     def mark_internal_token_used(self, token_id: UUID) -> None: ...
+    def delete_expired_refresh_tokens(self, cutoff: datetime) -> int:
+        """Delete refresh-token rows whose ``expires_at`` or ``revoked_at`` is
+        before ``cutoff``.
+
+        Implementations loop in bounded batches until the eligibility
+        set is empty and return the total number of rows deleted.
+        Each batch runs in its own short transaction so a single
+        invocation never holds a long write lock against the table.
+        """
+        ...
+
+    def delete_expired_internal_tokens(self, cutoff: datetime) -> int:
+        """Delete internal-token rows whose ``used_at`` or ``expires_at`` is
+        before ``cutoff``.
+
+        Same batched-loop semantics as
+        :meth:`delete_expired_refresh_tokens`.
+        """
+        ...
 
 
 class AuditRepositoryPort(Protocol):

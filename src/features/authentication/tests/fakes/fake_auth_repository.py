@@ -268,6 +268,42 @@ class FakeAuthRepository:
             return
         self._s.internal_tokens[token_id] = _replace(existing, used_at=_aware_now())
 
+    # ── Maintenance operations ───────────────────────────────────────────────
+
+    def delete_expired_refresh_tokens(self, cutoff: datetime) -> int:
+        """In-memory equivalent of the SQLModel batched delete.
+
+        A row is eligible when either ``expires_at < cutoff`` or
+        ``revoked_at < cutoff`` (the same predicate the real adapter
+        runs). The fake skips the 10k batching the real implementation
+        uses because the in-memory store is bounded by the test setup.
+        """
+        eligible = [
+            token_id
+            for token_id, token in self._s.refresh_tokens.items()
+            if token.expires_at < cutoff
+            or (token.revoked_at is not None and token.revoked_at < cutoff)
+        ]
+        for token_id in eligible:
+            del self._s.refresh_tokens[token_id]
+        return len(eligible)
+
+    def delete_expired_internal_tokens(self, cutoff: datetime) -> int:
+        """In-memory equivalent of the SQLModel batched delete.
+
+        A row is eligible when either ``used_at < cutoff`` or
+        ``expires_at < cutoff``.
+        """
+        eligible = [
+            token_id
+            for token_id, token in self._s.internal_tokens.items()
+            if (token.used_at is not None and token.used_at < cutoff)
+            or token.expires_at < cutoff
+        ]
+        for token_id in eligible:
+            del self._s.internal_tokens[token_id]
+        return len(eligible)
+
     # ── Audit operations ─────────────────────────────────────────────────────
 
     def record_audit_event(

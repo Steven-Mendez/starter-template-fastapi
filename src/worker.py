@@ -38,6 +38,12 @@ from features.authentication.adapters.outbound.persistence.sqlmodel import (
 from features.authentication.adapters.outbound.user_audit_reader import (
     SQLModelUserAuditReaderAdapter,
 )
+from features.authentication.application.use_cases.maintenance import (
+    PurgeExpiredTokens,
+)
+from features.authentication.composition.worker import (
+    build_auth_maintenance_cron_jobs,
+)
 from features.authentication.email_templates import (
     register_authentication_email_templates,
 )
@@ -317,6 +323,22 @@ def build_worker_settings() -> type:
     )
     jobs.registry.seal()
     cron_jobs = list(build_relay_cron_jobs(outbox))
+    # Authentication maintenance crons: ``auth-purge-tokens`` sweeps
+    # expired refresh and internal token rows so neither table grows
+    # without bound. Disabled when the operator sets
+    # ``APP_AUTH_TOKEN_PURGE_INTERVAL_MINUTES=0`` (kill switch). The
+    # use case operates against the worker's auth repository (same
+    # engine the relay uses) so it shares the connection pool.
+    purge_expired_tokens = PurgeExpiredTokens(
+        _repository=auth_repository_for_worker,
+    )
+    cron_jobs.extend(
+        build_auth_maintenance_cron_jobs(
+            purge_expired_tokens=purge_expired_tokens,
+            retention_days=app_settings.auth_token_retention_days,
+            interval_minutes=app_settings.auth_token_purge_interval_minutes,
+        )
+    )
     # Instrument the ``outbox-relay`` cron so ``on_shutdown`` can wait
     # for an in-flight ``DispatchPending.execute`` tick to finish
     # (commit or rollback) before the engine is disposed. The prune

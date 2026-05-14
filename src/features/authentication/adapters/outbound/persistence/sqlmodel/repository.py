@@ -880,6 +880,73 @@ class SQLModelAuthRepository:
             session.refresh(row)
             return _to_credential(row)
 
+    def delete_expired_refresh_tokens(self, cutoff: datetime) -> int:
+        """Delete refresh-token rows past the retention window in 10k batches.
+
+        Uses the ``DELETE ... WHERE id IN (SELECT id ... LIMIT)`` idiom
+        so each transaction touches at most 10000 rows — bounded enough
+        that autovacuum and replicas keep up even when the eligibility
+        set is large. Loops until the set is empty and returns the
+        total ``rowcount`` summed across batches.
+
+        A row is eligible when either ``expires_at < cutoff`` (the
+        natural lifecycle endpoint) or ``revoked_at < cutoff`` (the row
+        was soft-revoked before the retention cutoff and is now safe
+        to drop).
+        """
+        total = 0
+        while True:
+            with self._write_session_scope() as session:
+                result = session.execute(
+                    sa.text(
+                        """
+                        DELETE FROM refresh_tokens
+                        WHERE id IN (
+                            SELECT id FROM refresh_tokens
+                            WHERE expires_at < :cutoff
+                               OR revoked_at < :cutoff
+                            LIMIT 10000
+                        )
+                        """
+                    ),
+                    {"cutoff": cutoff},
+                )
+                deleted = int(getattr(result, "rowcount", 0) or 0)
+            if deleted <= 0:
+                return total
+            total += deleted
+
+    def delete_expired_internal_tokens(self, cutoff: datetime) -> int:
+        """Delete internal-token rows past the retention window in 10k batches.
+
+        Same batched-loop shape as
+        :meth:`delete_expired_refresh_tokens`. A row is eligible when
+        either ``used_at < cutoff`` (the token was already consumed
+        before the retention cutoff) or ``expires_at < cutoff`` (the
+        token expired unused before the cutoff).
+        """
+        total = 0
+        while True:
+            with self._write_session_scope() as session:
+                result = session.execute(
+                    sa.text(
+                        """
+                        DELETE FROM auth_internal_tokens
+                        WHERE id IN (
+                            SELECT id FROM auth_internal_tokens
+                            WHERE used_at < :cutoff
+                               OR expires_at < :cutoff
+                            LIMIT 10000
+                        )
+                        """
+                    ),
+                    {"cutoff": cutoff},
+                )
+                deleted = int(getattr(result, "rowcount", 0) or 0)
+            if deleted <= 0:
+                return total
+            total += deleted
+
     def list_audit_events(
         self,
         *,

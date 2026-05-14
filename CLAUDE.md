@@ -274,6 +274,8 @@ See `docs/operations.md` for the full env-var reference.
 | `APP_AUTH_RATE_LIMIT_ENABLED` | `true` | Enables auth rate limiting |
 | `APP_AUTH_RBAC_ENABLED` | `true` | Enables ReBAC checks |
 | `APP_AUTH_PRINCIPAL_CACHE_TTL_SECONDS` | `5` | Bounds the worst-case revocation lag for cached principals |
+| `APP_AUTH_TOKEN_RETENTION_DAYS` | `7` | Retention window (days) for the worker's `auth-purge-tokens` cron. Refresh-token rows past `expires_at`/`revoked_at` older than the cutoff and internal-token rows past `used_at`/`expires_at` older than the cutoff are deleted in 10k-row batches |
+| `APP_AUTH_TOKEN_PURGE_INTERVAL_MINUTES` | `60` | Cadence of the `auth-purge-tokens` cron (snapped to the nearest divisor of 60). Set to `0` to disable the cron entirely (operator kill switch) |
 
 ## Key env vars (infrastructure)
 
