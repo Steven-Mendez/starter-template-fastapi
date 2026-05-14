@@ -103,6 +103,27 @@ class S3FileStorageAdapter:
             return Err(StorageBackendError(reason=str(exc)))
         return Ok(None)
 
+    def list(self, prefix: str) -> Result[list[str], FileStorageError]:
+        """Paginate ``list_objects_v2`` and return every key under ``prefix``.
+
+        Uses the ``list_objects_v2`` paginator so buckets with more
+        than 1000 matching keys are walked correctly. Returns a list
+        so the caller can iterate freely.
+        """
+        keys: list[str] = []
+        try:
+            paginator = self.client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+                for entry in page.get("Contents") or ():
+                    key = entry.get("Key")
+                    if isinstance(key, str):
+                        keys.append(key)
+        except ClientError as exc:
+            return Err(StorageBackendError(reason=_format_client_error(exc)))
+        except BotoCoreError as exc:
+            return Err(StorageBackendError(reason=str(exc)))
+        return Ok(keys)
+
     def signed_url(
         self,
         key: str,

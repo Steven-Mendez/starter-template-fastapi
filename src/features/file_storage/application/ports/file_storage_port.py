@@ -8,6 +8,7 @@ Adapters translate between the port and a concrete storage transport
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Protocol
 
 from app_platform.shared.result import Result
@@ -45,6 +46,22 @@ class FileStoragePort(Protocol):
 
         Deleting a missing key is a no-op (returns :class:`Ok`); this
         keeps idempotent cleanup workflows simple.
+        """
+        ...
+
+    def list(self, prefix: str) -> Result[Iterable[str], FileStorageError]:
+        """Return every stored key under ``prefix``.
+
+        The returned iterable yields the original string keys (not
+        backend-internal paths). An empty prefix lists every key the
+        backend can see; a prefix that matches no objects yields an
+        empty iterable wrapped in :class:`Ok`. Implementations MAY
+        return either a list or a generator — consumers should iterate
+        once and not assume re-iterability.
+
+        Used by cleanup workflows (e.g. ``UserAssetsCleanupPort``)
+        that need to discover every blob owned by a subject before
+        calling :meth:`delete` on each one.
         """
         ...
 

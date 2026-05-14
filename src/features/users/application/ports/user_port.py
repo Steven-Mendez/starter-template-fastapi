@@ -57,6 +57,29 @@ class UserPort(Protocol):
         """Activate or deactivate the user; bumps ``authz_version``."""
         ...
 
+    def set_active_atomically_with(
+        self,
+        writer: object,
+        user_id: UUID,
+        *,
+        is_active: bool,
+    ) -> None:
+        """Stage ``set_active`` on the writer's underlying transaction.
+
+        ``writer`` is an :class:`OutboxWriter` produced by
+        :meth:`OutboxUnitOfWorkPort.transaction`. SQLModel-aware
+        adapters extract the active ``Session`` from the writer (via
+        :attr:`SessionSQLModelOutboxAdapter.session`) and stage the
+        user-row update on it so the outbox row and the user mutation
+        commit or roll back together. Adapters that cannot bind to the
+        writer's transaction (e.g. inline-dispatch e2e fakes that have
+        no shared session) MAY fall back to :meth:`set_active`; the
+        atomic guarantee is then exercised only by the integration
+        suite, mirroring the established :class:`OutboxUnitOfWorkPort`
+        contract.
+        """
+        ...
+
     def update_last_login(self, user_id: UUID, when: datetime) -> None:
         """Stamp ``last_login_at`` and ``updated_at`` to ``when``."""
         ...

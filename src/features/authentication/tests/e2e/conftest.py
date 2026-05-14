@@ -58,6 +58,7 @@ from features.email.composition.jobs import register_send_email_handler
 from features.email.composition.settings import EmailSettings
 from features.email.composition.wiring import attach_email_container
 from features.email.tests.fakes.fake_email_port import FakeEmailPort
+from features.file_storage.tests.fakes.fake_file_storage import FakeFileStorage
 from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxUnitOfWork
 from features.users.adapters.outbound.persistence.sqlmodel.models import (
     UserTable,
@@ -69,6 +70,7 @@ from features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
 )
+from features.users.composition.jobs import register_delete_user_assets_handler
 from features.users.composition.wiring import (
     attach_users_container,
     mount_users_routes,
@@ -96,6 +98,7 @@ class AuthTestContext:
     repository: SQLModelAuthRepository
     user_repository: SQLModelUserRepository
     email: FakeEmailPort
+    file_storage: FakeFileStorage
 
 
 AUTH_TABLES: list[Any] = [
@@ -152,13 +155,12 @@ def _build_app(
     settings: AppSettings,
     repository: SQLModelAuthRepository,
     email_port: FakeEmailPort,
-) -> tuple[FastAPI, SQLModelUserRepository]:
+) -> tuple[FastAPI, SQLModelUserRepository, FakeFileStorage]:
     """Build a wired FastAPI app with a bootstrapped system-admin account."""
     app = build_fastapi_app(settings)
     mount_auth_routes(app)
     mount_users_routes(app)
     register_authorization_error_handlers(app)
-    users = build_users_container(engine=repository.engine)
     email_container = build_email_container(
         EmailSettings.from_app_settings(
             backend="console",
@@ -178,9 +180,25 @@ def _build_app(
     # via the jobs port. Wiring the in-process queue with the
     # ``send_email`` handler bound to the fake email port keeps the
     # e2e tests able to inspect ``email_port.sent`` for behavioural
-    # assertions exactly as before.
+    # assertions exactly as before. The users feature registers its
+    # ``delete_user_assets`` handler against the same registry so
+    # ``DELETE /me`` exercises the full enqueue → dispatch → handler
+    # cycle inline (no relay needed in e2e).
+    file_storage_port = FakeFileStorage()
     jobs_registry = JobHandlerRegistry()
     register_send_email_handler(jobs_registry, email_port)
+    # Construct the cleanup adapter directly to break the build-order
+    # cycle: the users container needs the outbox UoW (which feeds the
+    # in-process jobs queue), and the jobs registry needs the cleanup
+    # port. Both halves resolve to the same FakeFileStorage instance
+    # so any blob the test puts at ``users/{id}/...`` is visible to
+    # the cleanup handler.
+    from features.users.adapters.outbound.file_storage_user_assets import (
+        FileStorageUserAssetsAdapter,
+    )
+
+    cleanup_port = FileStorageUserAssetsAdapter(_storage=file_storage_port)
+    register_delete_user_assets_handler(jobs_registry, cleanup_port)
     jobs_registry.seal()
     jobs_port = InProcessJobQueueAdapter(registry=jobs_registry)
 
@@ -190,6 +208,12 @@ def _build_app(
     # ``tests/integration/test_password_reset_atomicity.py`` against a
     # real Postgres via testcontainers.
     outbox_uow = InlineDispatchOutboxUnitOfWork(dispatcher=jobs_port.enqueue)
+
+    users = build_users_container(
+        engine=repository.engine,
+        file_storage=file_storage_port,
+        outbox_uow=outbox_uow,
+    )
 
     auth = build_auth_container(
         settings=settings,
@@ -234,7 +258,7 @@ def _build_app(
         lifespan_app.state.container = None
 
     app.router.lifespan_context = lifespan
-    return app, users.user_repository
+    return app, users.user_repository, file_storage_port
 
 
 @pytest.fixture
@@ -245,13 +269,16 @@ def auth_context(
     """Yield a fully composed :class:`AuthTestContext` for an e2e test."""
     settings = _settings(test_settings)
     email_port = FakeEmailPort()
-    app, user_repository = _build_app(settings, auth_repository, email_port)
+    app, user_repository, file_storage = _build_app(
+        settings, auth_repository, email_port
+    )
     with TestClient(app) as client:
         yield AuthTestContext(
             client=client,
             repository=auth_repository,
             user_repository=user_repository,
             email=email_port,
+            file_storage=file_storage,
         )
 
 
@@ -265,13 +292,16 @@ def auth_context_rate_limited(
         update={"auth_rate_limit_enabled": True}
     )
     email_port = FakeEmailPort()
-    app, user_repository = _build_app(settings, auth_repository, email_port)
+    app, user_repository, file_storage = _build_app(
+        settings, auth_repository, email_port
+    )
     with TestClient(app) as client:
         yield AuthTestContext(
             client=client,
             repository=auth_repository,
             user_repository=user_repository,
             email=email_port,
+            file_storage=file_storage,
         )
 
 
@@ -285,13 +315,16 @@ def auth_context_internal_tokens_hidden(
         update={"auth_return_internal_tokens": False}
     )
     email_port = FakeEmailPort()
-    app, user_repository = _build_app(settings, auth_repository, email_port)
+    app, user_repository, file_storage = _build_app(
+        settings, auth_repository, email_port
+    )
     with TestClient(app) as client:
         yield AuthTestContext(
             client=client,
             repository=auth_repository,
             user_repository=user_repository,
             email=email_port,
+            file_storage=file_storage,
         )
 
 
@@ -305,13 +338,16 @@ def auth_context_email_verification_required(
         update={"auth_require_email_verification": True}
     )
     email_port = FakeEmailPort()
-    app, user_repository = _build_app(settings, auth_repository, email_port)
+    app, user_repository, file_storage = _build_app(
+        settings, auth_repository, email_port
+    )
     with TestClient(app) as client:
         yield AuthTestContext(
             client=client,
             repository=auth_repository,
             user_repository=user_repository,
             email=email_port,
+            file_storage=file_storage,
         )
 
 

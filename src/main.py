@@ -61,6 +61,7 @@ from features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
 )
+from features.users.composition.jobs import register_delete_user_assets_handler
 from features.users.composition.wiring import (
     attach_users_container,
     mount_users_routes,
@@ -136,7 +137,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             pool_recycle=app_settings.db_pool_recycle_seconds,
             pool_pre_ping=app_settings.db_pool_pre_ping,
         )
-        users = build_users_container(engine=repository.engine)
         email = build_email_container(
             EmailSettings.from_app_settings(
                 backend=app_settings.email_backend,
@@ -173,6 +173,19 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             engine=repository.engine,
             job_queue=jobs.port,
         )
+        # File storage is built before users because the users container
+        # takes ``FileStoragePort`` as a dependency for its per-user
+        # asset-cleanup adapter; the cleanup handler runs out-of-band
+        # in the worker after ``DeactivateUser`` / ``EraseUser`` enqueue
+        # the ``delete_user_assets`` job through the outbox.
+        file_storage = build_file_storage_container(
+            StorageSettings.from_app_settings(app_settings)
+        )
+        users = build_users_container(
+            engine=repository.engine,
+            file_storage=file_storage.port,
+            outbox_uow=outbox.unit_of_work,
+        )
         # Register send_email with a dedupe callable backed by the outbox
         # feature's ``processed_outbox_messages`` table; safe even though
         # the web process never runs the relay — the in-process queue used
@@ -180,6 +193,15 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         register_send_email_handler(
             jobs.registry,
             email.port,
+            dedupe=build_handler_dedupe(repository.engine),
+        )
+        # Register the ``delete_user_assets`` handler on the same
+        # registry. Web and worker processes both register against the
+        # same name so producers can never enqueue a payload the
+        # consumer side will not recognise.
+        register_delete_user_assets_handler(
+            jobs.registry,
+            users.user_assets_cleanup,
             dedupe=build_handler_dedupe(repository.engine),
         )
         jobs.registry.seal()
@@ -216,9 +238,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             user_registrar=user_registrar,
             audit=auth.audit_adapter,
             principal_cache_invalidator=principal_cache_invalidator,
-        )
-        file_storage = build_file_storage_container(
-            StorageSettings.from_app_settings(app_settings)
         )
         # Every feature has now contributed to the registry; freeze it
         # so a stray runtime ``register_…`` call surfaces as a clear error

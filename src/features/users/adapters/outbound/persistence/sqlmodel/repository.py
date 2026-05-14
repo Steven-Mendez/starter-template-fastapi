@@ -139,6 +139,37 @@ class SQLModelUserRepository:
             session.add(row)
             session.commit()
 
+    def set_active_atomically_with(
+        self,
+        writer: object,
+        user_id: UUID,
+        *,
+        is_active: bool,
+    ) -> None:
+        """Stage ``set_active`` on the writer's transaction when possible.
+
+        Mirrors the auth feature's :class:`_SessionIssueTokenTransaction`
+        pattern: if the writer exposes a SQLModel ``Session``, the
+        user row update is staged on it so the outer outbox commit
+        covers both writes. Writers without a shared session (inline-
+        dispatch e2e fakes) fall back to the engine-owning
+        :meth:`set_active`; integration tests cover the atomic path
+        against a real PostgreSQL.
+        """
+        session = getattr(writer, "session", None)
+        if isinstance(session, Session):
+            row = session.get(UserTable, user_id)
+            if row is None:
+                return
+            row.is_active = is_active
+            row.authz_version += 1
+            row.updated_at = utc_now()
+            session.add(row)
+            return
+        # Fallback: writer is not session-backed (e.g. inline-dispatch
+        # e2e fake). The user row commits in its own transaction.
+        self.set_active(user_id, is_active=is_active)
+
     def update_last_login(self, user_id: UUID, when: datetime) -> None:
         with Session(self.engine, expire_on_commit=False) as session:
             row = session.get(UserTable, user_id)
@@ -226,6 +257,30 @@ class SessionSQLModelUserRepository:
         row.authz_version += 1
         row.updated_at = utc_now()
         self.session.add(row)
+
+    def set_active_atomically_with(
+        self,
+        writer: object,
+        user_id: UUID,
+        *,
+        is_active: bool,
+    ) -> None:
+        """Session-scoped variant: stage the write on the writer's session.
+
+        Falls back to the session-bound :meth:`set_active` when the
+        writer does not expose a SQLModel session.
+        """
+        session = getattr(writer, "session", None)
+        if isinstance(session, Session):
+            row = session.get(UserTable, user_id)
+            if row is None:
+                return
+            row.is_active = is_active
+            row.authz_version += 1
+            row.updated_at = utc_now()
+            session.add(row)
+            return
+        self.set_active(user_id, is_active=is_active)
 
     def update_last_login(self, user_id: UUID, when: datetime) -> None:
         row = self.session.get(UserTable, user_id)

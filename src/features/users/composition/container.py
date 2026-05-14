@@ -8,8 +8,13 @@ from uuid import UUID
 
 from sqlalchemy.engine import Engine
 
+from features.file_storage.application.ports.file_storage_port import FileStoragePort
+from features.outbox.application.ports.outbox_uow_port import OutboxUnitOfWorkPort
 from features.users.adapters.outbound.authz_version import (
     SQLModelUserAuthzVersionAdapter,
+)
+from features.users.adapters.outbound.file_storage_user_assets import (
+    FileStorageUserAssetsAdapter,
 )
 from features.users.adapters.outbound.persistence.sqlmodel.repository import (
     SQLModelUserRepository,
@@ -19,6 +24,9 @@ from features.users.adapters.outbound.user_registrar import (
 )
 from features.users.application.ports.credential_writer_port import (
     CredentialWriterPort,
+)
+from features.users.application.ports.user_assets_cleanup_port import (
+    UserAssetsCleanupPort,
 )
 from features.users.application.use_cases.deactivate_user import DeactivateUser
 from features.users.application.use_cases.get_user_by_email import (
@@ -36,6 +44,7 @@ class UsersContainer:
 
     user_repository: SQLModelUserRepository
     user_authz_version_adapter: SQLModelUserAuthzVersionAdapter
+    user_assets_cleanup: UserAssetsCleanupPort
     register_user: RegisterUser
     get_user_by_id: GetUserById
     get_user_by_email: GetUserByEmail
@@ -64,18 +73,33 @@ class UsersContainer:
         self.deactivate_user._revoke_all_refresh_tokens = revoke_all_refresh_tokens
 
 
-def build_users_container(*, engine: Engine) -> UsersContainer:
-    """Construct the users container sharing the auth engine."""
+def build_users_container(
+    *,
+    engine: Engine,
+    file_storage: FileStoragePort,
+    outbox_uow: OutboxUnitOfWorkPort | None = None,
+) -> UsersContainer:
+    """Construct the users container sharing the auth engine.
+
+    ``file_storage`` provides the per-user asset prefix cleanup; the
+    adapter is built unconditionally so the worker can resolve the port
+    even when no storage-using feature is wired yet (the default
+    cleanup walks ``users/{user_id}/`` and is a no-op when no blobs
+    exist). ``outbox_uow`` is optional so unit tests that exercise the
+    use case without a real outbox still construct the container.
+    """
     repository = SQLModelUserRepository(engine=engine)
     authz_version_adapter = SQLModelUserAuthzVersionAdapter(engine)
+    user_assets_cleanup = FileStorageUserAssetsAdapter(_storage=file_storage)
     return UsersContainer(
         user_repository=repository,
         user_authz_version_adapter=authz_version_adapter,
+        user_assets_cleanup=user_assets_cleanup,
         register_user=RegisterUser(_users=repository),
         get_user_by_id=GetUserById(_users=repository),
         get_user_by_email=GetUserByEmail(_users=repository),
         update_profile=UpdateProfile(_users=repository),
-        deactivate_user=DeactivateUser(_users=repository),
+        deactivate_user=DeactivateUser(_users=repository, _outbox_uow=outbox_uow),
         list_users=ListUsers(_users=repository),
     )
 

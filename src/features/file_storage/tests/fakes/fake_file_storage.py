@@ -48,6 +48,9 @@ class FakeFileStorage:
         self.objects.pop(key, None)
         return Ok(None)
 
+    def list(self, prefix: str) -> Result[list[str], FileStorageError]:
+        return Ok([k for k in self.objects if k.startswith(prefix)])
+
     def signed_url(
         self,
         key: str,

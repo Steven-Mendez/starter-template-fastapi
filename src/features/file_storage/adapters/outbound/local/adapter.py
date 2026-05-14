@@ -85,6 +85,35 @@ class LocalFileStorageAdapter:
             return Err(StorageBackendError(reason=str(exc)))
         return Ok(None)
 
+    def list(self, prefix: str) -> Result[list[str], FileStorageError]:
+        """Walk the sha256 prefix tree and return every key starting with ``prefix``.
+
+        Keys are sharded by sha256 hash, so directory traversal alone
+        cannot reconstruct them; the adapter scans every ``*.meta.json``
+        sidecar (which stores the original key) and filters by prefix.
+        Returns a concrete list so the caller can iterate freely.
+        """
+        keys: list[str] = []
+        if not self.root.exists():
+            return Ok(keys)
+        try:
+            for meta_path in self.root.rglob(f"*{_METADATA_SUFFIX}"):
+                try:
+                    payload = json.loads(meta_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    _logger.warning(
+                        "event=file_storage.local.list_skipped path=%s reason=%s",
+                        meta_path,
+                        exc,
+                    )
+                    continue
+                key = payload.get("key")
+                if isinstance(key, str) and key.startswith(prefix):
+                    keys.append(key)
+        except OSError as exc:
+            return Err(StorageBackendError(reason=str(exc)))
+        return Ok(keys)
+
     def signed_url(
         self,
         key: str,

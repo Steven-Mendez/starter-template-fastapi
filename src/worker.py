@@ -37,10 +37,14 @@ from features.background_jobs.composition.settings import JobsSettings
 from features.email.composition.container import build_email_container
 from features.email.composition.jobs import register_send_email_handler
 from features.email.composition.settings import EmailSettings
+from features.file_storage.composition.container import build_file_storage_container
+from features.file_storage.composition.settings import StorageSettings
 from features.outbox.composition.container import build_outbox_container
 from features.outbox.composition.handler_dedupe import build_handler_dedupe
 from features.outbox.composition.settings import OutboxSettings
 from features.outbox.composition.worker import build_relay_cron_jobs
+from features.users.composition.container import build_users_container
+from features.users.composition.jobs import register_delete_user_assets_handler
 
 _logger = logging.getLogger("worker")
 
@@ -122,12 +126,29 @@ def build_worker_settings() -> type:
         engine=engine,
         job_queue=jobs.port,
     )
+    # The worker also needs the users container so the
+    # ``delete_user_assets`` handler has a wired
+    # ``UserAssetsCleanupPort`` to invoke. The container builds an
+    # adapter that walks the per-user prefix on ``FileStoragePort``.
+    file_storage = build_file_storage_container(
+        StorageSettings.from_app_settings(app_settings)
+    )
+    users = build_users_container(
+        engine=engine,
+        file_storage=file_storage.port,
+        outbox_uow=outbox.unit_of_work,
+    )
     # Register the send_email handler with a dedupe callable backed by
     # the outbox feature's ``processed_outbox_messages`` table — the
     # relay's at-least-once redelivery becomes effective once-per-id.
     register_send_email_handler(
         jobs.registry,
         email.port,
+        dedupe=build_handler_dedupe(engine),
+    )
+    register_delete_user_assets_handler(
+        jobs.registry,
+        users.user_assets_cleanup,
         dedupe=build_handler_dedupe(engine),
     )
     jobs.registry.seal()

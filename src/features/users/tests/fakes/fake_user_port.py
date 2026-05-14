@@ -109,6 +109,19 @@ class FakeUserPort:
             updated_at=_aware_now(),
         )
 
+    def set_active_atomically_with(
+        self,
+        writer: object,
+        user_id: UUID,
+        *,
+        is_active: bool,
+    ) -> None:
+        # Fake has no real transaction; just delegate. Tests that need
+        # to observe the inline-write-into-writer behavior assert on
+        # the writer's enqueued rows directly.
+        _ = writer
+        self.set_active(user_id, is_active=is_active)
+
     def update_last_login(self, user_id: UUID, when: datetime) -> None:
         existing = self._s.users.get(user_id)
         if existing is None:

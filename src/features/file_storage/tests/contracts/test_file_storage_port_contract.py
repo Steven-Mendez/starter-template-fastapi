@@ -131,3 +131,27 @@ def test_signed_url_returns_a_string_for_existing_key(
     assert isinstance(result, Ok)
     assert isinstance(result.value, str)
     assert result.value
+
+
+@_REAL_ADAPTERS
+def test_list_returns_keys_under_prefix(
+    factory: AdapterFactory, tmp_path: Path
+) -> None:
+    port = factory(tmp_path)
+    port.put("users/abc/avatar.png", b"a", "image/png")
+    port.put("users/abc/banner.png", b"b", "image/png")
+    port.put("users/xyz/avatar.png", b"c", "image/png")
+    result = port.list("users/abc/")
+    assert isinstance(result, Ok)
+    keys = sorted(result.value)
+    assert keys == ["users/abc/avatar.png", "users/abc/banner.png"]
+
+
+@_REAL_ADAPTERS
+def test_list_empty_prefix_returns_empty_when_nothing_stored(
+    factory: AdapterFactory, tmp_path: Path
+) -> None:
+    port = factory(tmp_path)
+    result = port.list("users/never-existed/")
+    assert isinstance(result, Ok)
+    assert list(result.value) == []

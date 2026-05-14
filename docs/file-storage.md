@@ -9,7 +9,7 @@ to plug into your own feature.
 
 | Piece | Where |
 | --- | --- |
-| Port | `src/features/file_storage/application/ports/file_storage_port.py` — `FileStoragePort.put`, `.get`, `.delete`, `.signed_url` |
+| Port | `src/features/file_storage/application/ports/file_storage_port.py` — `FileStoragePort.put`, `.get`, `.delete`, `.list`, `.signed_url` |
 | Local adapter | `src/features/file_storage/adapters/outbound/local/` |
 | S3 adapter | `src/features/file_storage/adapters/outbound/s3/` (`boto3`-backed) |
 | Fake (for tests) | `src/features/file_storage/tests/fakes/` |
@@ -102,6 +102,38 @@ against all three adapters:
 - the local adapter (always),
 - the S3 adapter, exercised in-process against `moto`'s AWS mock —
   no Docker required.
+
+## Per-User Prefix And Account Lifecycle
+
+Blobs that belong to a specific user MUST be written under the per-user
+prefix `users/{user_id}/`. The users feature ships a default
+`UserAssetsCleanupPort` implementation
+(`FileStorageUserAssetsAdapter`) that walks this prefix on
+`FileStoragePort` and deletes every blob it finds.
+
+Cleanup is **always asynchronous** — `DeactivateUser` (and, when it
+lands, `EraseUser`) enqueue a `delete_user_assets` job through the
+outbox in the same transaction that mutates the user. The worker
+resolves `UserAssetsCleanupPort` from the users container and invokes
+`delete_user_assets(user_id)` out of band.
+
+Two rules follow from this:
+
+- **Never call `UserAssetsCleanupPort.delete_user_assets` inline from a
+  use case.** Direct invocation couples the HTTP path to backend
+  latency and loses the worker's exponential-backoff retry on
+  transient failures. The composition root only wires the port into
+  the `delete_user_assets` job handler — there is no use-case-level
+  injection.
+- **Adopt the prefix in your uploaders.** A feature that stores
+  user-owned blobs at `attachments/{ulid}` rather than under
+  `users/{user_id}/...` will leak orphans on deactivation. If your
+  feature must use a different layout, ship its own
+  `UserAssetsCleanupPort` adapter and register it instead.
+
+The handler is idempotent: when the prefix is empty (already cleaned
+or never used), the call returns `Ok(None)` and the outbox row reaches
+`delivered` on the first relay tick.
 
 ## Extending The Feature
 

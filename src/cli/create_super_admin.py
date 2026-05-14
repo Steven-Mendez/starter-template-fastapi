@@ -53,6 +53,8 @@ from features.email.composition.container import (
 )
 from features.email.composition.jobs import register_send_email_handler
 from features.email.composition.settings import EmailSettings
+from features.file_storage.composition.container import build_file_storage_container
+from features.file_storage.composition.settings import StorageSettings
 from features.outbox.composition.container import build_outbox_container
 from features.outbox.composition.handler_dedupe import build_handler_dedupe
 from features.outbox.composition.settings import OutboxSettings
@@ -61,6 +63,7 @@ from features.users.composition.container import (
     build_user_registrar_adapter,
     build_users_container,
 )
+from features.users.composition.jobs import register_delete_user_assets_handler
 
 
 def _build_containers() -> tuple[
@@ -87,7 +90,6 @@ def _build_containers() -> tuple[
         pool_recycle=settings.db_pool_recycle_seconds,
         pool_pre_ping=settings.db_pool_pre_ping,
     )
-    users = build_users_container(engine=repository.engine)
     email = build_email_container(
         EmailSettings.from_app_settings(
             backend=settings.email_backend,
@@ -115,9 +117,22 @@ def _build_containers() -> tuple[
         engine=repository.engine,
         job_queue=jobs.port,
     )
+    file_storage = build_file_storage_container(
+        StorageSettings.from_app_settings(settings)
+    )
+    users = build_users_container(
+        engine=repository.engine,
+        file_storage=file_storage.port,
+        outbox_uow=outbox.unit_of_work,
+    )
     register_send_email_handler(
         jobs.registry,
         email.port,
+        dedupe=build_handler_dedupe(repository.engine),
+    )
+    register_delete_user_assets_handler(
+        jobs.registry,
+        users.user_assets_cleanup,
         dedupe=build_handler_dedupe(repository.engine),
     )
     jobs.registry.seal()
