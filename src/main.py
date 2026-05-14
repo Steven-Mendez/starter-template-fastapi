@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from uuid import UUID
 
 import redis as redis_lib
 from fastapi import FastAPI
@@ -188,6 +189,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             outbox_uow=outbox.unit_of_work,
             repository=repository,
         )
+
+        # Wire the auth-side refresh-token revoker into the users feature so
+        # ``DELETE /me`` revokes server-side refresh-token families inside
+        # the same Unit of Work as the ``is_active=False`` flip. The
+        # collaborator is a plain callable to keep ``users`` from importing
+        # the authentication use-case type.
+        def _revoke_all_refresh_tokens(user_id: UUID) -> None:
+            auth.logout_all_sessions.execute(user_id=user_id)
+
+        users.wire_refresh_token_revoker(_revoke_all_refresh_tokens)
         user_registrar = build_user_registrar_adapter(
             users=users,
             credential_writer=auth.credential_writer_adapter,

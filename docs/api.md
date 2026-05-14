@@ -489,6 +489,29 @@ Errors:
 - `409` with `code=invalid_card_move` when a move violates domain rules.
 - `422` with `code=patch_no_changes` when no fields are provided.
 
+### DELETE /me
+
+Deactivates the calling user's own account (soft delete). Authentication is
+required via a Bearer access token.
+
+Self-deactivation is destructive; in a single response cycle the server:
+
+1. Revokes every server-side refresh-token family for the user, inside the
+   same Unit of Work that flips ``is_active=False``. This is the durable
+   defense — a subsequent ``POST /auth/refresh`` with a captured refresh
+   token returns ``401``.
+2. Clears the browser-side refresh cookie by emitting
+   ``Set-Cookie: refresh_token=; Max-Age=0; Path=/auth`` on the response.
+   Cookie attributes (path, secure, samesite) mirror the original
+   ``Set-Cookie`` so the browser actually deletes the entry.
+
+Response `204` has no body.
+
+Errors:
+
+- `401` when the access token is missing or invalid.
+- `404` when the user record is missing (e.g. already hard-deleted).
+
 ## Curl Examples
 
 With no write API key configured:

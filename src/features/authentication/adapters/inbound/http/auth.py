@@ -22,6 +22,10 @@ from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 from app_platform.observability.tracing import traced
 from app_platform.shared.principal import Principal
 from app_platform.shared.result import Err, Ok
+from features.authentication.adapters.inbound.http.cookies import (
+    REFRESH_COOKIE_NAME,
+    clear_refresh_cookie,
+)
 from features.authentication.adapters.inbound.http.dependencies import (
     CurrentPrincipalDep,
 )
@@ -43,8 +47,6 @@ from features.authentication.adapters.inbound.http.schemas import (
 from features.authentication.application.errors import RateLimitExceededError
 from features.authentication.application.types import IssuedTokens
 from features.authentication.composition.app_state import get_auth_container
-
-REFRESH_COOKIE_NAME = "refresh_token"
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -88,22 +90,6 @@ def _set_refresh_cookie(
         path="/auth",
         secure=settings.auth_cookie_secure,
         httponly=True,
-        samesite=settings.auth_cookie_samesite,
-    )
-
-
-def _clear_refresh_cookie(response: Response, request: Request) -> None:
-    """Instruct the browser to delete the refresh-token cookie.
-
-    Attributes must match the original Set-Cookie exactly (path, secure,
-    samesite) or some browsers will treat the delete as targeting a different
-    cookie and leave the original in place.
-    """
-    settings = get_auth_container(request).settings
-    response.delete_cookie(
-        key=REFRESH_COOKIE_NAME,
-        path="/auth",
-        secure=settings.auth_cookie_secure,
         samesite=settings.auth_cookie_samesite,
     )
 
@@ -255,7 +241,7 @@ def logout(
     """Revoke the current session and clear the refresh-token cookie."""
     _enforce_cookie_origin(request)
     get_auth_container(request).logout_user.execute(refresh_token)
-    _clear_refresh_cookie(response, request)
+    clear_refresh_cookie(response, request)
     return MessageResponse(message="Logged out")
 
 
@@ -273,7 +259,7 @@ def logout_all(
     )
     match result:
         case Ok():
-            _clear_refresh_cookie(response, request)
+            clear_refresh_cookie(response, request)
             return MessageResponse(message="All sessions revoked")
         case Err(error=exc):
             raise_http_from_auth_error(exc)

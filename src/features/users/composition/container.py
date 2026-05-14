@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from uuid import UUID
 
 from sqlalchemy.engine import Engine
 
@@ -45,6 +47,21 @@ class UsersContainer:
         # The engine is shared with the authentication container; it is
         # disposed there. Nothing per-feature to release.
         return None
+
+    def wire_refresh_token_revoker(
+        self, revoke_all_refresh_tokens: Callable[[UUID], None]
+    ) -> None:
+        """Wire the authentication-side refresh-token revoker into deactivate.
+
+        Called from the composition root once the authentication container
+        exists. ``DELETE /me`` is a synchronous user action whose response
+        must reflect a revoked refresh-token family on the server; the
+        collaborator is invoked inline by :class:`DeactivateUser` inside the
+        same Unit of Work that flips ``is_active=False``. The contract is a
+        plain callable so ``users`` stays decoupled from the authentication
+        use-case type (import-linter forbids ``users -> authentication``).
+        """
+        self.deactivate_user._revoke_all_refresh_tokens = revoke_all_refresh_tokens
 
 
 def build_users_container(*, engine: Engine) -> UsersContainer:

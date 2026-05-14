@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
@@ -196,6 +197,11 @@ def _build_app(
         outbox_uow=outbox_uow,
         repository=repository,
     )
+
+    def _revoke_all_refresh_tokens(user_id: UUID) -> None:
+        auth.logout_all_sessions.execute(user_id=user_id)
+
+    users.wire_refresh_token_revoker(_revoke_all_refresh_tokens)
     user_registrar = build_user_registrar_adapter(
         users=users, credential_writer=auth.credential_writer_adapter
     )

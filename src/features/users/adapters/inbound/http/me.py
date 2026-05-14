@@ -8,10 +8,11 @@ Authentication is enforced by the platform principal resolver via the
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app_platform.api.authorization import CurrentPrincipalDep
 from app_platform.shared.result import Err, Ok
+from features.authentication.adapters.inbound.http import clear_refresh_cookie
 from features.users.adapters.inbound.http.schemas import (
     UpdateProfileRequest,
     UserPublic,
@@ -73,12 +74,26 @@ def update_me(
 
 
 @me_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-def delete_me(request: Request, principal: CurrentPrincipalDep) -> None:
-    """Deactivate the calling user (soft delete)."""
+def delete_me(
+    request: Request,
+    response: Response,
+    principal: CurrentPrincipalDep,
+) -> None:
+    """Deactivate the calling user (soft delete).
+
+    Self-deactivation is destructive: in a single response cycle we
+    revoke every server-side refresh-token family for the user (inside
+    the same Unit of Work that flips ``is_active=False``, wired into
+    :class:`DeactivateUser` at composition time) and clear the
+    browser-side refresh cookie. A client proxy could strip
+    ``Set-Cookie``; the inline server-side revocation is the durable
+    defense.
+    """
     container = get_users_container(request)
     result = container.deactivate_user.execute(principal.user_id)
     match result:
         case Ok():
+            clear_refresh_cookie(response, request)
             return
         case Err(error=err):
             if isinstance(err, UserNotFoundError):

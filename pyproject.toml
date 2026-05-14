@@ -364,6 +364,16 @@ source_modules = [
     "features.users.domain",
 ]
 forbidden_modules = ["features.authentication"]
+# ``DELETE /me`` is a synchronous user action whose response must clear the
+# refresh-token cookie that the authentication feature originally set. The
+# helper is a thin shell that mirrors authentication's own ``Set-Cookie``
+# attributes; lifting it into ``app_platform`` would put cookie semantics
+# (a feature-specific concern) onto the platform. One inbound-only edge is
+# preferable to a port abstraction for a single call site (see the change
+# proposal ``clear-refresh-cookie-on-self-deactivate``).
+ignore_imports = [
+    "features.users.adapters.inbound.http.me -> features.authentication.adapters.inbound.http",
+]
 
 # Authentication production code uses ``users`` only through its application
 # ports (``UserPort``, ``PasswordHasherPort``). Reaching into users' adapters
