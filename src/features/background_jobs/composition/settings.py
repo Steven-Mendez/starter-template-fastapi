@@ -8,9 +8,26 @@ backend (an in-process queue would lose every queued job on a restart).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal, Protocol
 
 JobsBackend = Literal["in_process", "arq"]
+
+
+class _JobsAppSettings(Protocol):
+    """Structural view of :class:`AppSettings` the jobs feature reads.
+
+    Declared locally so the jobs feature does not import the platform
+    composition root (which would transitively pull in every other
+    feature's settings module).
+    """
+
+    jobs_backend: JobsBackend
+    jobs_redis_url: str | None
+    auth_redis_url: str | None
+    jobs_queue_name: str
+    jobs_keep_result_seconds_default: int
+    jobs_max_jobs: int
+    jobs_job_timeout_seconds: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +44,7 @@ class JobsSettings:
     @classmethod
     def from_app_settings(
         cls,
-        app: Any = None,
+        app: _JobsAppSettings | None = None,
         *,
         backend: str | None = None,
         redis_url: str | None = None,

@@ -246,14 +246,19 @@ jobs:
           docker stop ci-smoke
 
       - name: Scan ${{ matrix.target }} image for HIGH/CRITICAL CVEs (Trivy)
-        # Trivy fails the build on HIGH or CRITICAL findings. Documented
-        # exceptions go in a ``.trivyignore`` file at the repo root.
+        # Trivy fails the build on HIGH or CRITICAL findings. ``ignore-unfixed``
+        # suppresses advisories that have no upstream fix available yet —
+        # there is nothing actionable we can do about those, and they would
+        # otherwise block every PR until upstream ships a patched package.
+        # Documented per-CVE exceptions go in a ``.trivyignore`` file at the
+        # repo root.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: starter-template-fastapi:ci-${{ matrix.target }}
           severity: HIGH,CRITICAL
           exit-code: "1"
           vuln-type: os,library
+          ignore-unfixed: true
 
       - name: Generate SBOM (SPDX JSON) for ${{ matrix.target }} image
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0

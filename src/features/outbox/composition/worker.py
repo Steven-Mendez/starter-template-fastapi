@@ -21,7 +21,7 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from arq.cron import cron
+from arq.cron import CronJob, cron
 
 from features.outbox.composition.container import OutboxContainer
 
@@ -43,7 +43,7 @@ def _snap_to_divisor(interval_seconds: float) -> int:
     return min(_DIVISORS_OF_60, key=lambda d: (abs(d - rounded), -d))
 
 
-def build_relay_cron_jobs(container: OutboxContainer) -> Sequence[Any]:
+def build_relay_cron_jobs(container: OutboxContainer) -> Sequence[CronJob]:
     """Return the arq ``cron_jobs`` list for the worker entrypoint.
 
     Empty when ``settings.enabled`` is false — the web/worker boot

@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any
 
 import redis as redis_lib
 from arq import run_worker
 from arq.connections import RedisSettings
+from arq.cron import CronJob
+from arq.typing import StartupShutdown
+from arq.worker import Function
 from sqlalchemy import create_engine
 
 from app_platform.config.settings import AppSettings, get_settings
@@ -140,21 +142,30 @@ def build_worker_settings() -> type:
     class WorkerSettings:
         """arq's ``WorkerSettings`` shape, populated from composition."""
 
-    WorkerSettings.functions = functions  # type: ignore[attr-defined]
-    WorkerSettings.cron_jobs = list(cron_jobs)  # type: ignore[attr-defined]
-    WorkerSettings.redis_settings = redis_settings  # type: ignore[attr-defined]
-    WorkerSettings.queue_name = jobs_settings.queue_name  # type: ignore[attr-defined]
-    WorkerSettings.max_jobs = jobs_settings.max_jobs  # type: ignore[attr-defined]
-    WorkerSettings.job_timeout = jobs_settings.job_timeout_seconds  # type: ignore[attr-defined]
-    WorkerSettings.keep_result = jobs_settings.keep_result_seconds_default  # type: ignore[attr-defined]
-    WorkerSettings.on_startup = staticmethod(job_handler_logging_startup)  # type: ignore[attr-defined]
+        functions: list[Function]
+        cron_jobs: list[CronJob]
+        redis_settings: RedisSettings
+        queue_name: str
+        max_jobs: int
+        job_timeout: int
+        keep_result: int
+        on_startup: StartupShutdown
+        on_shutdown: StartupShutdown | None = None
+
+    WorkerSettings.functions = functions
+    WorkerSettings.cron_jobs = list(cron_jobs)
+    WorkerSettings.redis_settings = redis_settings
+    WorkerSettings.queue_name = jobs_settings.queue_name
+    WorkerSettings.max_jobs = jobs_settings.max_jobs
+    WorkerSettings.job_timeout = jobs_settings.job_timeout_seconds
+    WorkerSettings.keep_result = jobs_settings.keep_result_seconds_default
+    WorkerSettings.on_startup = job_handler_logging_startup
     return WorkerSettings
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     """CLI entrypoint invoked by ``make worker``."""
-    settings_cls: Any = build_worker_settings()
-    run_worker(settings_cls)
+    run_worker(build_worker_settings())
     return 0
 
 

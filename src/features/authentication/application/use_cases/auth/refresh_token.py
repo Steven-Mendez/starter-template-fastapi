@@ -20,16 +20,17 @@ from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
 from features.authentication.application.types import IssuedTokens
+from features.users.application.dto import UserSnapshot
 from features.users.application.ports.user_port import UserPort
 
 
-def _principal_from_user(user: object) -> Principal:
+def _principal_from_user(user: UserSnapshot) -> Principal:
     return Principal(
-        user_id=user.id,  # type: ignore[attr-defined]
-        email=user.email,  # type: ignore[attr-defined]
-        is_active=user.is_active,  # type: ignore[attr-defined]
-        is_verified=user.is_verified,  # type: ignore[attr-defined]
-        authz_version=user.authz_version,  # type: ignore[attr-defined]
+        user_id=user.id,
+        email=user.email,
+        is_active=user.is_active,
+        is_verified=user.is_verified,
+        authz_version=user.authz_version,
     )
 
 

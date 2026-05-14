@@ -14,7 +14,24 @@ from __future__ import annotations
 import os
 import socket
 from dataclasses import dataclass
-from typing import Any
+from typing import Protocol
+
+
+class _OutboxAppSettings(Protocol):
+    """Structural view of :class:`AppSettings` the outbox feature reads.
+
+    Declared locally so the outbox feature does not import the platform
+    composition root (which would transitively pull in every other
+    feature's settings module).
+    """
+
+    outbox_enabled: bool
+    outbox_relay_interval_seconds: float
+    outbox_claim_batch_size: int
+    outbox_max_attempts: int
+    outbox_retry_base_seconds: float
+    outbox_retry_max_seconds: float
+    outbox_worker_id: str | None
 
 
 def _default_worker_id() -> str:
@@ -44,7 +61,7 @@ class OutboxSettings:
     @classmethod
     def from_app_settings(
         cls,
-        app: Any = None,
+        app: _OutboxAppSettings | None = None,
         *,
         enabled: bool | None = None,
         relay_interval_seconds: float | None = None,
