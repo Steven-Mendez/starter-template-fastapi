@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 from app_platform.config.settings import AppSettings
 from app_platform.shared.result import Ok, Result
 from features.authentication.application.crypto import (
+    FIXED_DUMMY_ARGON2_HASH,
+    PasswordService,
     generate_opaque_token,
     hash_token,
 )
@@ -36,6 +38,7 @@ class RequestPasswordReset:
 
     _users: UserPort
     _repository: TokenRepositoryPort
+    _password_service: PasswordService
     _settings: AppSettings
 
     def execute(
@@ -46,7 +49,21 @@ class RequestPasswordReset:
     ) -> Result[InternalTokenResult, AuthError]:
         user = self._users.get_by_email(normalize_email(email))
         if user is None:
+            # Pay the dominant Argon2 wall-clock cost so the unknown-email
+            # branch is not enumerable by timing the response. The boolean
+            # result is discarded; passing ``email`` as the candidate
+            # plaintext is intentional — only the Argon2 verify cost
+            # matters here, not the comparison outcome.
+            self._password_service.verify_password(FIXED_DUMMY_ARGON2_HASH, email)
             return Ok(InternalTokenResult(token=None, expires_at=None))
+
+        # Known-email branch also pays exactly one Argon2-class verify so
+        # both branches share the same dominant wall-clock cost. Without
+        # this, the known branch (audit + token writes + outbox enqueue,
+        # ~7 ms) is markedly *faster* than the unknown branch (full
+        # Argon2 verify, ~30-40 ms), inverting the timing channel. The
+        # boolean result is discarded; only the wall-clock cost matters.
+        self._password_service.verify_password(FIXED_DUMMY_ARGON2_HASH, email)
 
         raw_token = generate_opaque_token()
         expires_at = datetime.now(UTC) + timedelta(

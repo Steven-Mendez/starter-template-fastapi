@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 
@@ -100,27 +101,85 @@ def _set_refresh_cookie(
     )
 
 
+def _referer_origin(referer: str) -> str | None:
+    """Return the ``scheme://host[:port]`` origin of a ``Referer`` URL.
+
+    Returns ``None`` for malformed or scheme-less values so callers can
+    treat them the same as a missing header.
+    """
+    try:
+        parts = urlsplit(referer)
+    except ValueError:
+        return None
+    if not parts.scheme or not parts.hostname:
+        return None
+    host = parts.hostname
+    if parts.port is not None:
+        host = f"{host}:{parts.port}"
+    return f"{parts.scheme}://{host}"
+
+
 def _enforce_cookie_origin(request: Request) -> None:
     """Reject cross-origin requests that would carry the refresh-token cookie.
 
     Browsers attach cookies automatically on cross-site requests, which
-    makes cookie-authenticated endpoints vulnerable to CSRF. Validating
-    ``Origin`` against the configured allow-list closes that gap before
-    any business logic runs.
+    makes cookie-authenticated endpoints vulnerable to CSRF. The check
+    requires *either* a trusted ``Origin`` header *or* a trusted
+    ``Referer`` origin; if both are missing on a request that carries
+    the refresh cookie, the request is refused with 403.
 
     Raises:
-        HTTPException 403: If ``Origin`` is set but not in ``cors_origins``.
+        HTTPException 403: If ``Origin`` is set but not in
+            ``cors_origins``; if ``Referer`` is set but its origin is
+            not in ``cors_origins`` and ``Origin`` is absent; or if both
+            headers are absent and the refresh cookie is present on the
+            request.
     """
-    origin = request.headers.get("origin")
-    if origin is None:
-        return
     settings = get_auth_container(request).settings
-    if settings.cors_origins == ["*"] or "*" in settings.cors_origins:
-        # Wildcard CORS is only permitted in development/test environments.
-        # Production settings validation rejects cors_origins=["*"], so this
-        # branch is unreachable in production.
+    wildcard = settings.cors_origins == ["*"] or "*" in settings.cors_origins
+    trusted = set(settings.cors_origins)
+
+    origin = request.headers.get("origin")
+    if origin is not None:
+        if wildcard:
+            # Wildcard CORS is only permitted in development/test
+            # environments. Production settings validation rejects
+            # cors_origins=["*"], so this branch is unreachable in
+            # production.
+            return
+        if origin not in trusted:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Untrusted origin",
+            )
         return
-    if origin not in settings.cors_origins:
+
+    # ``Origin`` is absent. Fall back to ``Referer`` so legitimate
+    # navigations and form-style POSTs (which some browsers send without
+    # ``Origin`` on same-site requests) are not blocked, while still
+    # closing the cross-site channel.
+    referer = request.headers.get("referer")
+    if referer is not None:
+        referer_origin = _referer_origin(referer)
+        if referer_origin is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Untrusted origin",
+            )
+        if wildcard:
+            return
+        if referer_origin not in trusted:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Untrusted origin",
+            )
+        return
+
+    # Both headers are absent. If the request carries the refresh cookie
+    # there is no signal of provenance to validate — refuse. If the
+    # refresh cookie is also absent the request cannot leverage cookie-
+    # authenticated state, so it stays a no-op for backwards compat.
+    if REFRESH_COOKIE_NAME in request.cookies:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Untrusted origin",

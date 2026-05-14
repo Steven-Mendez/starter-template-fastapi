@@ -20,6 +20,16 @@ pytestmark = pytest.mark.e2e
 
 _RATE_LIMIT_ATTEMPTS_BEFORE_429 = 5
 
+# The auth e2e tests use ``TestClient``'s default ``http://testserver``
+# base URL. Real browsers always send the ``Origin`` header on
+# cross-origin XHR and on every POST; ``TestClient`` does not by
+# default. Cookie-authenticated refresh/logout endpoints enforce
+# Origin-or-Referer (CSRF mitigation), so the e2e tests send the same
+# header a real browser would. The test settings configure
+# ``cors_origins=["*"]`` so the wildcard branch accepts any value.
+_TESTSERVER_ORIGIN = "http://testserver"
+_COOKIE_ORIGIN_HEADERS = {"Origin": _TESTSERVER_ORIGIN}
+
 
 def _register(client: TestClient, email: str = "user@example.com") -> dict[str, Any]:
     """Register a regular user with a known password and return the response body."""
@@ -55,12 +65,12 @@ def test_register_login_me_refresh_logout_flow(client: TestClient) -> None:
     assert user["email"] == "user@example.com"
 
     old_refresh = client.cookies.get("refresh_token")
-    refreshed = client.post("/auth/refresh")
+    refreshed = client.post("/auth/refresh", headers=_COOKIE_ORIGIN_HEADERS)
     assert refreshed.status_code == 200
     assert refreshed.json()["access_token"] != token
     assert client.cookies.get("refresh_token") != old_refresh
 
-    logout = client.post("/auth/logout")
+    logout = client.post("/auth/logout", headers=_COOKIE_ORIGIN_HEADERS)
     assert logout.status_code == 200
     assert client.cookies.get("refresh_token") is None
 
@@ -150,16 +160,22 @@ def test_refresh_reuse_revokes_family(client: TestClient) -> None:
     old_refresh = client.cookies.get("refresh_token")
     assert old_refresh is not None
 
-    first_refresh = client.post("/auth/refresh")
+    first_refresh = client.post("/auth/refresh", headers=_COOKIE_ORIGIN_HEADERS)
     assert first_refresh.status_code == 200
     new_refresh = client.cookies.get("refresh_token")
     assert new_refresh is not None
 
-    reused = client.post("/auth/refresh", cookies={"refresh_token": old_refresh})
+    reused = client.post(
+        "/auth/refresh",
+        cookies={"refresh_token": old_refresh},
+        headers=_COOKIE_ORIGIN_HEADERS,
+    )
     assert reused.status_code == 401
 
     family_revoked = client.post(
-        "/auth/refresh", cookies={"refresh_token": new_refresh}
+        "/auth/refresh",
+        cookies={"refresh_token": new_refresh},
+        headers=_COOKIE_ORIGIN_HEADERS,
     )
     assert family_revoked.status_code == 401
 
@@ -173,7 +189,7 @@ def test_logout_all_revokes_all_sessions(client: TestClient) -> None:
     )
     assert response.status_code == 200
 
-    refresh = client.post("/auth/refresh")
+    refresh = client.post("/auth/refresh", headers=_COOKIE_ORIGIN_HEADERS)
     assert refresh.status_code == 401
 
 
@@ -304,12 +320,13 @@ def test_refresh_token_rejected_after_logout(client: TestClient) -> None:
     token_before_logout = client.cookies.get("refresh_token")
     assert token_before_logout is not None
 
-    logout_resp = client.post("/auth/logout")
+    logout_resp = client.post("/auth/logout", headers=_COOKIE_ORIGIN_HEADERS)
     assert logout_resp.status_code == 200
     assert client.cookies.get("refresh_token") is None
 
     post_logout_attempt = client.post(
         "/auth/refresh",
         cookies={"refresh_token": token_before_logout},
+        headers=_COOKIE_ORIGIN_HEADERS,
     )
     assert post_logout_attempt.status_code == 401

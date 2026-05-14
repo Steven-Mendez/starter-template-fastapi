@@ -6,7 +6,10 @@ import pytest
 
 from app_platform.config.settings import AppSettings
 from app_platform.shared.result import Err, Ok
-from features.authentication.application.crypto import PasswordService
+from features.authentication.application.crypto import (
+    FIXED_DUMMY_ARGON2_HASH,
+    PasswordService,
+)
 from features.authentication.application.errors import (
     InactiveUserError,
     InvalidCredentialsError,
@@ -119,9 +122,11 @@ def test_login_with_unknown_email_returns_invalid_credentials_and_runs_dummy_ver
     assert isinstance(result, Err)
     assert isinstance(result.error, InvalidCredentialsError)
     # The dummy hash path was invoked to keep timing parity with the
-    # wrong-password branch (no user-existence enumeration).
+    # wrong-password branch (no user-existence enumeration). The
+    # ``LoginUser`` now uses the module-level ``FIXED_DUMMY_ARGON2_HASH``
+    # constant from ``crypto.py`` rather than a per-instance dummy hash.
     assert any(
-        call_password == "AnyPass123!" and call_hash == login_use_case._dummy_hash
+        call_password == "AnyPass123!" and call_hash == FIXED_DUMMY_ARGON2_HASH
         for call_hash, call_password in verify_calls
     )
 

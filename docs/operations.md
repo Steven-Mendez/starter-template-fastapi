@@ -746,7 +746,7 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_AUTH_ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | JWT lifetime. |
 | `APP_AUTH_REFRESH_TOKEN_EXPIRE_DAYS` | `30` | Refresh-cookie lifetime. |
 | `APP_AUTH_COOKIE_SECURE` | `false` | **Must be `true` in production.** |
-| `APP_AUTH_COOKIE_SAMESITE` | `strict` | One of `lax`, `strict`, `none`. |
+| `APP_AUTH_COOKIE_SAMESITE` | `strict` | One of `lax`, `strict`, `none`. **Must be `lax` or `strict` in production** — `none` allows third-party contexts to carry the refresh cookie and pairs with cross-site POSTs that omit the `Origin` header. |
 | `APP_AUTH_PASSWORD_RESET_TOKEN_EXPIRE_MINUTES` | `30` | TTL for password-reset tokens. |
 | `APP_AUTH_EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES` | `1440` | TTL for verify-email tokens. |
 | `APP_AUTH_RATE_LIMIT_ENABLED` | `true` | Toggles auth-route rate limiting. |

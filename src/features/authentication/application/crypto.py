@@ -9,9 +9,23 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from typing import Final
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
+
+# Module-level fixed-cost Argon2id hash used on miss branches across the
+# authentication feature so the dominant wall-clock cost (~150 ms Argon2
+# verify) matches the hit branch. ``verify_password`` against any
+# candidate plaintext will return ``False`` while paying the full Argon2
+# cost — closing the timing channel that would otherwise let an attacker
+# enumerate registered emails. Generated with the default ``argon2-cffi``
+# parameters (m=65536, t=3, p=4).
+FIXED_DUMMY_ARGON2_HASH: Final[str] = (
+    "$argon2id$v=19$m=65536,t=3,p=4$"
+    "7+JuBWe0Hx8Q5eFgxf9fVQ$"
+    "ZCoHJmWona5G0bfuPaZxJ/q2Jht4yAxCSvoP0IDkQ4U"
+)
 
 
 class PasswordService:

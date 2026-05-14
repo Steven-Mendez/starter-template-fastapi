@@ -17,6 +17,12 @@ from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.e2e
 
+# Cookie-authenticated endpoints enforce Origin-or-Referer (CSRF
+# mitigation); ``TestClient`` does not send ``Origin`` by default, so
+# the test sends the same header a browser would on its cross-origin
+# POST.
+_COOKIE_ORIGIN_HEADERS = {"Origin": "http://testserver"}
+
 
 def _register(client: TestClient, email: str = "user@example.com") -> dict[str, Any]:
     response = client.post(
@@ -79,7 +85,9 @@ def test_refresh_after_self_deactivate_returns_401(client: TestClient) -> None:
     # when it observed the ``Max-Age=0`` Set-Cookie. This simulates a
     # client that retained the cookie through a stripping proxy.
     refresh_response = client.post(
-        "/auth/refresh", cookies={"refresh_token": captured_cookie}
+        "/auth/refresh",
+        cookies={"refresh_token": captured_cookie},
+        headers=_COOKIE_ORIGIN_HEADERS,
     )
     assert refresh_response.status_code == 401
     assert "access_token" not in refresh_response.text

@@ -131,6 +131,33 @@ def test_production_rejects_insecure_cookie(monkeypatch: pytest.MonkeyPatch) -> 
         AppSettings(_env_file=None)  # type: ignore[call-arg]
 
 
+def test_production_rejects_samesite_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``APP_AUTH_COOKIE_SAMESITE=none`` is refused in production.
+
+    SameSite=none allows third-party contexts to carry the refresh
+    cookie, which pairs with cross-site POSTs that omit the ``Origin``
+    header to bypass the cookie-origin check. The production validator
+    refuses ``none`` so the deployment must pick ``lax`` or ``strict``.
+    """
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_AUTH_COOKIE_SAMESITE", "none")
+    with pytest.raises(ValidationError, match="APP_AUTH_COOKIE_SAMESITE"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("value", ["lax", "strict"])
+def test_production_accepts_samesite_lax_or_strict(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """``lax`` and ``strict`` remain valid in production — only ``none`` is refused."""
+    for k, v in _VALID_PROD_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("APP_AUTH_COOKIE_SAMESITE", value)
+    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.auth_cookie_samesite == value
+
+
 def test_production_rejects_enabled_docs(monkeypatch: pytest.MonkeyPatch) -> None:
     for k, v in _VALID_PROD_ENV.items():
         monkeypatch.setenv(k, v)

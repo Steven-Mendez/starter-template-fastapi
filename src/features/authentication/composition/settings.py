@@ -91,6 +91,12 @@ class AuthenticationSettings:
             errors.append("APP_AUTH_JWT_AUDIENCE must be set in production")
         if not self.cookie_secure:
             errors.append("APP_AUTH_COOKIE_SECURE must be True in production")
+        if self.cookie_samesite == "none":
+            errors.append(
+                "APP_AUTH_COOKIE_SAMESITE must be 'lax' or 'strict' in production; "
+                "'none' allows third-party contexts to carry the refresh cookie "
+                "and pair with cross-site POSTs that omit the Origin header"
+            )
         if self.return_internal_tokens:
             errors.append("APP_AUTH_RETURN_INTERNAL_TOKENS must be False in production")
         if self.require_distributed_rate_limit and not self.redis_url:

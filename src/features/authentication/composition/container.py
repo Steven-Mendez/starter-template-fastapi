@@ -276,6 +276,7 @@ def build_auth_container(
         request_password_reset=RequestPasswordReset(
             _users=users,
             _repository=repo,
+            _password_service=password_service,
             _settings=settings,
         ),
         confirm_password_reset=ConfirmPasswordReset(
@@ -286,6 +287,7 @@ def build_auth_container(
         request_email_verification=RequestEmailVerification(
             _users=users,
             _repository=repo,
+            _password_service=password_service,
             _settings=settings,
         ),
         confirm_email_verification=ConfirmEmailVerification(
