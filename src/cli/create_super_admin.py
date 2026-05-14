@@ -140,6 +140,7 @@ def _build_containers() -> tuple[
         settings=settings,
         users=users.user_repository,
         outbox_uow=outbox.unit_of_work,
+        user_writer_factory=users.session_user_writer_factory(),
         repository=repository,
     )
     user_registrar = build_user_registrar_adapter(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import UUID
 
 from app_platform.shared.result import Err, Ok, Result
 from features.authentication.application.cache import PrincipalCachePort
@@ -14,16 +15,23 @@ from features.authentication.application.errors import (
 from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
-from features.users.application.ports.user_port import UserPort
 
 EMAIL_VERIFY_PURPOSE = "email_verify"
 
 
 @dataclass(slots=True)
 class ConfirmEmailVerification:
-    """Consume an email-verification token and mark the user as verified."""
+    """Consume an email-verification token and mark the user as verified.
 
-    _users: UserPort
+    Atomicity story: the token read uses ``SELECT FOR UPDATE`` so
+    concurrent submissions of the same token serialize on the
+    database row lock. The ``mark_user_verified``, ``mark_internal_token_used``,
+    and audit-event writes all commit in the same transaction; a
+    crash anywhere in the chain rolls back the verification flag
+    along with the token consumption so a subsequent retry sees the
+    pre-confirmation state.
+    """
+
     _repository: AuthRepositoryPort
     _cache: PrincipalCachePort | None = None
 
@@ -32,25 +40,35 @@ class ConfirmEmailVerification:
         *,
         token: str,
     ) -> Result[None, AuthError]:
-        record = self._repository.get_internal_token(
-            token_hash=hash_token(token), purpose=EMAIL_VERIFY_PURPOSE
-        )
-        if record is None or record.expires_at <= datetime.now(UTC):
-            return Err(InvalidTokenError("Invalid token"))
-        if record.used_at is not None:
-            # Distinguish "consumed" from "unknown / expired" so callers
-            # (and the integration suite that exercises re-issuance
-            # invalidation) can react to the two cases independently.
-            return Err(TokenAlreadyUsedError("Token already used"))
-        if record.user_id is None:
-            return Err(InvalidTokenError("Invalid token"))
+        user_id: UUID | None = None
+        error: InvalidTokenError | TokenAlreadyUsedError | None = None
 
-        self._users.mark_verified(record.user_id)
-        self._repository.mark_internal_token_used(record.id)
-        if self._cache is not None:
-            self._cache.invalidate_user(record.user_id)
-        self._repository.record_audit_event(
-            event_type="auth.email_verified",
-            user_id=record.user_id,
-        )
+        with self._repository.internal_token_transaction() as tx:
+            record = tx.get_internal_token_for_update(
+                token_hash=hash_token(token), purpose=EMAIL_VERIFY_PURPOSE
+            )
+            if record is None or record.expires_at <= datetime.now(UTC):
+                error = InvalidTokenError("Invalid token")
+            elif record.used_at is not None:
+                # Distinguish "consumed" from "unknown / expired" so callers
+                # (and the integration suite that exercises re-issuance
+                # invalidation) can react to the two cases independently.
+                error = TokenAlreadyUsedError("Token already used")
+            elif record.user_id is None:
+                error = InvalidTokenError("Invalid token")
+            else:
+                user_id = record.user_id
+                tx.mark_user_verified(user_id)
+                tx.mark_internal_token_used(record.id)
+                tx.record_audit_event(
+                    event_type="auth.email_verified",
+                    user_id=user_id,
+                )
+
+        if error is not None:
+            return Err(error)
+        # Cache invalidation runs outside the transaction so it only
+        # fires after a successful commit.
+        if user_id is not None and self._cache is not None:
+            self._cache.invalidate_user(user_id)
         return Ok(None)

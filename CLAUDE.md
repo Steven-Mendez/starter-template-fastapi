@@ -99,8 +99,13 @@ with an explicit Import Linter exception.
 
 ### Authentication feature (`src/features/authentication/`)
 
-Credential and session shaped only. Registration delegates user creation to
-`users` and writes the credential row in the same Unit of Work.
+Credential and session shaped only. Registration writes through a
+session-scoped `UserRegistrarPort` adapter inside the registration
+transaction so the `User` row, the `Credential` row, and the
+`auth.user_registered` audit event commit atomically; password-reset
+and email-verification confirmations follow the same single-transaction
+pattern (`internal_token_transaction()` covers the token consumption,
+credential upsert / `mark_user_verified`, and audit event).
 
 - `application/use_cases/auth/*` — `RegisterUser`, `LoginUser`, `RotateRefreshToken`, `LogoutUser`, `RequestPasswordReset`, `ConfirmPasswordReset`, `RequestEmailVerification`, `ConfirmEmailVerification`, `ResolvePrincipalFromAccessToken`
 - `application/use_cases/admin/*` — `ListAuditEvents` (the admin HTTP routes use the platform `require_authorization` dependency to gate on `system:main`)

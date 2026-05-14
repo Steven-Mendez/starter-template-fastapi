@@ -42,8 +42,10 @@ def users() -> FakeUserPort:
 
 
 @pytest.fixture
-def repository() -> FakeAuthRepository:
-    return FakeAuthRepository()
+def repository(users: FakeUserPort) -> FakeAuthRepository:
+    repo = FakeAuthRepository()
+    repo.attach_user_writer(users)
+    return repo
 
 
 @pytest.fixture
@@ -60,11 +62,8 @@ def issued_refresh_token(
 ) -> str:
     """Register and log in a user; return the raw refresh token."""
     register = RegisterUser(
-        _users=users,
-        _credentials=repository,
-        _audit=repository,
+        _repository=repository,
         _password_service=password_service,
-        _settings=settings,
     )
     register.execute(email=EMAIL, password=PASSWORD)
 

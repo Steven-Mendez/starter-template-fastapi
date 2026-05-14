@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: User registration is atomic
 
@@ -44,8 +44,6 @@ The `ConfirmEmailVerification` use case SHALL read the verification token with a
 - **THEN** exactly one thread receives `Ok(...)`; the other receives an `Err` indicating the token was already used
 - **AND** exactly one `auth.email_verified` audit event is recorded
 - **AND** `u.is_verified` is `true`
-
-## ADDED Requirements
 
 ### Requirement: AuthRepositoryPort exposes a registration transaction
 

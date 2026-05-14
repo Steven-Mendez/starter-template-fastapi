@@ -24,6 +24,7 @@ from features.authentication.application.errors import TokenAlreadyUsedError
 from features.authentication.composition.container import build_auth_container
 from features.outbox.tests.fakes.fake_outbox import InlineDispatchOutboxUnitOfWork
 from features.users.adapters.outbound.persistence.sqlmodel.repository import (
+    SessionSQLModelUserRepository,
     SQLModelUserRepository,
 )
 
@@ -59,6 +60,9 @@ def test_third_password_reset_invalidates_prior_two(
         settings=settings,
         users=users,
         outbox_uow=InlineDispatchOutboxUnitOfWork(dispatcher=lambda _n, _p: None),
+        user_writer_factory=lambda session: SessionSQLModelUserRepository(
+            session=session
+        ),
         repository=postgres_auth_repository,
     )
     try:
@@ -117,6 +121,9 @@ def test_third_email_verification_invalidates_prior_two(
         settings=settings,
         users=users,
         outbox_uow=InlineDispatchOutboxUnitOfWork(dispatcher=lambda _n, _p: None),
+        user_writer_factory=lambda session: SessionSQLModelUserRepository(
+            session=session
+        ),
         repository=postgres_auth_repository,
     )
     try:

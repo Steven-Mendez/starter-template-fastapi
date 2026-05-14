@@ -301,12 +301,21 @@ class SessionSQLModelUserRepository:
         return _to_domain(row) if row else None
 
     def create(self, *, email: str) -> Result[User, UserError]:
+        # Use a SAVEPOINT so an integrity violation rolls back only the
+        # failed insert without poisoning the outer transaction. The
+        # auth feature's ``register_user_transaction`` calls this inside
+        # a wrapping session, so a plain ``IntegrityError`` would leave
+        # the session in a "rolled back" state and the surrounding
+        # ``commit()`` would explode.
+        savepoint = self.session.begin_nested()
         row = UserTable(email=email.lower())
         self.session.add(row)
         try:
             self.session.flush()
         except IntegrityError:
+            savepoint.rollback()
             return Err(UserAlreadyExistsError())
+        savepoint.commit()
         return Ok(_to_domain(row))
 
     def list_paginated(

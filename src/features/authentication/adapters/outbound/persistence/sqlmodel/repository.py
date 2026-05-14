@@ -8,11 +8,11 @@ module never imports ``UserTable``.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import TracebackType
-from typing import Any, Self, cast, overload
+from typing import Any, Protocol, Self, cast, overload
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -20,6 +20,7 @@ from sqlalchemy import update
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app_platform.shared.result import Result
 from features.authentication.adapters.outbound.persistence.sqlmodel.models import (
     AuthAuditEventTable,
     AuthInternalTokenTable,
@@ -35,6 +36,32 @@ from features.authentication.domain.models import (
 )
 from features.outbox.application.ports.outbox_port import OutboxPort
 from features.outbox.application.ports.outbox_uow_port import OutboxUnitOfWorkPort
+from features.users.application.errors import UserError
+from features.users.domain.user import User
+
+
+class _SessionUserWriter(Protocol):
+    """Session-bound user writer the auth UoW depends on.
+
+    The composition root supplies a factory that constructs the
+    session-bound users adapter (currently
+    ``SessionSQLModelUserRepository``) and binds it to the
+    surrounding registration/internal-token transaction. The factory
+    callable accepts the active SQLModel ``Session`` and returns an
+    object satisfying this Protocol — kept narrow so the auth adapter
+    never imports users' adapter module directly (the Import Linter
+    contract forbids ``features.authentication.adapters`` →
+    ``features.users.adapters``).
+    """
+
+    def create(self, *, email: str) -> Result[User, UserError]: ...
+
+    def mark_verified(self, user_id: UUID) -> None: ...
+
+    def bump_authz_version(self, user_id: UUID) -> None: ...
+
+
+SessionUserWriterFactory = Callable[[Session], _SessionUserWriter]
 
 
 @overload
@@ -189,10 +216,24 @@ class _SessionRefreshTokenTransaction:
 
 
 class _SessionInternalTokenTransaction:
-    """Session-bound internal-token operations used inside one DB transaction."""
+    """Session-bound internal-token operations used inside one DB transaction.
 
-    def __init__(self, session: Session) -> None:
+    Covers the full state change for confirm-style use cases:
+    token consumption, refresh-token revocation, audit, and the
+    user-facing transitions (``upsert_credential`` for password reset,
+    ``mark_user_verified`` for email verification, ``bump_user_authz_version``
+    so cached principals dissolve in the same transaction). The
+    user-row writes are delegated to the session-bound ``UserPort``
+    adapter the composition root passes in via ``user_writer_factory``.
+    """
+
+    def __init__(
+        self,
+        session: Session,
+        user_writer: _SessionUserWriter | None = None,
+    ) -> None:
         self._session = session
+        self._user_writer = user_writer
 
     def get_internal_token_for_update(
         self, *, token_hash: str, purpose: str
@@ -225,6 +266,130 @@ class _SessionInternalTokenTransaction:
         for token in tokens:
             token.revoked_at = now
             self._session.add(token)
+
+    def upsert_credential(
+        self, *, user_id: UUID, algorithm: str, hash: str
+    ) -> Credential:
+        row = self._session.exec(
+            select(CredentialTable)
+            .where(
+                CredentialTable.user_id == user_id,
+                CredentialTable.algorithm == algorithm,
+            )
+            .with_for_update()
+        ).one_or_none()
+        now = utc_now()
+        if row is None:
+            row = CredentialTable(
+                user_id=user_id,
+                algorithm=algorithm,
+                hash=hash,
+                last_changed_at=now,
+                created_at=now,
+            )
+            self._session.add(row)
+        else:
+            row.hash = hash
+            row.last_changed_at = now
+            self._session.add(row)
+        self._session.flush()
+        self._session.refresh(row)
+        return _to_credential(row)
+
+    def mark_user_verified(self, user_id: UUID) -> None:
+        if self._user_writer is None:
+            raise RuntimeError(
+                "internal_token_transaction was opened without a "
+                "user-writer factory; mark_user_verified is unavailable. "
+                "The composition root must pass user_writer_factory= to "
+                "SQLModelAuthRepository so the user row update participates "
+                "in the same transaction."
+            )
+        self._user_writer.mark_verified(user_id)
+
+    def bump_user_authz_version(self, user_id: UUID) -> None:
+        if self._user_writer is None:
+            raise RuntimeError(
+                "internal_token_transaction was opened without a "
+                "user-writer factory; bump_user_authz_version is "
+                "unavailable. The composition root must pass "
+                "user_writer_factory= to SQLModelAuthRepository so the "
+                "user row update participates in the same transaction."
+            )
+        self._user_writer.bump_authz_version(user_id)
+
+    def record_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: UUID | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self._session.add(
+            AuthAuditEventTable(
+                user_id=user_id,
+                event_type=event_type,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                event_metadata=metadata or {},
+            )
+        )
+
+
+class _SessionRegisterUserTransaction:
+    """Session-bound writer for the cross-feature registration UoW.
+
+    Bundles the three writes registration must commit atomically:
+    the ``User`` row (delegated to the session-bound ``UserPort``
+    adapter the composition root supplies), the ``Credential`` row
+    in authentication's own table, and the ``auth.user_registered``
+    audit event. The surrounding ``register_user_transaction()``
+    context manager owns commit/rollback; methods here only stage
+    on the bound session.
+    """
+
+    def __init__(self, session: Session, user_writer: _SessionUserWriter) -> None:
+        self._session = session
+        self._user_writer = user_writer
+
+    def create_user(self, *, email: str) -> Result[User, UserError]:
+        return self._user_writer.create(email=email)
+
+    def upsert_credential(
+        self, *, user_id: UUID, algorithm: str, hash: str
+    ) -> Credential:
+        # Reuse the in-transaction credential write semantics: SELECT
+        # FOR UPDATE on the existing row to avoid a race with a
+        # concurrent registration for the same user (no such case
+        # exists today, but the lock is cheap and the semantics
+        # match the password-reset path exactly).
+        row = self._session.exec(
+            select(CredentialTable)
+            .where(
+                CredentialTable.user_id == user_id,
+                CredentialTable.algorithm == algorithm,
+            )
+            .with_for_update()
+        ).one_or_none()
+        now = utc_now()
+        if row is None:
+            row = CredentialTable(
+                user_id=user_id,
+                algorithm=algorithm,
+                hash=hash,
+                last_changed_at=now,
+                created_at=now,
+            )
+            self._session.add(row)
+        else:
+            row.hash = hash
+            row.last_changed_at = now
+            self._session.add(row)
+        self._session.flush()
+        self._session.refresh(row)
+        return _to_credential(row)
 
     def record_audit_event(
         self,
@@ -346,6 +511,7 @@ class SQLModelAuthRepository:
         pool_recycle: int = 1800,
         pool_pre_ping: bool = True,
         outbox_uow: OutboxUnitOfWorkPort | None = None,
+        user_writer_factory: SessionUserWriterFactory | None = None,
     ) -> None:
         if not database_url.startswith("postgresql"):
             msg = "SQLModelAuthRepository supports PostgreSQL DSNs only"
@@ -363,6 +529,13 @@ class SQLModelAuthRepository:
         # existing tests that do not exercise the outbox path can still
         # construct the repository with just a DSN.
         self._outbox_uow: OutboxUnitOfWorkPort | None = outbox_uow
+        # ``user_writer_factory`` is contributed by the composition root
+        # and binds a session-scoped ``UserPort`` adapter to whatever
+        # session the auth UoW opens. Keeps the cross-feature import
+        # boundary intact (``authentication.adapters`` never imports
+        # ``users.adapters`` directly; the factory is passed in as a
+        # Callable shaped by the local ``_SessionUserWriter`` Protocol).
+        self._user_writer_factory: SessionUserWriterFactory | None = user_writer_factory
         if create_schema:
             SQLModel.metadata.create_all(self._engine)
 
@@ -373,11 +546,13 @@ class SQLModelAuthRepository:
         *,
         create_schema: bool = False,
         outbox_uow: OutboxUnitOfWorkPort | None = None,
+        user_writer_factory: SessionUserWriterFactory | None = None,
     ) -> SQLModelAuthRepository:
         instance = cls.__new__(cls)
         instance._engine = engine
         instance._closed = False
         instance._outbox_uow = outbox_uow
+        instance._user_writer_factory = user_writer_factory
         if create_schema:
             SQLModel.metadata.create_all(engine)
         return instance
@@ -440,8 +615,41 @@ class SQLModelAuthRepository:
     def internal_token_transaction(self) -> Iterator[_SessionInternalTokenTransaction]:
         self._ensure_open()
         with Session(self._engine, expire_on_commit=False) as session:
+            user_writer: _SessionUserWriter | None = None
+            if self._user_writer_factory is not None:
+                user_writer = self._user_writer_factory(session)
             try:
-                yield _SessionInternalTokenTransaction(session)
+                yield _SessionInternalTokenTransaction(session, user_writer)
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    @contextmanager
+    def register_user_transaction(
+        self,
+    ) -> Iterator[_SessionRegisterUserTransaction]:
+        """Open a write transaction covering the three registration writes.
+
+        Yields a writer with ``create_user``, ``upsert_credential``,
+        and ``record_audit_event`` — all staged on a single session
+        that commits on normal exit and rolls back on exception. The
+        ``create_user`` call is delegated to the session-bound
+        ``UserPort`` adapter the composition root supplied via
+        ``user_writer_factory``.
+        """
+        self._ensure_open()
+        if self._user_writer_factory is None:
+            raise RuntimeError(
+                "SQLModelAuthRepository.register_user_transaction was "
+                "called before a SessionUserWriterFactory was registered. "
+                "The composition root must pass ``user_writer_factory=`` "
+                "to the constructor or to ``from_engine(...)``."
+            )
+        with Session(self._engine, expire_on_commit=False) as session:
+            user_writer = self._user_writer_factory(session)
+            try:
+                yield _SessionRegisterUserTransaction(session, user_writer)
                 session.commit()
             except Exception:
                 session.rollback()

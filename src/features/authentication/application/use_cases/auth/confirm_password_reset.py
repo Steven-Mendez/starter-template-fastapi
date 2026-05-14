@@ -15,7 +15,6 @@ from features.authentication.application.errors import (
 from features.authentication.application.ports.outbound.auth_repository import (
     AuthRepositoryPort,
 )
-from features.users.application.ports.user_port import UserPort
 
 PASSWORD_RESET_PURPOSE = "password_reset"  # noqa: S105 — token purpose tag, not a credential
 
@@ -24,16 +23,15 @@ PASSWORD_RESET_PURPOSE = "password_reset"  # noqa: S105 — token purpose tag, n
 class ConfirmPasswordReset:
     """Apply a new password and invalidate all existing sessions.
 
-    Atomicity story: token consumption + refresh-token revocation share a
-    single transaction guarded by ``SELECT FOR UPDATE`` on the token row,
-    so concurrent confirmations serialize. The password update itself
-    runs in a separate users-feature transaction *before* the token is
-    marked used; a crash between those two commits is benign because the
-    new password is idempotent and the token row's ``FOR UPDATE`` lock
-    still excludes other consumers until the request finishes.
+    Atomicity story: credential upsert, reset-token consumption,
+    refresh-token revocation, authz-version bump, and audit event
+    all commit in a single transaction guarded by ``SELECT FOR
+    UPDATE`` on the token row. A crash anywhere in the chain rolls
+    back the credential update along with the token-consumption
+    write, leaving the user's password unchanged and the token
+    still consumable.
     """
 
-    _users: UserPort
     _repository: AuthRepositoryPort
     _password_service: PasswordService
     _cache: PrincipalCachePort | None = None
@@ -46,6 +44,11 @@ class ConfirmPasswordReset:
     ) -> Result[None, AuthError]:
         user_id: UUID | None = None
         error: InvalidTokenError | TokenAlreadyUsedError | None = None
+        # Hash the new password before opening the transaction: Argon2
+        # is CPU-bound and holding the FOR UPDATE lock across the hash
+        # would serialize concurrent confirmations on the lock instead
+        # of on the database snapshot.
+        new_hash = self._password_service.hash_password(new_password)
 
         with self._repository.internal_token_transaction() as tx:
             record = tx.get_internal_token_for_update(
@@ -59,18 +62,12 @@ class ConfirmPasswordReset:
                 error = InvalidTokenError("Invalid token")
             else:
                 user_id = record.user_id
-                # Credential write goes to authentication's own table.
-                # Cache invalidation still flows through users via
-                # ``bump_authz_version``. The FOR UPDATE lock on the
-                # token row keeps concurrent confirmations from
-                # interleaving even though both writes commit in their
-                # own transactions.
-                self._repository.upsert_credential(
+                tx.upsert_credential(
                     user_id=user_id,
                     algorithm="argon2",
-                    hash=self._password_service.hash_password(new_password),
+                    hash=new_hash,
                 )
-                self._users.bump_authz_version(user_id)
+                tx.bump_user_authz_version(user_id)
                 tx.mark_internal_token_used(record.id)
                 tx.revoke_user_refresh_tokens(user_id)
                 tx.record_audit_event(

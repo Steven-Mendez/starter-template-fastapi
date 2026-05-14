@@ -230,6 +230,7 @@ def _build_app(
         settings=settings,
         users=users.user_repository,
         outbox_uow=outbox_uow,
+        user_writer_factory=users.session_user_writer_factory(),
         repository=repository,
     )
 

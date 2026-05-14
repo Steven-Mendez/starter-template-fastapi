@@ -6,15 +6,18 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
+from app_platform.shared.result import Result
 from features.authentication.domain.models import (
     AuditEvent,
     Credential,
     InternalToken,
     RefreshToken,
 )
+from features.users.application.errors import UserError
+from features.users.domain.user import User
 
 
 def _aware_now() -> datetime:
@@ -36,12 +39,28 @@ class FakeAuthRepository:
 
     def __init__(self) -> None:
         self._s = _Stores()
+        # Optional session-scoped user writer the in-transaction wrappers
+        # delegate to (``upsert_credential`` and ``mark_user_verified``
+        # for confirm-style use cases; ``create_user`` for registration).
+        # Tests that exercise the cross-feature transactional path attach
+        # a ``FakeUserPort`` here; tests that only touch the auth half
+        # leave it as ``None``.
+        self._user_writer: _FakeUserWriter | None = None
 
     def reset(self) -> None:
         self._s = _Stores()
 
     def close(self) -> None:
         pass
+
+    def attach_user_writer(self, writer: _FakeUserWriter) -> None:
+        """Bind a ``UserPort``-shaped writer so cross-feature UoWs work.
+
+        The real SQLModel adapter receives this binding via a
+        ``user_writer_factory`` argument; the fake takes the writer
+        directly because there is no session to scope it to.
+        """
+        self._user_writer = writer
 
     # ── Refresh token operations ─────────────────────────────────────────────
 
@@ -107,8 +126,68 @@ class FakeAuthRepository:
         yield self
 
     @contextmanager
-    def internal_token_transaction(self) -> Iterator[FakeAuthRepository]:
-        yield self
+    def internal_token_transaction(self) -> Iterator[_FakeInternalTokenTx]:
+        """Yield a wrapper that bundles token + credential + user-row writes.
+
+        The real SQLModel adapter exposes ``upsert_credential``,
+        ``mark_user_verified``, and ``bump_user_authz_version`` on the
+        in-transaction writer so confirm-style use cases run their full
+        state change inside one transaction. The fake mirrors that
+        surface by delegating to the attached ``user_writer`` for the
+        user-row methods (``mark_verified`` / ``bump_authz_version``)
+        and to the repository's own dict-backed stores for everything
+        else.
+
+        Snapshots both stores on entry and restores them on exception
+        so confirm-style unit tests can assert rollback semantics
+        without a real DB.
+        """
+        auth_snapshot = _snapshot_stores(self._s)
+        user_snapshot = (
+            _snapshot_user_writer(self._user_writer)
+            if self._user_writer is not None
+            else None
+        )
+        try:
+            yield _FakeInternalTokenTx(self, self._user_writer)
+        except BaseException:
+            _restore_stores(self._s, auth_snapshot)
+            if self._user_writer is not None and user_snapshot is not None:
+                _restore_user_writer(self._user_writer, user_snapshot)
+            raise
+
+    @contextmanager
+    def register_user_transaction(self) -> Iterator[_FakeRegisterUserTx]:
+        """Yield a writer covering the three registration writes.
+
+        Mirrors the SQLModel adapter's ``register_user_transaction``:
+        the writer exposes ``create_user``, ``upsert_credential``, and
+        ``record_audit_event`` on the same logical transaction.
+        ``create_user`` is delegated to the attached user writer.
+
+        On exception the fake snapshots both the auth-side stores and
+        the attached user writer's internal state and restores them so
+        the unit tests can observe transactional rollback semantics
+        without a real DB. The snapshot is shallow but adequate for
+        the dict-backed fakes (``FakeAuthRepository`` /
+        ``FakeUserPort``) used in the auth unit suite.
+        """
+        if self._user_writer is None:
+            raise RuntimeError(
+                "FakeAuthRepository.register_user_transaction was called "
+                "without an attached user writer. Call "
+                "attach_user_writer(...) with a FakeUserPort (or any "
+                "object satisfying _FakeUserWriter) before exercising "
+                "the registration use case."
+            )
+        auth_snapshot = _snapshot_stores(self._s)
+        user_snapshot = _snapshot_user_writer(self._user_writer)
+        try:
+            yield _FakeRegisterUserTx(self, self._user_writer)
+        except BaseException:
+            _restore_stores(self._s, auth_snapshot)
+            _restore_user_writer(self._user_writer, user_snapshot)
+            raise
 
     @contextmanager
     def issue_internal_token_transaction(self) -> Iterator[_FakeIssueTokenTx]:
@@ -275,6 +354,191 @@ def _replace(obj: Any, **changes: Any) -> Any:
     from dataclasses import replace
 
     return replace(obj, **changes)
+
+
+def _snapshot_stores(stores: _Stores) -> _Stores:
+    """Shallow-copy each container inside ``stores`` for rollback semantics.
+
+    The stored values (``RefreshToken`` / ``InternalToken`` / ``Credential`` /
+    ``AuditEvent``) are frozen dataclasses so a shallow copy of each dict
+    or list is sufficient — the values are immutable.
+    """
+    return _Stores(
+        refresh_tokens=dict(stores.refresh_tokens),
+        refresh_token_by_hash=dict(stores.refresh_token_by_hash),
+        internal_tokens=dict(stores.internal_tokens),
+        internal_token_by_hash=dict(stores.internal_token_by_hash),
+        audit_events=list(stores.audit_events),
+        credentials=dict(stores.credentials),
+    )
+
+
+def _restore_stores(target: _Stores, snapshot: _Stores) -> None:
+    """Mutate ``target`` in place to match ``snapshot``.
+
+    Used by the rollback paths instead of rebinding ``self._s`` so any
+    other reference (e.g. a wrapping fake that shares the same
+    ``_Stores`` instance) sees the rollback. The frozen-dataclass
+    values inside the containers don't need to be copied — only the
+    containers themselves.
+    """
+    target.refresh_tokens.clear()
+    target.refresh_tokens.update(snapshot.refresh_tokens)
+    target.refresh_token_by_hash.clear()
+    target.refresh_token_by_hash.update(snapshot.refresh_token_by_hash)
+    target.internal_tokens.clear()
+    target.internal_tokens.update(snapshot.internal_tokens)
+    target.internal_token_by_hash.clear()
+    target.internal_token_by_hash.update(snapshot.internal_token_by_hash)
+    target.audit_events[:] = snapshot.audit_events
+    target.credentials.clear()
+    target.credentials.update(snapshot.credentials)
+
+
+def _snapshot_user_writer(writer: Any) -> Any:
+    """Capture the internal state of a dict-backed user writer.
+
+    The auth unit suite uses ``FakeUserPort`` which keeps state in a
+    private ``_s`` ``_Stores`` mirror. The snapshot is a tuple of
+    shallow-copied dicts; ``_restore_user_writer`` swaps them back on
+    rollback. Writers that do not expose ``_s`` (custom test doubles)
+    are recorded as ``None`` and the restore call is a no-op.
+    """
+    inner = getattr(writer, "_s", None)
+    if inner is None:
+        return None
+    return (dict(inner.users), dict(inner.users_by_email))
+
+
+def _restore_user_writer(writer: Any, snapshot: Any) -> None:
+    inner = getattr(writer, "_s", None)
+    if inner is None or snapshot is None:
+        return
+    users_dict, users_by_email = snapshot
+    inner.users.clear()
+    inner.users.update(users_dict)
+    inner.users_by_email.clear()
+    inner.users_by_email.update(users_by_email)
+
+
+@runtime_checkable
+class _FakeUserWriter(Protocol):
+    """Structural type for the session-bound user writer the fake calls.
+
+    Any object exposing ``create(email=...)``, ``mark_verified(user_id)``,
+    and ``bump_authz_version(user_id)`` satisfies the contract.
+    ``FakeUserPort`` already does, and the real
+    ``SessionSQLModelUserRepository`` likewise.
+    """
+
+    def create(self, *, email: str) -> Result[User, UserError]: ...
+
+    def mark_verified(self, user_id: UUID) -> None: ...
+
+    def bump_authz_version(self, user_id: UUID) -> None: ...
+
+
+class _FakeRegisterUserTx:
+    """In-memory stand-in for the session-scoped registration writer."""
+
+    def __init__(self, repo: FakeAuthRepository, user_writer: _FakeUserWriter) -> None:
+        self._repo = repo
+        self._user_writer = user_writer
+
+    def create_user(self, *, email: str) -> Result[User, UserError]:
+        return self._user_writer.create(email=email)
+
+    def upsert_credential(
+        self, *, user_id: UUID, algorithm: str, hash: str
+    ) -> Credential:
+        return self._repo.upsert_credential(
+            user_id=user_id, algorithm=algorithm, hash=hash
+        )
+
+    def record_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: UUID | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self._repo.record_audit_event(
+            event_type=event_type,
+            user_id=user_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            metadata=metadata,
+        )
+
+
+class _FakeInternalTokenTx:
+    """In-memory stand-in for the session-scoped internal-token writer."""
+
+    def __init__(
+        self,
+        repo: FakeAuthRepository,
+        user_writer: _FakeUserWriter | None,
+    ) -> None:
+        self._repo = repo
+        self._user_writer = user_writer
+
+    def get_internal_token_for_update(
+        self, *, token_hash: str, purpose: str
+    ) -> InternalToken | None:
+        return self._repo.get_internal_token_for_update(
+            token_hash=token_hash, purpose=purpose
+        )
+
+    def mark_internal_token_used(self, token_id: UUID) -> None:
+        self._repo.mark_internal_token_used(token_id)
+
+    def revoke_user_refresh_tokens(self, user_id: UUID) -> None:
+        self._repo.revoke_user_refresh_tokens(user_id)
+
+    def upsert_credential(
+        self, *, user_id: UUID, algorithm: str, hash: str
+    ) -> Credential:
+        return self._repo.upsert_credential(
+            user_id=user_id, algorithm=algorithm, hash=hash
+        )
+
+    def mark_user_verified(self, user_id: UUID) -> None:
+        if self._user_writer is None:
+            raise RuntimeError(
+                "FakeAuthRepository.internal_token_transaction was opened "
+                "without an attached user writer; mark_user_verified is "
+                "unavailable. Call attach_user_writer(...) on the fake "
+                "before exercising confirm-style use cases."
+            )
+        self._user_writer.mark_verified(user_id)
+
+    def bump_user_authz_version(self, user_id: UUID) -> None:
+        if self._user_writer is None:
+            raise RuntimeError(
+                "FakeAuthRepository.internal_token_transaction was opened "
+                "without an attached user writer; bump_user_authz_version "
+                "is unavailable. Call attach_user_writer(...) on the fake."
+            )
+        self._user_writer.bump_authz_version(user_id)
+
+    def record_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: UUID | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self._repo.record_audit_event(
+            event_type=event_type,
+            user_id=user_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            metadata=metadata,
+        )
 
 
 class _FakeIssueTokenTx:

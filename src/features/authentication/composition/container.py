@@ -24,7 +24,14 @@ from features.authentication.adapters.outbound.audit import SQLModelAuditAdapter
 from features.authentication.adapters.outbound.credential_writer import (
     SQLModelCredentialWriterAdapter,
 )
+
+# ``SessionUserWriterFactory`` is the Callable seam the auth repository
+# uses to bind a session-scoped users adapter for the registration and
+# internal-token transactions. Imported from the adapter package (not
+# the deep submodule) so the Import Linter ``Outbox port consumers do
+# not import sqlmodel`` ignore covers the transitive edge.
 from features.authentication.adapters.outbound.persistence.sqlmodel import (
+    SessionUserWriterFactory,
     SQLModelAuthRepository,
 )
 from features.authentication.application.cache import (
@@ -114,6 +121,7 @@ def build_auth_container(
     settings: AppSettings,
     users: UserPort,
     outbox_uow: OutboxUnitOfWorkPort,
+    user_writer_factory: SessionUserWriterFactory | None = None,
     repository: SQLModelAuthRepository | None = None,
 ) -> AuthContainer:
     """Wire all auth dependencies and return a ready-to-use container.
@@ -123,6 +131,17 @@ def build_auth_container(
     token write, audit event, and outbox row commit atomically. The
     Protocol-shaped seam keeps the producer wiring free of
     ``sqlmodel.Session`` (enforced by an Import Linter contract).
+
+    ``user_writer_factory`` binds a session-scoped users adapter to the
+    surrounding registration and internal-token transactions so the
+    user row, credential row, and audit event commit atomically. The
+    factory accepts a SQLModel ``Session`` and returns an object
+    satisfying the auth adapter's ``_SessionUserWriter`` Protocol (the
+    users feature's ``SessionSQLModelUserRepository`` does). When
+    ``None`` is passed, the repository falls back to the engine-owning
+    paths used before this seam landed — kept for the integration
+    tests that construct an auth-only container without the users
+    adapter wired in.
     """
     repo = repository or SQLModelAuthRepository(
         settings.postgresql_dsn,
@@ -132,15 +151,19 @@ def build_auth_container(
         pool_recycle=settings.db_pool_recycle_seconds,
         pool_pre_ping=settings.db_pool_pre_ping,
         outbox_uow=outbox_uow,
+        user_writer_factory=user_writer_factory,
     )
     # When the caller passes a pre-constructed repository (the typical
     # case: ``main.py`` builds the engine via the auth repo to share
     # one pool across features), the repository may not yet know about
-    # the outbox UoW. Attach it now via the private slot — the
-    # attribute is owned by this composition layer, not the test
-    # surface, so there is no setter on the public API.
+    # the outbox UoW or the user-writer factory. Attach them now via
+    # the private slots — the attributes are owned by this composition
+    # layer, not the test surface, so there is no setter on the public
+    # API.
     if repository is not None:
         repo._outbox_uow = outbox_uow
+        if user_writer_factory is not None:
+            repo._user_writer_factory = user_writer_factory
     password_service = PasswordService()
 
     if not settings.auth_jwt_secret_key:
@@ -183,11 +206,8 @@ def build_auth_container(
     )
 
     register_user = RegisterUser(
-        _users=users,
-        _credentials=repo,
-        _audit=repo,
+        _repository=repo,
         _password_service=password_service,
-        _settings=settings,
     )
 
     def _shutdown() -> None:
@@ -247,7 +267,6 @@ def build_auth_container(
             _settings=settings,
         ),
         confirm_password_reset=ConfirmPasswordReset(
-            _users=users,
             _repository=repo,
             _password_service=password_service,
             _cache=cache,
@@ -258,7 +277,6 @@ def build_auth_container(
             _settings=settings,
         ),
         confirm_email_verification=ConfirmEmailVerification(
-            _users=users,
             _repository=repo,
             _cache=cache,
         ),

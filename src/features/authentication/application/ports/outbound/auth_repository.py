@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
+from app_platform.shared.result import Result
 from features.authentication.domain.models import (
     AuditEvent,
     Credential,
@@ -20,6 +21,8 @@ from features.authentication.domain.models import (
     RefreshToken,
 )
 from features.outbox.application.ports.outbox_port import OutboxPort
+from features.users.application.errors import UserError
+from features.users.domain.user import User
 
 
 class AuthRefreshTokenTransactionPort(Protocol):
@@ -86,13 +89,53 @@ class AuthIssueTokenTransactionPort(Protocol):
 
 
 class AuthInternalTokenTransactionPort(Protocol):
-    """Transactional operations used to consume internal tokens atomically."""
+    """Transactional operations used to consume internal tokens atomically.
+
+    Covers token consumption, refresh-token revocation, audit, and the
+    user-facing state transitions (``upsert_credential`` for password
+    reset, ``mark_user_verified`` for email verification, plus
+    ``bump_user_authz_version`` so cached principals dissolve in the
+    same transaction). Use cases run their complete state change inside
+    one ``internal_token_transaction()`` context.
+    """
 
     def get_internal_token_for_update(
         self, *, token_hash: str, purpose: str
     ) -> InternalToken | None: ...
     def mark_internal_token_used(self, token_id: UUID) -> None: ...
     def revoke_user_refresh_tokens(self, user_id: UUID) -> None: ...
+    def upsert_credential(
+        self, *, user_id: UUID, algorithm: str, hash: str
+    ) -> Credential: ...
+    def mark_user_verified(self, user_id: UUID) -> None: ...
+    def bump_user_authz_version(self, user_id: UUID) -> None: ...
+    def record_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: UUID | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None: ...
+
+
+class AuthRegisterUserTransactionPort(Protocol):
+    """Transactional writer for the cross-feature registration use case.
+
+    Bundles the three writes registration must commit atomically: the
+    ``User`` row (staged on the session-scoped ``UserPort`` adapter
+    contributed by the users feature), the ``Credential`` row in
+    authentication's own ``credentials`` table, and the
+    ``auth.user_registered`` audit event. Methods stage on the same
+    session and never auto-commit; the surrounding context manager
+    commits on normal exit and rolls back on exception.
+    """
+
+    def create_user(self, *, email: str) -> Result[User, UserError]: ...
+    def upsert_credential(
+        self, *, user_id: UUID, algorithm: str, hash: str
+    ) -> Credential: ...
     def record_audit_event(
         self,
         *,
@@ -127,6 +170,9 @@ class TokenRepositoryPort(Protocol):
     def issue_internal_token_transaction(
         self,
     ) -> AbstractContextManager[AuthIssueTokenTransactionPort]: ...
+    def register_user_transaction(
+        self,
+    ) -> AbstractContextManager[AuthRegisterUserTransactionPort]: ...
     def revoke_refresh_token(
         self, token_id: UUID, *, replaced_by_token_id: UUID | None = None
     ) -> None: ...

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy.engine import Engine
+from sqlmodel import Session
 
 from features.background_jobs.application.ports.job_queue_port import JobQueuePort
 from features.file_storage.application.ports.file_storage_port import FileStoragePort
@@ -18,6 +19,7 @@ from features.users.adapters.outbound.file_storage_user_assets import (
     FileStorageUserAssetsAdapter,
 )
 from features.users.adapters.outbound.persistence.sqlmodel.repository import (
+    SessionSQLModelUserRepository,
     SQLModelUserRepository,
 )
 from features.users.adapters.outbound.user_registrar import (
@@ -121,6 +123,18 @@ class UsersContainer:
     def wire_job_queue(self, job_queue: JobQueuePort) -> None:
         """Inject the job-queue port the erase routes enqueue against."""
         self.job_queue = job_queue
+
+    def session_user_writer_factory(
+        self,
+    ) -> Callable[[Session], SessionSQLModelUserRepository]:
+        """Return a factory binding a session-scoped ``UserPort`` adapter.
+
+        Passed into the auth repository so the registration and
+        internal-token transactions write the ``User`` row on the
+        same session as their own writes. The composition root threads
+        this factory through to ``build_auth_container(...)``.
+        """
+        return lambda session: SessionSQLModelUserRepository(session=session)
 
     def wire_refresh_token_revoker(
         self, revoke_all_refresh_tokens: Callable[[UUID], None]

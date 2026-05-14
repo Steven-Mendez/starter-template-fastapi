@@ -229,6 +229,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             settings=app_settings,
             users=users.user_repository,
             outbox_uow=outbox.unit_of_work,
+            user_writer_factory=users.session_user_writer_factory(),
             repository=repository,
         )
 

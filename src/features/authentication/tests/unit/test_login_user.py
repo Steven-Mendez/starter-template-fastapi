@@ -33,13 +33,15 @@ def settings() -> AppSettings:
 
 
 @pytest.fixture
-def repository() -> FakeAuthRepository:
-    return FakeAuthRepository()
+def users() -> FakeUserPort:
+    return FakeUserPort()
 
 
 @pytest.fixture
-def users() -> FakeUserPort:
-    return FakeUserPort()
+def repository(users: FakeUserPort) -> FakeAuthRepository:
+    repo = FakeAuthRepository()
+    repo.attach_user_writer(users)
+    return repo
 
 
 @pytest.fixture
@@ -66,17 +68,12 @@ def login_use_case(
 
 @pytest.fixture
 def register_use_case(
-    users: FakeUserPort,
     repository: FakeAuthRepository,
     password_service: PasswordService,
-    settings: AppSettings,
 ) -> RegisterUser:
     return RegisterUser(
-        _users=users,
-        _credentials=repository,
-        _audit=repository,
+        _repository=repository,
         _password_service=password_service,
-        _settings=settings,
     )
 
 
