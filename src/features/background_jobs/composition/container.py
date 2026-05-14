@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
-import redis as redis_lib
-from arq import constants as arq_constants
+try:  # pragma: no cover - import-time only
+    import redis as redis_lib
+except ModuleNotFoundError:  # pragma: no cover - exercised in api-only images
+    redis_lib = None  # type: ignore[assignment]
 
-from features.background_jobs.adapters.outbound.arq import ArqJobQueueAdapter
 from features.background_jobs.adapters.outbound.in_process import (
     InProcessJobQueueAdapter,
 )
@@ -37,7 +39,7 @@ class JobsContainer:
 def build_jobs_container(
     settings: JobsSettings,
     *,
-    redis_client: redis_lib.Redis | None = None,
+    redis_client: Any = None,
 ) -> JobsContainer:
     """Build the background-jobs feature's container.
 
@@ -53,7 +55,7 @@ def build_jobs_container(
     registry = JobHandlerRegistry()
 
     port: JobQueuePort
-    owned_client: redis_lib.Redis | None = None
+    owned_client: Any = None
     if settings.backend == "in_process":
         port = InProcessJobQueueAdapter(registry=registry)
     elif settings.backend == "arq":
@@ -61,6 +63,18 @@ def build_jobs_container(
             raise RuntimeError(
                 "APP_JOBS_REDIS_URL is required when APP_JOBS_BACKEND=arq"
             )
+        if redis_lib is None:
+            raise RuntimeError(
+                "APP_JOBS_BACKEND=arq requires the `redis` package. "
+                "Install with: uv sync --extra worker"
+            )
+        # Lazy import — arq is in the worker-only extra.
+        from arq import constants as arq_constants
+
+        from features.background_jobs.adapters.outbound.arq import (
+            ArqJobQueueAdapter,
+        )
+
         client = redis_client
         if client is None:
             client = redis_lib.Redis.from_url(

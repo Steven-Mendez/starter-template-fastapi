@@ -11,9 +11,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
-import redis as redis_lib
+try:  # pragma: no cover - import-time only
+    import redis as redis_lib
+except ModuleNotFoundError:  # pragma: no cover - exercised in api-only images
+    redis_lib = None  # type: ignore[assignment]
 from fastapi import FastAPI
 
 from app_platform.api.app_factory import build_fastapi_app
@@ -297,8 +301,13 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
         # Shared Redis client used by health probes and other platform consumers.
         # Stored on app.state so it can be injected without coupling features.
-        redis_client: redis_lib.Redis | None = None
+        redis_client: Any = None
         if app_settings.auth_redis_url:
+            if redis_lib is None:
+                raise RuntimeError(
+                    "APP_AUTH_REDIS_URL is set but the `redis` package is not "
+                    "installed. Install with: uv sync --extra worker"
+                )
             # Bound socket waits so a slow or unreachable Redis cannot stall
             # health probes or rate-limit checks indefinitely. Liveness will
             # fail fast and report ``redis.ready=false`` instead.
