@@ -135,6 +135,18 @@ the same `Secret`/`ConfigMap` for `APP_*` environment variables:
   `terminationGracePeriodSeconds` ≥ the worker's longest job timeout so
   arq can drain in-flight jobs cleanly on SIGTERM.
 
+Both `Deployment`s SHOULD set `terminationGracePeriodSeconds: 35`
+(`APP_SHUTDOWN_TIMEOUT_SECONDS + 5` slack). The inner-process timeout
+fires first — uvicorn's `--timeout-graceful-shutdown 30` baked into the
+API image and the worker's `on_shutdown` budget — so the kubelet
+observes a clean exit instead of a SIGKILL after the grace period
+elapses. The 5 s slack covers shell startup, Python interpreter
+teardown, and any final OTel/Redis flushes.
+
+Override `APP_SHUTDOWN_TIMEOUT_SECONDS` (default `30.0`) when in-flight
+work needs a longer drain window; raise `terminationGracePeriodSeconds`
+to match (always `+5` slack).
+
 ## Deployment Checklist
 
 - Provision PostgreSQL.
@@ -664,6 +676,8 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_OTEL_SERVICE_NAME` | `starter-template-fastapi` | Resource attribute on emitted spans. |
 | `APP_OTEL_SERVICE_VERSION` | `0.1.0` | Resource attribute on emitted spans. |
 | `APP_METRICS_ENABLED` | `true` | Toggles the Prometheus `/metrics` endpoint. |
+| `APP_HEALTH_READY_PROBE_TIMEOUT_SECONDS` | `1.0` | Per-dependency timeout for `/health/ready`. |
+| `APP_SHUTDOWN_TIMEOUT_SECONDS` | `30.0` | Shared graceful-shutdown budget for the API and the worker. The API image bakes `uvicorn --timeout-graceful-shutdown 30`; the worker's `on_shutdown` waits for the in-flight relay tick up to this budget before disposing the engine and closing Redis. Set the K8s `terminationGracePeriodSeconds` to this value `+ 5 s` slack so the inner-process timeout fires first. |
 
 ### Authentication (`AuthenticationSettings`)
 

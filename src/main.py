@@ -22,9 +22,14 @@ from fastapi import FastAPI
 
 from app_platform.api.app_factory import build_fastapi_app
 from app_platform.api.dependencies.container import set_app_container
+from app_platform.api.lifespan import safe_finalize
 from app_platform.config.settings import AppSettings, get_settings
 from app_platform.observability import configure_logging
-from app_platform.observability.tracing import configure_tracing, instrument_fastapi_app
+from app_platform.observability.tracing import (
+    configure_tracing,
+    instrument_fastapi_app,
+    shutdown_tracing,
+)
 from features.authentication.adapters.outbound.auth_artifacts_cleanup import (
     SQLModelAuthArtifactsCleanupAdapter,
 )
@@ -336,17 +341,33 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             yield
         finally:
             # Drop readiness FIRST so in-flight kubelet probes return 503
-            # before we tear down dependent resources.
+            # before we tear down dependent resources. The kubelet's next
+            # probe fails immediately even if a slow finalizer step below
+            # takes seconds to complete, so traffic is shed early.
             lifespan_app.state.ready = False
             # Shutdown order is reverse of startup so dependent resources
-            # (e.g. connection pools) are closed after the services that use them.
-            outbox.shutdown()
-            jobs.shutdown()
-            users.shutdown()
-            authorization.shutdown()
-            auth.shutdown()
+            # (e.g. connection pools) are closed after the services that
+            # use them. Every finalizer is wrapped in ``safe_finalize``
+            # so a slow Redis (or any other dependency) does not skip
+            # ``engine.dispose()`` or the OTel ``provider.shutdown()``
+            # — both of which leak resources if they do not run.
+            safe_finalize("outbox", outbox.shutdown)
+            safe_finalize("jobs", jobs.shutdown)
+            safe_finalize("users", users.shutdown)
+            safe_finalize("authorization", authorization.shutdown)
+            # ``auth.shutdown()`` disposes the shared SQLAlchemy engine
+            # (the auth container owns it), which is exactly the
+            # ``engine.dispose()`` step the graceful-shutdown contract
+            # requires. Kept as the last engine-touching step so any
+            # earlier finalizer that still wants a session can run.
+            safe_finalize("auth", auth.shutdown)
             if redis_client is not None:
-                redis_client.close()
+                safe_finalize("redis", redis_client.close)
+            # Flush the OTel ``BatchSpanProcessor`` so spans buffered by
+            # the in-process queue are exported before the process exits.
+            # ``shutdown_tracing`` owns the module-level provider global
+            # and is idempotent — safe even when tracing was never wired.
+            safe_finalize("tracing", shutdown_tracing)
             lifespan_app.state.container = None
             lifespan_app.state.redis_client = None
             lifespan_app.state.health_db_engine = None

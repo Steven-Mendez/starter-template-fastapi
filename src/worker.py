@@ -12,8 +12,11 @@ reachable ``APP_JOBS_REDIS_URL``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any
 
 import redis as redis_lib
 from arq import run_worker
@@ -21,10 +24,11 @@ from arq.connections import RedisSettings
 from arq.cron import CronJob
 from arq.typing import StartupShutdown
 from arq.worker import Function
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 
 from app_platform.config.settings import AppSettings, get_settings
 from app_platform.observability import configure_logging
+from app_platform.observability.tracing import shutdown_tracing
 from features.authentication.adapters.outbound.auth_artifacts_cleanup import (
     SQLModelAuthArtifactsCleanupAdapter,
 )
@@ -59,6 +63,130 @@ from features.users.composition.jobs import (
 )
 
 _logger = logging.getLogger("worker")
+
+# Module-level handles used by ``on_shutdown``. They are populated by
+# ``build_worker_settings`` so the shutdown hook can reach the engine
+# and Redis client built during composition without arq's ``ctx`` dict
+# carrying typed references.
+#
+# ``_RELAY_TICK_IN_FLIGHT`` is set while a ``DispatchPending.execute``
+# tick is running; ``_RELAY_TICK_IDLE`` is its inverse — set whenever a
+# tick is NOT running. ``on_shutdown`` awaits the idle event (bounded
+# by ``APP_SHUTDOWN_TIMEOUT_SECONDS``) so an in-flight tick can commit
+# or roll back cleanly before the engine is disposed and the Redis
+# pool is closed. Two events instead of one ``while sleep`` poll keeps
+# the hot path off the event loop and satisfies ASYNC110.
+_RELAY_TICK_IN_FLIGHT: asyncio.Event | None = None
+_RELAY_TICK_IDLE: asyncio.Event | None = None
+_SHUTDOWN_TIMEOUT_SECONDS: float = 30.0
+_ENGINE: Engine | None = None
+_REDIS_CLIENT: Any | None = None
+
+
+def _ensure_relay_events() -> tuple[asyncio.Event, asyncio.Event]:
+    """Lazily build the relay-tick events on first use.
+
+    ``asyncio.Event`` no longer binds to a running loop in 3.10+, so it
+    is safe to construct at import time, but lazy construction lets the
+    test suite reset them between scenarios without touching globals
+    from the test side.
+    """
+    global _RELAY_TICK_IN_FLIGHT, _RELAY_TICK_IDLE  # noqa: PLW0603
+    if _RELAY_TICK_IN_FLIGHT is None:
+        _RELAY_TICK_IN_FLIGHT = asyncio.Event()
+    if _RELAY_TICK_IDLE is None:
+        _RELAY_TICK_IDLE = asyncio.Event()
+        _RELAY_TICK_IDLE.set()
+    return _RELAY_TICK_IN_FLIGHT, _RELAY_TICK_IDLE
+
+
+def _set_shutdown_handles(
+    *,
+    engine: Engine,
+    redis_client: Any,
+    shutdown_timeout_seconds: float,
+) -> None:
+    """Wire the engine, Redis client, and timeout into the shutdown path.
+
+    Extracted as a small helper so tests can clear the module-level
+    handles between runs (the arq worker entrypoint is a single process,
+    but the test suite invokes ``build_worker_settings`` multiple times).
+    """
+    global _ENGINE, _REDIS_CLIENT, _SHUTDOWN_TIMEOUT_SECONDS  # noqa: PLW0603
+    _ENGINE = engine
+    _REDIS_CLIENT = redis_client
+    _SHUTDOWN_TIMEOUT_SECONDS = shutdown_timeout_seconds
+
+
+def _wrap_relay_tick(
+    tick: Callable[[dict[str, Any]], Awaitable[None]],
+) -> Callable[[dict[str, Any]], Coroutine[Any, Any, None]]:
+    """Wrap the relay cron's coroutine so it marks itself in-flight.
+
+    The wrapper sets a module-level ``asyncio.Event`` while
+    ``DispatchPending.execute`` is running so ``on_shutdown`` can
+    ``await`` for the tick to finish (bounded by the shutdown timeout)
+    before disposing the engine. The original coroutine's return value
+    and exceptions pass through unchanged.
+    """
+
+    async def _instrumented(ctx: dict[str, Any]) -> None:
+        in_flight, idle = _ensure_relay_events()
+        in_flight.set()
+        idle.clear()
+        try:
+            await tick(ctx)
+        finally:
+            in_flight.clear()
+            idle.set()
+
+    return _instrumented
+
+
+async def _on_shutdown(ctx: dict[str, Any]) -> None:  # noqa: ARG001
+    """arq ``on_shutdown`` hook: drain the relay, dispose pools.
+
+    Each step is wrapped in ``try/except`` + warn log so a slow or
+    broken step (e.g. an unreachable Redis) does not prevent the
+    others. Order: wait for the in-flight relay tick to complete (so
+    a half-claimed outbox batch commits or rolls back cleanly),
+    dispose the SQLAlchemy engine, close the Redis client, and flush
+    the OTel ``BatchSpanProcessor``.
+    """
+    in_flight = _RELAY_TICK_IN_FLIGHT
+    idle = _RELAY_TICK_IDLE
+    if in_flight is not None and idle is not None and in_flight.is_set():
+        try:
+            await asyncio.wait_for(idle.wait(), _SHUTDOWN_TIMEOUT_SECONDS)
+        except TimeoutError:
+            _logger.warning(
+                "event=worker.shutdown.relay.tick_drain_timeout timeout_s=%.1f",
+                _SHUTDOWN_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            _logger.warning("event=worker.shutdown.relay.tick_drain_failed")
+
+    engine = _ENGINE
+    if engine is not None:
+        try:
+            engine.dispose()
+        except Exception:
+            _logger.warning("event=worker.shutdown.engine.dispose_failed")
+
+    redis_client = _REDIS_CLIENT
+    if redis_client is not None:
+        try:
+            close = redis_client.close
+            result = close()
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:
+            _logger.warning("event=worker.shutdown.redis.close_failed")
+
+    try:
+        shutdown_tracing()
+    except Exception:  # pragma: no cover — shutdown_tracing already swallows
+        _logger.warning("event=worker.shutdown.tracing.shutdown_failed")
 
 
 def _email_settings(app_settings: AppSettings) -> EmailSettings:
@@ -185,7 +313,37 @@ def build_worker_settings() -> type:
         dedupe=build_handler_dedupe(engine),
     )
     jobs.registry.seal()
-    cron_jobs = build_relay_cron_jobs(outbox)
+    cron_jobs = list(build_relay_cron_jobs(outbox))
+    # Instrument the ``outbox-relay`` cron so ``on_shutdown`` can wait
+    # for an in-flight ``DispatchPending.execute`` tick to finish
+    # (commit or rollback) before the engine is disposed. The prune
+    # cron is left alone — it runs once an hour, never overlaps a
+    # shutdown of practical interest, and its rows are bounded by the
+    # prune batch size.
+    for cron_job in cron_jobs:
+        if cron_job.name == "outbox-relay":
+            # arq's ``CronJob.coroutine`` is typed ``WorkerCoroutine``,
+            # an alias for a ``ctx -> Coroutine`` shape; our wrapper
+            # produces the structurally-equivalent ``Callable[[ctx],
+            # Awaitable[None]]``. The ``cast`` keeps mypy happy without
+            # importing arq's private alias.
+            from typing import cast
+
+            from arq.typing import WorkerCoroutine
+
+            cron_job.coroutine = cast(
+                "WorkerCoroutine", _wrap_relay_tick(cron_job.coroutine)
+            )
+
+    # Publish the engine, Redis client, and shutdown budget so the
+    # ``on_shutdown`` hook can dispose them. ``ctx`` is the only handle
+    # arq passes to ``on_shutdown``, and it carries dynamic state; the
+    # composition-time references live on the module instead.
+    _set_shutdown_handles(
+        engine=engine,
+        redis_client=redis_client,
+        shutdown_timeout_seconds=app_settings.shutdown_timeout_seconds,
+    )
 
     functions = build_arq_functions(
         jobs.registry,
@@ -214,6 +372,7 @@ def build_worker_settings() -> type:
     WorkerSettings.job_timeout = jobs_settings.job_timeout_seconds
     WorkerSettings.keep_result = jobs_settings.keep_result_seconds_default
     WorkerSettings.on_startup = job_handler_logging_startup
+    WorkerSettings.on_shutdown = _on_shutdown
     return WorkerSettings
 
 

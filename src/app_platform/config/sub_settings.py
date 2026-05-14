@@ -88,6 +88,7 @@ class ObservabilitySettings:
     otel_instrument_redis: bool
     metrics_enabled: bool
     health_ready_probe_timeout_seconds: float
+    shutdown_timeout_seconds: float
     auth_redis_url: str | None
     jobs_redis_url: str | None
     environment: str
@@ -105,6 +106,7 @@ class ObservabilitySettings:
             otel_instrument_redis=app.otel_instrument_redis,
             metrics_enabled=app.metrics_enabled,
             health_ready_probe_timeout_seconds=app.health_ready_probe_timeout_seconds,
+            shutdown_timeout_seconds=app.shutdown_timeout_seconds,
             auth_redis_url=app.auth_redis_url,
             jobs_redis_url=app.jobs_redis_url,
             environment=app.environment,
@@ -126,6 +128,20 @@ class ObservabilitySettings:
                 "APP_HEALTH_READY_PROBE_TIMEOUT_SECONDS must be in "
                 f"(0.0, {_max_ready_timeout}] "
                 f"(got {self.health_ready_probe_timeout_seconds})"
+            )
+        # ``APP_SHUTDOWN_TIMEOUT_SECONDS`` bounds the API drain budget (uvicorn's
+        # ``--timeout-graceful-shutdown``) and the worker's ``on_shutdown`` wait
+        # for the in-flight relay tick. Zero would short-circuit ``asyncio.wait``
+        # and force-cancel in-flight work; very large values delay the K8s
+        # ``terminationGracePeriodSeconds`` budget. The 300 s upper bound is
+        # generous — operators with longer-running jobs should raise the K8s
+        # grace period to match in addition to bumping this knob.
+        _max_shutdown_timeout = 300.0
+        if not (0.0 < self.shutdown_timeout_seconds <= _max_shutdown_timeout):
+            errors.append(
+                "APP_SHUTDOWN_TIMEOUT_SECONDS must be in "
+                f"(0.0, {_max_shutdown_timeout}] "
+                f"(got {self.shutdown_timeout_seconds})"
             )
 
     def validate_production(self, errors: list[str]) -> None:  # noqa: ARG002

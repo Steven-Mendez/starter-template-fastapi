@@ -259,6 +259,16 @@ class AppSettings(BaseSettings):
     # every 10 s, so the 1.0 s default leaves a healthy margin. A probe
     # slower than this is itself an "almost-failure" we want to surface.
     health_ready_probe_timeout_seconds: float = 1.0
+    # Shared graceful-shutdown budget for the API and the worker. The
+    # uvicorn ``--timeout-graceful-shutdown`` flag baked into the
+    # production Dockerfile uses this value (currently 30 s in the CMD
+    # — keep them in lockstep). The worker's ``on_shutdown`` waits for
+    # the in-flight ``DispatchPending`` tick + active job handlers up
+    # to this budget before disposing the engine and closing Redis.
+    # The K8s ``terminationGracePeriodSeconds`` should be set to this
+    # value + a few seconds slack (the inner-process timeout fires
+    # first so K8s sees a clean exit instead of SIGKILL).
+    shutdown_timeout_seconds: float = 30.0
     # ---------------------------------------------------------------------------
     # Error reporting (Sentry)
     # ---------------------------------------------------------------------------
