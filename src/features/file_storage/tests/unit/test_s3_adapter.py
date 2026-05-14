@@ -103,6 +103,19 @@ def test_signed_url_missing_key_maps_to_object_not_found_error() -> None:
     assert isinstance(result.error, ObjectNotFoundError)
 
 
+def test_default_client_is_configured_with_max_pool_connections() -> None:
+    """The auto-built boto3 client must size its HTTP pool for FastAPI concurrency.
+
+    The default ``botocore`` ``max_pool_connections`` (10) is well below
+    FastAPI's AnyIO threadpool, so concurrent uploads/downloads would
+    queue on the HTTP pool. The adapter raises the limit at construction
+    time.
+    """
+    adapter = S3FileStorageAdapter(bucket=_BUCKET, region=_REGION)
+    assert adapter.client.meta.config.max_pool_connections == 50
+    assert adapter.client.meta.config.retries["mode"] == "standard"
+
+
 def test_signed_url_happy_path_returns_string() -> None:
     with mock_aws():
         client = boto3.client("s3", region_name=_REGION)

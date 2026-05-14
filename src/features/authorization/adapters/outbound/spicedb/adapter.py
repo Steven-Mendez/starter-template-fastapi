@@ -67,6 +67,7 @@ class SpiceDBAuthorizationAdapter:  # pragma: no cover
         resource_type: str,
         resource_id: str,
         relation: str,
+        limit: int | None = None,
     ) -> list[UUID]:
         raise NotImplementedError(self._STUB_MESSAGE)
 

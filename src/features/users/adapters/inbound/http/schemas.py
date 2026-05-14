@@ -22,6 +22,20 @@ class UserPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserListPage(BaseModel):
+    """Keyset-paginated page of users for ``GET /admin/users``.
+
+    ``next_cursor`` is a base64-encoded ``(created_at, id)`` tuple — pass
+    it back as ``?cursor=...`` to fetch the next page. ``next_cursor`` is
+    ``None`` when no further rows exist.
+    """
+
+    items: list[UserPublic]
+    count: int
+    limit: int
+    next_cursor: str | None = None
+
+
 class UpdateProfileRequest(BaseModel):
     """Body for ``PATCH /me``."""
 

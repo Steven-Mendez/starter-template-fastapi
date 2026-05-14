@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID
 
 from app_platform.shared.result import Ok, Result
 from features.users.application.errors import UserError
@@ -12,11 +14,21 @@ from features.users.domain.user import User
 
 @dataclass(slots=True)
 class ListUsers:
-    """Return a page of users for system-admin inspection."""
+    """Return a page of users for system-admin inspection.
+
+    Pagination is keyset-based on ``(created_at, id)``: clients pass the
+    last row's tuple as ``cursor`` to fetch the next page. The route
+    layer is responsible for encoding/decoding the cursor as base64 so
+    the application contract stays in domain terms.
+    """
 
     _users: UserPort
 
     def execute(
-        self, *, limit: int = 100, offset: int = 0
+        self,
+        *,
+        cursor: tuple[datetime, UUID] | None = None,
+        limit: int = 100,
     ) -> Result[list[User], UserError]:
-        return Ok(self._users.list_paginated(limit=limit, offset=offset))
+        bounded_limit = max(1, min(limit, 500))
+        return Ok(self._users.list_paginated(cursor=cursor, limit=bounded_limit))

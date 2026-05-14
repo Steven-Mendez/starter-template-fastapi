@@ -165,8 +165,18 @@ class AuditRepositoryPort(Protocol):
         user_id: UUID | None = None,
         event_type: str | None = None,
         since: datetime | None = None,
+        before: tuple[datetime, UUID] | None = None,
         limit: int = 100,
-    ) -> list[AuditEvent]: ...
+    ) -> list[AuditEvent]:
+        """Return events newest-first.
+
+        ``before`` is a ``(created_at, id)`` keyset cursor — only rows
+        strictly earlier than the tuple are returned, walking the table
+        backwards page by page. The audit ``id`` is a UUID so the cursor
+        carries ``created_at`` as the primary ordering key and ``id`` as
+        a tiebreaker.
+        """
+        ...
 
 
 class CredentialRepositoryPort(Protocol):

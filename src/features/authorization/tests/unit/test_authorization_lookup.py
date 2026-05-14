@@ -134,18 +134,67 @@ def test_lookup_resources_caps_at_the_limit(
     assert len(capped) == 10
 
 
-def test_lookup_resources_max_limit_is_500(
+def test_lookup_resources_max_limit_is_lookup_max(
     adapter: SQLModelAuthorizationAdapter,
 ) -> None:
+    from features.authorization.application.ports.authorization_port import (
+        LOOKUP_MAX_LIMIT,
+    )
+
     user_id = uuid4()
-    boards = [str(uuid4()) for _ in range(600)]
+    boards = [str(uuid4()) for _ in range(LOOKUP_MAX_LIMIT + 100)]
     adapter.write_relationships(
         [_tuple(resource_id=b, relation="reader", user_id=user_id) for b in boards]
     )
     very_high = adapter.lookup_resources(
-        user_id=user_id, action="read", resource_type="thing", limit=10_000
+        user_id=user_id,
+        action="read",
+        resource_type="thing",
+        limit=10 * LOOKUP_MAX_LIMIT,
     )
-    assert len(very_high) == 500
+    assert len(very_high) == LOOKUP_MAX_LIMIT
+
+
+def test_lookup_subjects_clamps_oversized_limit_to_cap(
+    adapter: SQLModelAuthorizationAdapter,
+) -> None:
+    from features.authorization.application.ports.authorization_port import (
+        LOOKUP_MAX_LIMIT,
+    )
+
+    board_id = str(uuid4())
+    # Seed strictly more subjects than the cap so an unclamped query would
+    # exceed the contract.
+    user_ids = [uuid4() for _ in range(LOOKUP_MAX_LIMIT + 50)]
+    adapter.write_relationships(
+        [_tuple(resource_id=board_id, relation="reader", user_id=u) for u in user_ids]
+    )
+    over_limit = adapter.lookup_subjects(
+        resource_type="thing",
+        resource_id=board_id,
+        relation="reader",
+        limit=10 * LOOKUP_MAX_LIMIT,
+    )
+    assert len(over_limit) <= LOOKUP_MAX_LIMIT
+
+
+def test_lookup_subjects_default_applies_the_cap(
+    adapter: SQLModelAuthorizationAdapter,
+) -> None:
+    """Even with no ``limit`` passed, the adapter must not return unbounded rows."""
+    from features.authorization.application.ports.authorization_port import (
+        LOOKUP_MAX_LIMIT,
+    )
+
+    board_id = str(uuid4())
+    user_ids = [uuid4() for _ in range(LOOKUP_MAX_LIMIT + 50)]
+    adapter.write_relationships(
+        [_tuple(resource_id=board_id, relation="reader", user_id=u) for u in user_ids]
+    )
+    default = adapter.lookup_subjects(
+        resource_type="thing", resource_id=board_id, relation="reader"
+    )
+    assert len(default) <= LOOKUP_MAX_LIMIT
 
 
 def test_lookup_subjects_returns_users_with_relation_or_higher(

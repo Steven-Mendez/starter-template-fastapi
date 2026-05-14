@@ -22,10 +22,12 @@ from uuid import UUID
 
 from features.authorization.application.types import Relationship
 
-# Default page size for ``lookup_resources``. Mirrors the existing admin
-# endpoint defaults (limit=100, max=500) so the API surface is uniform.
+# Default page size for ``lookup_resources`` / ``lookup_subjects``.
+# ``LOOKUP_MAX_LIMIT`` is the hard cap the port enforces for both lookup
+# methods — see Decision 4 in the design doc for the rationale (a single
+# concurrency budget is easier to reason about than per-method caps).
 LOOKUP_DEFAULT_LIMIT: int = 100
-LOOKUP_MAX_LIMIT: int = 500
+LOOKUP_MAX_LIMIT: int = 1000
 
 
 class AuthorizationPort(Protocol):
@@ -84,11 +86,14 @@ class AuthorizationPort(Protocol):
         resource_type: str,
         resource_id: str,
         relation: str,
+        limit: int | None = None,
     ) -> list[UUID]:
         """Return user ids that hold ``relation`` on the resource.
 
         Hierarchy is applied so subjects with a superior relation are
-        included.
+        included. The optional ``limit`` parameter is clamped to
+        ``LOOKUP_MAX_LIMIT``; passing ``None`` (the default) also applies
+        the cap so callers never receive an unbounded result.
         """
         ...
 

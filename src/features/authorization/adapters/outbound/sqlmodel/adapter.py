@@ -163,8 +163,18 @@ class _BaseAuthorizationAdapter:
         resource_type: str,
         resource_id: str,
         relation: str,
+        limit: int | None = None,
     ) -> list[UUID]:
-        """Return user ids holding ``relation`` (or any superior) on the resource."""
+        """Return user ids holding ``relation`` (or any superior) on the resource.
+
+        ``limit`` is clamped to ``LOOKUP_MAX_LIMIT``; a missing or
+        oversized value applies the cap so callers never receive an
+        unbounded result set. The SQL ``LIMIT`` is applied at the query
+        level — the in-memory dedupe could return fewer than the cap.
+        """
+        capped_limit = (
+            LOOKUP_MAX_LIMIT if limit is None else max(1, min(limit, LOOKUP_MAX_LIMIT))
+        )
         expanded = self._registry.expand_relations(resource_type, frozenset({relation}))
         with self._session_scope() as session:
             rows = session.exec(
@@ -173,6 +183,7 @@ class _BaseAuthorizationAdapter:
                 .where(RelationshipTable.resource_id == resource_id)
                 .where(cast(Any, RelationshipTable.relation).in_(expanded))
                 .where(RelationshipTable.subject_type == "user")
+                .limit(capped_limit)
             ).all()
         out: list[UUID] = []
         seen: set[UUID] = set()

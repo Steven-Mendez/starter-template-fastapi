@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import boto3
+import botocore.config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app_platform.shared.result import Err, Ok, Result
@@ -32,6 +33,12 @@ from features.file_storage.application.errors import (
 _S3_PRESIGNED_URL_MAX_SECONDS = 604800
 
 _NOT_FOUND_CODES = frozenset({"NoSuchKey", "404", "NotFound"})
+
+# Match the default DB pool ceiling (``pool_size + max_overflow = 50``)
+# so the S3 HTTP pool can serve every concurrent FastAPI worker without
+# queuing. ``botocore``'s default ``max_pool_connections`` is 10, which
+# is well below FastAPI's AnyIO threadpool (~40 workers).
+_S3_MAX_POOL_CONNECTIONS = 50
 
 
 def _is_not_found(exc: ClientError) -> bool:
@@ -58,7 +65,14 @@ class S3FileStorageAdapter:
 
     def __post_init__(self) -> None:
         if self.client is None:
-            self.client = boto3.client("s3", region_name=self.region)
+            self.client = boto3.client(
+                "s3",
+                region_name=self.region,
+                config=botocore.config.Config(
+                    max_pool_connections=_S3_MAX_POOL_CONNECTIONS,
+                    retries={"mode": "standard"},
+                ),
+            )
 
     def put(
         self,

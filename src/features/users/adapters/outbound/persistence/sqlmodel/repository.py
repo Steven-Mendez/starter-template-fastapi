@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -81,14 +83,24 @@ class SQLModelUserRepository:
             session.refresh(row)
             return Ok(_to_domain(row))
 
-    def list_paginated(self, *, offset: int = 0, limit: int = 50) -> list[User]:
+    def list_paginated(
+        self,
+        *,
+        cursor: tuple[datetime, UUID] | None = None,
+        limit: int = 50,
+    ) -> list[User]:
         with Session(self.engine) as session:
-            stmt = (
-                select(UserTable)
-                .order_by(UserTable.created_at)  # type: ignore[arg-type]
-                .offset(offset)
-                .limit(limit)
+            stmt = select(UserTable).order_by(
+                UserTable.created_at,  # type: ignore[arg-type]
+                UserTable.id,  # type: ignore[arg-type]
             )
+            if cursor is not None:
+                created_at, last_id = cursor
+                stmt = stmt.where(
+                    sa.tuple_(cast(Any, UserTable.created_at), cast(Any, UserTable.id))
+                    > sa.tuple_(sa.literal(created_at), sa.literal(last_id))
+                )
+            stmt = stmt.limit(limit)
             return [_to_domain(r) for r in session.exec(stmt).all()]
 
     def mark_verified(self, user_id: UUID) -> None:
@@ -210,13 +222,23 @@ class SessionSQLModelUserRepository:
             return Err(UserAlreadyExistsError())
         return Ok(_to_domain(row))
 
-    def list_paginated(self, *, offset: int = 0, limit: int = 50) -> list[User]:
-        stmt = (
-            select(UserTable)
-            .order_by(UserTable.created_at)  # type: ignore[arg-type]
-            .offset(offset)
-            .limit(limit)
+    def list_paginated(
+        self,
+        *,
+        cursor: tuple[datetime, UUID] | None = None,
+        limit: int = 50,
+    ) -> list[User]:
+        stmt = select(UserTable).order_by(
+            UserTable.created_at,  # type: ignore[arg-type]
+            UserTable.id,  # type: ignore[arg-type]
         )
+        if cursor is not None:
+            created_at, last_id = cursor
+            stmt = stmt.where(
+                sa.tuple_(cast(Any, UserTable.created_at), cast(Any, UserTable.id))
+                > sa.tuple_(sa.literal(created_at), sa.literal(last_id))
+            )
+        stmt = stmt.limit(limit)
         return [_to_domain(r) for r in self.session.exec(stmt).all()]
 
     def mark_verified(self, user_id: UUID) -> None:

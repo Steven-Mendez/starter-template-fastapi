@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app_platform.config.settings import AppSettings, get_settings
+from app_platform.config.sub_settings import DatabaseSettings
 
 pytestmark = pytest.mark.unit
 
@@ -60,6 +61,26 @@ def test_cors_origins_parsed_as_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_CORS_ORIGINS", '["https://a.example", "https://b.example"]')
     s = AppSettings(_env_file=None)  # type: ignore[call-arg]
     assert s.cors_origins == ["https://a.example", "https://b.example"]
+
+
+def test_default_database_pool_sized_for_anyio_threadpool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default pool ceiling must exceed AnyIO's ~40-worker threadpool.
+
+    See ``docs/operations.md`` Pool sizing section for the formula.
+    """
+    for key in [
+        "APP_DB_POOL_SIZE",
+        "APP_DB_MAX_OVERFLOW",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
+    db = DatabaseSettings.from_app_settings(settings)
+    assert db.pool_size == 20
+    assert db.max_overflow == 30
+    # Sanity: total ceiling exceeds AnyIO threadpool defaults.
+    assert db.pool_size + db.max_overflow >= 40
 
 
 def test_get_settings_caches(monkeypatch: pytest.MonkeyPatch) -> None:

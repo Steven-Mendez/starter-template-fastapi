@@ -79,8 +79,12 @@ class AppSettings(BaseSettings):
     # Database connection-pool tuning. ``pool_recycle`` defends against
     # idle-cutting load balancers (RDS, PgBouncer) that close stale conns;
     # ``pool_pre_ping`` validates a checked-out connection before use.
-    db_pool_size: int = 5
-    db_max_overflow: int = 10
+    # The default ceiling (``pool_size + max_overflow = 50``) is sized
+    # above FastAPI's AnyIO threadpool (~40 workers by default) so sync
+    # routes that hold a connection per request do not queue on the pool.
+    # See ``docs/operations.md`` for the tuning formula.
+    db_pool_size: int = 20
+    db_max_overflow: int = 30
     db_pool_recycle_seconds: int = 1800
     db_pool_pre_ping: bool = True
     # Maximum request body size accepted by ContentSizeLimitMiddleware.

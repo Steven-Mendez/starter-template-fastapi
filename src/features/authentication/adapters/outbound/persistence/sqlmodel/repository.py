@@ -15,6 +15,7 @@ from types import TracebackType
 from typing import Any, Self, cast, overload
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy import update
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -677,8 +678,18 @@ class SQLModelAuthRepository:
         user_id: UUID | None = None,
         event_type: str | None = None,
         since: datetime | None = None,
+        before: tuple[datetime, UUID] | None = None,
         limit: int = 100,
     ) -> list[AuditEvent]:
+        """Return audit events ordered newest-first, optionally paginated.
+
+        ``before`` is a ``(created_at, id)`` keyset cursor: when provided
+        only rows strictly earlier than the tuple are returned, walking
+        the table backwards page by page. The audit-event ``id`` column
+        is a UUID (not a monotonic bigserial), so the cursor includes
+        ``created_at`` as the primary ordering key and ``id`` only as a
+        tiebreaker — identical to the users pagination shape.
+        """
         with self._session_scope() as session:
             statement = select(AuthAuditEventTable)
             if user_id is not None:
@@ -691,9 +702,19 @@ class SQLModelAuthRepository:
                 statement = statement.where(
                     cast(Any, AuthAuditEventTable.created_at) >= since
                 )
+            if before is not None:
+                before_created, before_id = before
+                statement = statement.where(
+                    sa.tuple_(
+                        cast(Any, AuthAuditEventTable.created_at),
+                        cast(Any, AuthAuditEventTable.id),
+                    )
+                    < sa.tuple_(sa.literal(before_created), sa.literal(before_id))
+                )
             rows = session.exec(
                 statement.order_by(
-                    cast(Any, AuthAuditEventTable.created_at).desc()
+                    cast(Any, AuthAuditEventTable.created_at).desc(),
+                    cast(Any, AuthAuditEventTable.id).desc(),
                 ).limit(limit)
             ).all()
             return [_to_audit_event(row) for row in rows]

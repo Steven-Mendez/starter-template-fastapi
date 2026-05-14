@@ -32,8 +32,20 @@ class UserPort(Protocol):
         """Persist a new user. Returns ``Err(UserAlreadyExistsError())`` on conflict."""
         ...
 
-    def list_paginated(self, *, offset: int = 0, limit: int = 50) -> list[User]:
-        """Return a page of users ordered by ``created_at`` ascending."""
+    def list_paginated(
+        self,
+        *,
+        cursor: tuple[datetime, UUID] | None = None,
+        limit: int = 50,
+    ) -> list[User]:
+        """Return a page of users ordered by ``(created_at, id)`` ascending.
+
+        Pagination is keyset-based to keep deep pages constant-time and
+        stable under concurrent inserts: pass the ``(created_at, id)`` of
+        the last row from the previous page as ``cursor`` and the
+        implementation will return strictly subsequent rows. A ``None``
+        cursor returns the first page.
+        """
         ...
 
     def mark_verified(self, user_id: UUID) -> None:

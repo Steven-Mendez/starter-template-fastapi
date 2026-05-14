@@ -55,6 +55,43 @@ Every response includes `X-Request-ID`.
 - If the request provides `X-Request-ID`, the response echoes it.
 - If the request omits `X-Request-ID`, the middleware generates a UUID string.
 
+## Pagination
+
+Admin list endpoints use **keyset pagination** rather than offsets, so
+deep pages stay constant-time and remain correct under concurrent
+inserts. The cursor is opaque to clients — treat it as a string and pass
+it back unchanged.
+
+### Cursor format
+
+The cursor is the base64-URL-safe encoding of a tiny JSON payload:
+
+```json
+{"created_at": "2026-05-01T12:34:56+00:00", "id": "0192a3b4-..."}
+```
+
+Clients should not parse the cursor — the JSON shape may evolve. The
+authoritative semantics are:
+
+- A request with no cursor returns the first page.
+- A response includes `next_cursor` (or `next_before` on the audit log)
+  iff another page is available. The field is `null`/absent on the last
+  page.
+- Pass `next_cursor` back as `?cursor=<token>` to fetch the next page.
+- Cursors that fail to decode return `400 Bad Request` (Problem Details)
+  and no database query runs.
+
+### Endpoints that paginate
+
+| Endpoint | Query parameter | Response field |
+| --- | --- | --- |
+| `GET /admin/users` | `?cursor=<base64>` | `next_cursor` |
+| `GET /admin/audit-log` | `?before=<base64>` | `next_before` (walks newest-first) |
+
+Both endpoints accept a `?limit=<n>` parameter (default 100, max 500).
+Each page contains up to `limit` rows ordered by `(created_at, id)` —
+ascending for `/admin/users`, descending for `/admin/audit-log`.
+
 ## Error Format
 
 Errors are rendered as `application/problem+json`.

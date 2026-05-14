@@ -29,6 +29,12 @@ class UserTable(SQLModel, table=True):
         sa.CheckConstraint(
             "authz_version >= 1", name="ck_users_authz_version_positive"
         ),
+        # Composite index supports keyset pagination on the admin user-list
+        # endpoint: ``WHERE (created_at, id) > (:c, :i) ORDER BY created_at, id``.
+        # Declared here for ``--autogenerate`` consistency; the production
+        # rollout uses ``CREATE INDEX CONCURRENTLY`` (see
+        # ``alembic/migration_helpers.py``) so the build does not lock writes.
+        sa.Index("ix_users_created_at", "created_at", "id"),
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)

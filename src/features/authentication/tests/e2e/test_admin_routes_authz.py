@@ -34,7 +34,8 @@ def test_system_admin_can_list_users(auth_context: AuthTestContext) -> None:
         "/admin/users", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
-    emails = {u["email"] for u in response.json()}
+    body = response.json()
+    emails = {u["email"] for u in body["items"]}
     assert "admin@example.com" in emails
 
 

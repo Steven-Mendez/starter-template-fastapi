@@ -191,6 +191,46 @@ Problem Details response.
 | OTLP collector | Observability | `APP_OTEL_EXPORTER_ENDPOINT` set. |
 | SpiceDB | Authorization | Not used today; the adapter is a stub mirroring the S3 pattern. |
 
+## Database Migrations
+
+Migrations live under `alembic/versions/`. Each migration declares an
+upgrade and downgrade path; `make ci` round-trips them against a real
+PostgreSQL container.
+
+**Migrations that touch tables expected to hold production data MUST
+use the concurrently helpers for index changes.** PostgreSQL's plain
+`CREATE INDEX` / `DROP INDEX` take an `ACCESS EXCLUSIVE` lock on the
+target table — fine on a developer laptop, catastrophic on a populated
+production table. The helpers in `alembic/migration_helpers.py`
+(`create_index_concurrently`, `drop_index_concurrently`) wrap the
+statement in `op.get_context().autocommit_block()` so the build runs
+without blocking writes:
+
+```python
+# ``alembic/`` is on ``sys.path`` via ``prepend_sys_path`` in ``alembic.ini``,
+# so the helper is imported as a top-level module rather than as
+# ``alembic.migration_helpers`` — the latter would collide with the
+# installed ``alembic`` PyPI package.
+from migration_helpers import (
+    create_index_concurrently,
+    drop_index_concurrently,
+)
+
+def upgrade() -> None:
+    create_index_concurrently(
+        "ix_users_created_at",
+        "users",
+        ["created_at", "id"],
+    )
+
+def downgrade() -> None:
+    drop_index_concurrently("ix_users_created_at")
+```
+
+Both helpers emit `IF [NOT] EXISTS`, so a re-run after a partial failure
+is idempotent — important because `CONCURRENTLY` operations can leave
+behind invalid index objects when interrupted.
+
 ## Design Decisions
 
 | Decision | Reason |

@@ -234,7 +234,7 @@ Coverage gate: `make ci` enforces an 80% line-coverage floor (`pyproject.toml [t
 - FastAPI dependencies are declared as `Annotated` type aliases (see existing `*Dep` names in `adapters/inbound/http/dependencies.py`).
 - Feature HTTP errors map application errors to HTTP status codes in `adapters/inbound/http/errors.py`; the platform renders the final Problem Details response.
 - New feature code goes under `src/features/<feature_name>/` mirroring the scaffold recovered from git history (see "Adding a new feature").
-- New migrations: update SQLModel tables first, then `uv run alembic revision --autogenerate -m "..."`.
+- New migrations: update SQLModel tables first, then `uv run alembic revision --autogenerate -m "..."`. **Index changes on tables expected to hold production data MUST use `create_index_concurrently` / `drop_index_concurrently` from `alembic/migration_helpers.py`** — plain `op.create_index` takes `ACCESS EXCLUSIVE` and blocks writes during the build. See `docs/architecture.md` for the rule and the recent `alembic/versions/20260518_0015_users_created_at_index.py` for a worked example.
 - Per-feature settings: every feature ships a `composition/settings.py` with a typed projection and a `validate_production(errors: list[str]) -> None` method. `AppSettings` aggregates them.
 
 ## Production checklist

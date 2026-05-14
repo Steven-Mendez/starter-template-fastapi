@@ -218,6 +218,7 @@ class FakeAuthRepository:
         user_id: UUID | None = None,
         event_type: str | None = None,
         since: datetime | None = None,
+        before: tuple[datetime, UUID] | None = None,
         limit: int = 100,
     ) -> list[AuditEvent]:
         events = self._s.audit_events
@@ -227,7 +228,10 @@ class FakeAuthRepository:
             events = [e for e in events if e.event_type == event_type]
         if since is not None:
             events = [e for e in events if e.created_at >= since]
-        return list(reversed(events))[:limit]
+        ordered = sorted(events, key=lambda e: (e.created_at, e.id), reverse=True)
+        if before is not None:
+            ordered = [e for e in ordered if (e.created_at, e.id) < before]
+        return ordered[:limit]
 
     # ── Credential operations ────────────────────────────────────────────────
 

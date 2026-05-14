@@ -60,9 +60,16 @@ class FakeUserPort:
         self._s.users_by_email[normalized] = user.id
         return Ok(user)
 
-    def list_paginated(self, *, offset: int = 0, limit: int = 50) -> list[User]:
-        ordered = sorted(self._s.users.values(), key=lambda u: u.created_at)
-        return ordered[offset : offset + limit]
+    def list_paginated(
+        self,
+        *,
+        cursor: tuple[datetime, UUID] | None = None,
+        limit: int = 50,
+    ) -> list[User]:
+        ordered = sorted(self._s.users.values(), key=lambda u: (u.created_at, u.id))
+        if cursor is not None:
+            ordered = [u for u in ordered if (u.created_at, u.id) > cursor]
+        return ordered[:limit]
 
     def mark_verified(self, user_id: UUID) -> None:
         existing = self._s.users.get(user_id)

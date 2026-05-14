@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Default connection pool matches FastAPI threadpool concurrency
 
@@ -10,13 +10,11 @@ The default `DatabaseSettings` SHALL configure `pool_size=20` and `max_overflow=
 - **WHEN** the settings are constructed
 - **THEN** `pool_size == 20` and `max_overflow == 30`
 
-## ADDED Requirements
-
 ### Requirement: Admin list endpoints use keyset pagination
 
 `GET /admin/users` SHALL paginate via a `(created_at, id)` keyset cursor. The response SHALL include a `next_cursor` field (base64-encoded) when more rows are available; clients submit it as `?cursor=...` to fetch the next page. The underlying repository query MUST use `WHERE (created_at, id) > (:c, :i) ORDER BY created_at, id LIMIT :limit` against an index on `(created_at, id)`.
 
-`GET /admin/audit-events` SHALL accept a `before_id: int | None` query parameter and return `next_before_id` in the response. The underlying query is `WHERE (:before_id IS NULL OR id < :before_id) ORDER BY id DESC LIMIT :limit`.
+`GET /admin/audit-log` SHALL accept a `before: str | None` query parameter (a base64-encoded `(created_at, id)` cursor) and return `next_before` in the response. The audit-event `id` column is a UUID rather than a monotonic bigserial in the current source tree, so the cursor uses the same `(created_at, id)` tuple shape as the users endpoint — the cursor is opaque to clients. The underlying query is `WHERE (:before IS NULL OR (created_at, id) < (:before_created_at, :before_id)) ORDER BY created_at DESC, id DESC LIMIT :limit`.
 
 #### Scenario: Cursor round-trip walks every row without duplicates
 

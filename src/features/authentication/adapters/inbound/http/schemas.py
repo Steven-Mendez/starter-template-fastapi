@@ -176,8 +176,15 @@ class AuditEventRead(BaseModel):
 
 
 class AuditLogRead(BaseModel):
-    """Paginated audit-log response."""
+    """Keyset-paginated audit-log response.
+
+    ``next_before`` is a base64-encoded ``(created_at, id)`` cursor. Pass
+    it back as ``?before=...`` on the next request to fetch the page of
+    older events. ``next_before`` is ``None`` when the page is the last
+    one.
+    """
 
     items: list[AuditEventRead]
     count: int
     limit: int
+    next_before: str | None = None

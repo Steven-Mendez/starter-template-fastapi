@@ -503,6 +503,46 @@ The production `Dockerfile` is hardened for least-privilege execution:
   production but is **not** started by the API image; run it as its own process.
 - There is no built-in backup or restore automation.
 
+## Pool sizing
+
+FastAPI dispatches sync route handlers on AnyIO's threadpool. By default
+AnyIO runs roughly **40 worker threads** (`min(32, os.cpu_count() + 4)` in
+the underlying `ThreadPoolExecutor`, with FastAPI/AnyIO capping at 40).
+Every sync handler that opens a SQLAlchemy session holds a connection
+out of the pool until it returns, so the pool must be sized to cover the
+threadpool's worst-case concurrency or requests will queue on
+`QueuePool.checkout()` and the user-visible latency tail will balloon
+under load.
+
+The default `DatabaseSettings` therefore ships with `pool_size=20` and
+`max_overflow=30` — a total ceiling of **50 connections per replica**,
+comfortably above the 40-worker threadpool. The general formula is:
+
+```text
+pool_size + max_overflow  >=  threadpool_workers + headroom
+```
+
+`headroom` covers background tasks that also check out connections (the
+outbox relay tick, scheduled jobs, ad-hoc CLI tools running in the same
+process). Five to ten extra slots is usually enough.
+
+Tuning knobs:
+
+| Variable | Default | When to change |
+| --- | --- | --- |
+| `APP_DB_POOL_SIZE` | `20` | Raise it when you increase the AnyIO threadpool or run on a host with more cores. Each pool slot costs ~10 MiB of Postgres-side memory per replica. |
+| `APP_DB_MAX_OVERFLOW` | `30` | Burst capacity for short spikes. Above this, `pool_size + max_overflow` requests get `QueuePool overflow timeout`. |
+
+Operator-side limits to watch:
+
+- **Postgres `max_connections`** must accommodate every replica's
+  worst-case ceiling. With the default 50-slot ceiling, 8 replicas alone
+  consume 400 connections — leave room for the worker, migrations, and
+  ad-hoc psql sessions, or front the database with PgBouncer.
+- **PgBouncer transaction pooling** means the template's pool size
+  effectively becomes the per-replica *transaction* concurrency budget.
+  Sizing the template lower and PgBouncer higher is a common pattern.
+
 ## Environment Variable Reference
 
 Every runtime knob is exposed as an `APP_`-prefixed environment variable. The
@@ -529,8 +569,8 @@ violated and `APP_ENVIRONMENT=production`.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `APP_POSTGRESQL_DSN` | `postgresql+psycopg://postgres:postgres@localhost:5432/starter` | Connection string. |
-| `APP_DB_POOL_SIZE` | `5` | Steady-state pool size. |
-| `APP_DB_MAX_OVERFLOW` | `10` | Burst capacity above pool size. |
+| `APP_DB_POOL_SIZE` | `20` | Steady-state pool size. See [Pool sizing](#pool-sizing) for the relationship to AnyIO's threadpool. |
+| `APP_DB_MAX_OVERFLOW` | `30` | Burst capacity above pool size. |
 | `APP_DB_POOL_RECYCLE_SECONDS` | `1800` | Connection recycle window (defends against idle-cutting load balancers). |
 | `APP_DB_POOL_PRE_PING` | `true` | Validate connections before use. |
 
