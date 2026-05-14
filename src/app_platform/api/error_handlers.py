@@ -208,6 +208,24 @@ def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
                 "error_type": type(exc).__name__,
             },
         )
+        # Route through the configured error reporter so operators get a
+        # paging signal (Sentry) or a structured WARN (logging fallback).
+        # The reporter contract guarantees ``capture`` never raises, but
+        # we defend in depth: any escape would re-enter this handler.
+        reporter = getattr(request.app.state, "error_reporter", None)
+        if reporter is not None:
+            request_id = getattr(request.state, "request_id", None)
+            principal_id = getattr(request.state, "principal_id", None)
+            try:
+                reporter.capture(
+                    exc,
+                    request_id=request_id,
+                    path=str(request.url.path),
+                    method=request.method,
+                    principal_id=principal_id,
+                )
+            except Exception:  # pragma: no cover — defensive belt-and-braces
+                logger.exception("event=error_reporter.unexpected_raise")
         return problem_json_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             request=request,

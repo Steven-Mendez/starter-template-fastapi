@@ -141,3 +141,94 @@ Unhandled exceptions are logged through `api.error` with `method`, `path`,
 
 Clients can pass `X-Request-ID` with up to 64 alphanumeric, dash, or underscore
 characters. Invalid or missing values are replaced with a generated UUID.
+
+## Error reporting
+
+Unhandled exceptions route through a pluggable `ErrorReporterPort` seam
+(`src/app_platform/observability/error_reporter.py`). The default
+`LoggingErrorReporter` emits a structured WARN log; the optional
+`SentryErrorReporter` forwards to Sentry when the `sentry` extra is
+installed and `APP_SENTRY_DSN` is set.
+
+### Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_SENTRY_DSN` | unset | Activates `SentryErrorReporter` when the `sentry` extra is installed. Otherwise `LoggingErrorReporter` is used. |
+| `APP_SENTRY_ENVIRONMENT` | unset | Forwarded to `sentry_sdk.init(environment=...)`. |
+| `APP_SENTRY_RELEASE` | unset | Forwarded to `sentry_sdk.init(release=...)`. |
+
+The Sentry SDK's `traces_sample_rate` is bound to
+`APP_OTEL_TRACES_SAMPLER_RATIO` so OTel and Sentry sampling stay in sync.
+
+Install the optional extra to opt into Sentry:
+
+```bash
+pip install '.[sentry]'
+# or
+uv sync --extra sentry
+```
+
+### Reporter selection rule
+
+The factory picks the reporter deterministically at startup and emits one
+of these log lines:
+
+1. `APP_SENTRY_DSN` set **and** `sentry_sdk` importable →
+   `SentryErrorReporter` is wired; `sentry_sdk.init(...)` is called with
+   `dsn`, `environment`, `release`, and `traces_sample_rate`.
+2. `APP_SENTRY_DSN` set **and** `sentry_sdk` NOT importable →
+   `LoggingErrorReporter` is wired plus a WARN log line naming the
+   missing extra (`pip install '.[sentry]'`).
+3. `APP_SENTRY_DSN` unset → `LoggingErrorReporter` is wired plus an INFO
+   log line announcing the chosen reporter.
+
+`APP_SENTRY_DSN` is NOT a production refusal: paging is an operator
+choice, not a safety invariant. Operators on internal-only deployments
+may legitimately not have paging.
+
+### Context attached to every capture
+
+`unhandled_exception_handler` calls the reporter with these context keys:
+
+| Key | Source |
+| --- | --- |
+| `request_id` | `RequestContextMiddleware` (`X-Request-ID` or generated UUID4). |
+| `path` | `request.url.path`. |
+| `method` | HTTP method. |
+| `principal_id` | `request.state.principal_id` when the principal resolver set it; otherwise `None`. |
+
+The `SentryErrorReporter` adapter writes these to a single Sentry context
+namespace (`request`). The `LoggingErrorReporter` writes them as
+structured `extra` fields on the log record.
+
+### Mapped 4xx responses are NOT reported
+
+Only exceptions that fall through every other registered handler (i.e.
+unhandled exceptions producing a 500) route through the reporter. Mapped
+4xx responses (`ApplicationHTTPException`, `RequestValidationError`,
+generic `StarletteHTTPException`, the dependency-container readiness
+error) skip the reporter — they are not pages.
+
+### Swapping the reporter in tests
+
+The reporter is bound on `app.state.error_reporter` after
+`build_fastapi_app` returns. Tests can substitute a fake recorder
+without monkeypatching `sentry_sdk`:
+
+```python
+class FakeReporter:
+    def __init__(self) -> None:
+        self.calls: list[tuple[BaseException, dict[str, object]]] = []
+
+    def capture(self, exc: BaseException, **context: object) -> None:
+        self.calls.append((exc, context))
+
+
+app = build_fastapi_app(settings)
+app.state.error_reporter = FakeReporter()
+```
+
+The contract is documented on `ErrorReporterPort` in
+`src/app_platform/observability/error_reporter.py`; any object with a
+`capture(exc, **context)` method that does not raise is a valid reporter.

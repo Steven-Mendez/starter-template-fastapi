@@ -28,7 +28,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app_platform.config.sub_settings import (
@@ -239,6 +239,18 @@ class AppSettings(BaseSettings):
     otel_instrument_redis: bool = True
     # Set to false to disable the /metrics Prometheus endpoint.
     metrics_enabled: bool = True
+    # ---------------------------------------------------------------------------
+    # Error reporting (Sentry)
+    # ---------------------------------------------------------------------------
+    # ``APP_SENTRY_DSN`` activates the optional Sentry reporter when the
+    # ``sentry`` extra is installed (``pip install '.[sentry]'``). When the
+    # DSN is unset, the platform wires the default ``LoggingErrorReporter``
+    # which emits a structured WARN log on every unhandled exception.
+    # Paging is an operator choice, not a safety invariant — the production
+    # validator does NOT refuse start when ``app_sentry_dsn`` is unset.
+    app_sentry_dsn: SecretStr | None = None
+    app_sentry_environment: str | None = None
+    app_sentry_release: str | None = None
 
     @model_validator(mode="after")
     def _validate_auth_settings(self) -> AppSettings:

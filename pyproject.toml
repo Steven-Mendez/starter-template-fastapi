@@ -29,6 +29,15 @@ dependencies = [
     "uvicorn[standard]~=0.44",
 ]
 
+[project.optional-dependencies]
+# Optional error-reporting integration. Install with `pip install '.[sentry]'`
+# (or `uv sync --extra sentry`) to enable the `SentryErrorReporter` adapter;
+# without this extra the platform falls back to the structured-logging
+# reporter. The application code never imports `sentry_sdk` outside the
+# adapter, so omitting this extra is a zero-cost choice for teams that page
+# through other channels.
+sentry = ["sentry-sdk[fastapi]>=2"]
+
 [dependency-groups]
 dev = [
     "aiosmtpd>=1.4.6",
