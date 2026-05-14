@@ -417,3 +417,66 @@ The `Makefile` `.PHONY` declaration SHALL include every target that is not a rea
 - **GIVEN** a stray `outbox-retry-failed` file accidentally lands in the repo root
 - **WHEN** a contributor runs `make outbox-retry-failed`
 - **THEN** the target still executes (because it is declared `.PHONY`)
+
+### Requirement: UserAuthzVersionPort contract asserts observable side effects
+
+The `UserAuthzVersionPortContract` SHALL assert that `bump(user_id)` causes a subsequent `read_version(user_id)` to return a strictly greater value. A "doesn't raise" assertion alone is insufficient.
+
+#### Scenario: Bump observably increments the version
+
+- **GIVEN** a fresh user `u` with `read_version(u.id) == v0`
+- **WHEN** `bump(u.id)` is called
+- **THEN** `read_version(u.id)` returns a value strictly greater than `v0`
+
+### Requirement: Users feature `/me` routes have e2e coverage
+
+`src/features/users/tests/e2e/` SHALL contain TestClient-based tests covering `GET /me`, `PATCH /me`, and `DELETE /me` — happy path plus authentication-failure plus invalid-input cases.
+
+#### Scenario: GET /me returns the authenticated user's profile
+
+- **GIVEN** an authenticated session for user `u`
+- **WHEN** the client sends `GET /me`
+- **THEN** the response status is 200
+- **AND** the body matches `u`'s public profile fields (no `authz_version`)
+
+#### Scenario: PATCH /me with invalid input is rejected
+
+- **GIVEN** an authenticated session
+- **WHEN** the client sends `PATCH /me` with an invalid `email` field
+- **THEN** the response status is 422
+- **AND** the body is a Problem Details document naming the invalid field
+
+#### Scenario: DELETE /me deactivates the caller
+
+- **GIVEN** an authenticated session for user `u`
+- **WHEN** the client sends `DELETE /me`
+- **THEN** the response status is 204
+- **AND** a subsequent `GET /me` with the same access token returns 401 (account deactivated)
+
+### Requirement: Testcontainers skip flag is uniformly named
+
+The skip flag used by integration `conftest.py` files SHALL be `KANBAN_SKIP_TESTCONTAINERS` (the canonical name per `CLAUDE.md`). No alias (including the historical `AUTH_SKIP_TESTCONTAINERS`) is permitted.
+
+#### Scenario: Setting the canonical flag skips all testcontainer-dependent integration tests
+
+- **GIVEN** `KANBAN_SKIP_TESTCONTAINERS=1`
+- **WHEN** `make test-integration` runs
+- **THEN** every integration test that would otherwise spin a container is skipped with a reason citing `KANBAN_SKIP_TESTCONTAINERS`
+- **AND** no test errors out trying to reach a container
+
+#### Scenario: The historical alias is gone
+
+- **GIVEN** the codebase after this change lands
+- **WHEN** `rg AUTH_SKIP_TESTCONTAINERS` runs
+- **THEN** there are zero matches under `src/` and zero in documentation
+
+### Requirement: Integration markers reflect real-backend usage
+
+A test marked `integration` SHALL exercise the real backend (real Postgres / real Redis / real S3 via testcontainers or moto). Tests that use in-memory stubs (`fakeredis`, etc.) MUST be marked `unit` instead.
+
+#### Scenario: fakeredis-backed test is not labeled integration
+
+- **GIVEN** `src/features/background_jobs/tests/integration/test_arq_round_trip.py` (which uses `fakeredis`)
+- **WHEN** the test marker is inspected after this change lands
+- **THEN** it is marked `unit`, not `integration` (and the file moves under a `tests/unit/` path if marker convention requires)
+- **AND** a sibling `test_arq_redis_round_trip.py` exists with the `integration` marker against real Redis via `testcontainers`

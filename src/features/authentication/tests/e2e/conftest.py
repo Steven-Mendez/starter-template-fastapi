@@ -163,9 +163,17 @@ def auth_repository() -> Iterator[SQLModelAuthRepository]:
 def _build_app(
     settings: AppSettings,
     repository: SQLModelAuthRepository,
-    email_port: FakeEmailPort,
-) -> tuple[FastAPI, SQLModelUserRepository, FakeFileStorage]:
-    """Build a wired FastAPI app with a bootstrapped system-admin account."""
+) -> tuple[FastAPI, SQLModelUserRepository, FakeFileStorage, FakeEmailPort]:
+    """Build a wired FastAPI app with a bootstrapped system-admin account.
+
+    The :class:`FakeEmailPort` is constructed inside this helper so it can
+    take the sealed :class:`EmailTemplateRegistry` — mirroring the strict
+    template lookup the real adapters perform. Building it outside would
+    force a permissive fake, which is exactly the silent gap this change
+    closes (see ``strengthen-test-contracts``: a missing
+    ``register_authentication_email_templates`` call would otherwise
+    succeed in tests but fail in production).
+    """
     app = build_fastapi_app(settings)
     mount_auth_routes(app)
     mount_users_routes(app)
@@ -185,6 +193,10 @@ def _build_app(
     )
     register_authentication_email_templates(email_container.registry)
     email_container.registry.seal()
+    # Strict-mode fake: any auth flow that enqueues an unregistered
+    # template now surfaces as ``UnknownTemplateError`` rather than as
+    # a silently captured ``SentEmail``.
+    email_port = FakeEmailPort(registry=email_container.registry)
     # Auth's password-reset/email-verify flows enqueue ``send_email``
     # via the jobs port. Wiring the in-process queue with the
     # ``send_email`` handler bound to the fake email port keeps the
@@ -284,7 +296,7 @@ def _build_app(
         lifespan_app.state.container = None
 
     app.router.lifespan_context = lifespan
-    return app, users.user_repository, file_storage_port
+    return app, users.user_repository, file_storage_port, email_port
 
 
 @pytest.fixture
@@ -294,9 +306,8 @@ def auth_context(
 ) -> Iterator[AuthTestContext]:
     """Yield a fully composed :class:`AuthTestContext` for an e2e test."""
     settings = _settings(test_settings)
-    email_port = FakeEmailPort()
-    app, user_repository, file_storage = _build_app(
-        settings, auth_repository, email_port
+    app, user_repository, file_storage, email_port = _build_app(
+        settings, auth_repository
     )
     with TestClient(app) as client:
         yield AuthTestContext(
@@ -317,9 +328,8 @@ def auth_context_rate_limited(
     settings = _settings(test_settings).model_copy(
         update={"auth_rate_limit_enabled": True}
     )
-    email_port = FakeEmailPort()
-    app, user_repository, file_storage = _build_app(
-        settings, auth_repository, email_port
+    app, user_repository, file_storage, email_port = _build_app(
+        settings, auth_repository
     )
     with TestClient(app) as client:
         yield AuthTestContext(
@@ -340,9 +350,8 @@ def auth_context_internal_tokens_hidden(
     settings = _settings(test_settings).model_copy(
         update={"auth_return_internal_tokens": False}
     )
-    email_port = FakeEmailPort()
-    app, user_repository, file_storage = _build_app(
-        settings, auth_repository, email_port
+    app, user_repository, file_storage, email_port = _build_app(
+        settings, auth_repository
     )
     with TestClient(app) as client:
         yield AuthTestContext(
@@ -363,9 +372,8 @@ def auth_context_email_verification_required(
     settings = _settings(test_settings).model_copy(
         update={"auth_require_email_verification": True}
     )
-    email_port = FakeEmailPort()
-    app, user_repository, file_storage = _build_app(
-        settings, auth_repository, email_port
+    app, user_repository, file_storage, email_port = _build_app(
+        settings, auth_repository
     )
     with TestClient(app) as client:
         yield AuthTestContext(

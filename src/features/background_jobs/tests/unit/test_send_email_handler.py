@@ -26,7 +26,7 @@ pytestmark = pytest.mark.unit
 
 def test_register_then_enqueue_calls_email_port() -> None:
     jobs_registry = JobHandlerRegistry()
-    email_port = FakeEmailPort()
+    email_port = FakeEmailPort(permissive=True)
     register_send_email_handler(jobs_registry, email_port)
     jobs_registry.seal()
     queue = InProcessJobQueueAdapter(registry=jobs_registry)
@@ -77,7 +77,7 @@ def test_handler_deduplicates_on_outbox_message_id() -> None:
         return True
 
     jobs_registry = JobHandlerRegistry()
-    email_port = FakeEmailPort()
+    email_port = FakeEmailPort(permissive=True)
     register_send_email_handler(jobs_registry, email_port, dedupe=_dedupe)
     jobs_registry.seal()
     queue = InProcessJobQueueAdapter(registry=jobs_registry)
@@ -103,7 +103,7 @@ def test_handler_runs_when_no_outbox_message_id_present() -> None:
         raise AssertionError("dedupe must not be consulted without the reserved key")
 
     jobs_registry = JobHandlerRegistry()
-    email_port = FakeEmailPort()
+    email_port = FakeEmailPort(permissive=True)
     register_send_email_handler(jobs_registry, email_port, dedupe=_dedupe)
     jobs_registry.seal()
     queue = InProcessJobQueueAdapter(registry=jobs_registry)

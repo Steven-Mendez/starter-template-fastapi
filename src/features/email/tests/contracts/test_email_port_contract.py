@@ -34,10 +34,10 @@ def _console_factory(registry: EmailTemplateRegistry) -> EmailPort:
     return ConsoleEmailAdapter(registry=registry)
 
 
-def _fake_factory(_: EmailTemplateRegistry) -> EmailPort:
-    # The fake doesn't consult the registry, but the contract still asks
-    # what happens with valid input — for the fake, "valid" is anything.
-    return FakeEmailPort()
+def _fake_factory(registry: EmailTemplateRegistry) -> EmailPort:
+    # The fake now mirrors the real adapters' registry validation so the
+    # contract scenarios exercise the same path on every implementation.
+    return FakeEmailPort(registry=registry)
 
 
 def _resend_factory(registry: EmailTemplateRegistry) -> EmailPort:

@@ -62,8 +62,6 @@ def _docker_available() -> bool:
         return False
     if os.environ.get("KANBAN_SKIP_TESTCONTAINERS") == "1":
         return False
-    if os.environ.get("AUTH_SKIP_TESTCONTAINERS") == "1":
-        return False
     try:
         import docker  # type: ignore[import-untyped]
 

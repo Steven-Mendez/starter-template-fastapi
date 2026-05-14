@@ -41,8 +41,6 @@ def _load_redis_container() -> Any:
 def _docker_available() -> bool:
     if _load_redis_container() is None:
         return False
-    if os.environ.get("AUTH_SKIP_TESTCONTAINERS") == "1":
-        return False
     if os.environ.get("KANBAN_SKIP_TESTCONTAINERS") == "1":
         return False
     try:

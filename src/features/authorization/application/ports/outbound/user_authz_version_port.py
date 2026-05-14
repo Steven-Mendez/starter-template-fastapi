@@ -39,3 +39,13 @@ class UserAuthzVersionPort(Protocol):
         ``sqlalchemy``; that boundary is enforced by Import Linter).
         """
         ...
+
+    def read_version(self, user_id: UUID) -> int:
+        """Return the current ``authz_version`` for ``user_id``.
+
+        Probe method that lets contracts assert :meth:`bump` actually
+        increments the stored value rather than silently returning. SHALL
+        return ``0`` when the user does not exist — mirroring the
+        no-op semantics of :meth:`bump`.
+        """
+        ...

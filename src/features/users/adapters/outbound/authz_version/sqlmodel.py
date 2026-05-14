@@ -37,6 +37,18 @@ def _bump_one(session: Session, user_id: UUID) -> None:
     session.add(user)
 
 
+def _read_one(session: Session, user_id: UUID) -> int:
+    """Return the row's ``authz_version`` or ``0`` if missing.
+
+    Mirrors the no-op semantics of :func:`_bump_one`: callers (e.g.
+    contract tests) treat a missing user as ``0`` rather than raising.
+    """
+    user = session.get(UserTable, user_id)
+    if user is None:
+        return 0
+    return int(user.authz_version)
+
+
 class SQLModelUserAuthzVersionAdapter:
     """Adapter that opens its own short-lived session per bump."""
 
@@ -68,6 +80,11 @@ class SQLModelUserAuthzVersionAdapter:
         """
         _bump_one(session, user_id)
 
+    def read_version(self, user_id: UUID) -> int:
+        """Open a fresh session and return the current ``authz_version``."""
+        with Session(self._engine, expire_on_commit=False) as session:
+            return _read_one(session, user_id)
+
 
 class SessionSQLModelUserAuthzVersionAdapter:
     """Adapter that borrows an outer unit-of-work's session.
@@ -93,3 +110,12 @@ class SessionSQLModelUserAuthzVersionAdapter:
         the engine-owning adapter.
         """
         _bump_one(session, user_id)
+
+    def read_version(self, user_id: UUID) -> int:
+        """Return the current ``authz_version`` against the borrowed session.
+
+        Reads through the outer unit-of-work's session so a probe issued
+        mid-transaction sees the staged (uncommitted) bump — the same
+        atomicity guarantee the bump itself relies on.
+        """
+        return _read_one(self._session, user_id)

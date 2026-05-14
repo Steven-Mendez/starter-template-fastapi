@@ -1,0 +1,2 @@
+- [Test stack & commands](project_test_stack.md) — pytest markers (unit/integration/e2e), `make test`/`make test-integration`/`make quality`, `KANBAN_SKIP_TESTCONTAINERS=1` for non-Docker runs.
+- [Contract-test pattern](project_contract_test_pattern.md) — single contract class subclassed per binding; fakes and real adapters live in the same parametrisation.

@@ -39,7 +39,9 @@ def test_failure_log_does_not_leak_raw_email(
     failing path.
     """
     jobs_registry = JobHandlerRegistry()
-    email_port = FakeEmailPort(fail_with=DeliveryError(reason="smtp 550"))
+    email_port = FakeEmailPort(
+        permissive=True, fail_with=DeliveryError(reason="smtp 550")
+    )
     register_send_email_handler(jobs_registry, email_port)
     jobs_registry.seal()
     queue = InProcessJobQueueAdapter(registry=jobs_registry)
@@ -75,7 +77,7 @@ def test_dedupe_log_does_not_leak_raw_email(
     production whenever an email is replayed.
     """
     jobs_registry = JobHandlerRegistry()
-    email_port = FakeEmailPort()
+    email_port = FakeEmailPort(permissive=True)
 
     # A dedupe callable that always reports "already processed" so the
     # handler hits the deduped log line on every invocation.
