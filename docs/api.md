@@ -100,7 +100,7 @@ Common fields:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `type` | string | Problem type URI, or `about:blank` for generic HTTP errors. |
+| `type` | string | Stable Problem Type URN (see "Problem Type URNs" below), or `about:blank` for genuinely uncategorized errors. |
 | `title` | string | HTTP status phrase or explicit validation title. |
 | `status` | integer | HTTP status code. |
 | `instance` | string | Request URL. |
@@ -108,6 +108,38 @@ Common fields:
 | `request_id` | string | Request ID from middleware when available. |
 | `code` | string | Application error code for application-level errors. |
 | `errors` | array | Validation error details for request validation failures. |
+
+### Problem Type URNs
+
+Per RFC 9457 §3.1, the `type` field SHOULD be a stable identifier that
+clients can branch on without parsing the human-readable `detail`. This
+service uses a project-scoped URN scheme:
+
+```text
+urn:problem:<domain>:<code>
+```
+
+where `<domain>` is a lower-kebab capability tag (`auth`, `authz`,
+`validation`, `generic`) and `<code>` is a lower-kebab error slug. URN
+values are stable across versions — new members may be added but
+existing values are never renamed. `about:blank` remains the
+spec-compliant fallback for genuinely uncategorized errors.
+
+The canonical catalog is defined as the `ProblemType` enum in
+`src/app_platform/api/problem_types.py`:
+
+| URN | HTTP status | Produced by |
+| --- | --- | --- |
+| `urn:problem:auth:invalid-credentials` | `401` | `InvalidCredentialsError` (wrong password / unknown email on login or self-erase re-auth). |
+| `urn:problem:auth:rate-limited` | `429` | `RateLimitExceededError` (login/register/password-reset throttling). |
+| `urn:problem:auth:token-stale` | `401` | `StaleTokenError` (access token's `authz_version` is behind the current value — re-authenticate). |
+| `urn:problem:auth:token-invalid` | `401` / `400` | `InvalidTokenError` (malformed/expired Bearer token) and `TokenAlreadyUsedError` (one-shot reset/verification token already consumed). |
+| `urn:problem:auth:email-not-verified` | `403` | `EmailNotVerifiedError` (login attempt when verification is required). |
+| `urn:problem:authz:permission-denied` | `403` | `NotAuthorizedError`, `PermissionDeniedError`, `InactiveUserError` (principal lacks the required relation on the resource, or account is inactive). |
+| `urn:problem:validation:failed` | `422` | FastAPI `RequestValidationError` (malformed request body / query / path). |
+| `urn:problem:generic:conflict` | `409` | `UserAlreadyExistsError`, `DuplicateEmailError`, `ConflictError`. |
+| `urn:problem:generic:not-found` | `404` | `UserNotFoundError`, `NotFoundError`. |
+| `about:blank` | varies | Genuinely uncategorized failures (configuration errors, unhandled exceptions, malformed cursors, internal 500s). |
 
 Example application error:
 

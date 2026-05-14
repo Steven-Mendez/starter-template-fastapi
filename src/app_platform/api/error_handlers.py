@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app_platform.api.dependencies.container import DependencyContainerNotReadyError
 from app_platform.api.error_handlers_app_exception import ApplicationHTTPException
+from app_platform.api.problem_types import ProblemType
 from app_platform.config.settings import AppSettings
 
 PROBLEM_JSON = "application/problem+json"
@@ -150,6 +151,7 @@ def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
             request=request,
             title=_status_title(status.HTTP_422_UNPROCESSABLE_CONTENT),
             detail="Request validation failed",
+            type_uri=ProblemType.VALIDATION_FAILED,
             extra=extra if extra else None,
         )
 

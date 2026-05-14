@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from app_platform.api.problem_types import ProblemType
 from features.authorization.application.errors import (
     NotAuthorizedError,
     UnknownActionError,
@@ -55,7 +56,7 @@ def register_authorization_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
-                "type": "about:blank",
+                "type": ProblemType.ABOUT_BLANK.value,
                 "title": "Authorization configuration error",
                 "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "detail": str(exc) or "Authorization configuration error",
@@ -68,7 +69,7 @@ def register_authorization_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content={
-                "type": "about:blank",
+                "type": ProblemType.AUTHZ_PERMISSION_DENIED.value,
                 "title": "Permission denied",
                 "status": status.HTTP_403_FORBIDDEN,
                 "detail": str(exc) or "Permission denied",

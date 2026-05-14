@@ -24,6 +24,8 @@ from typing import Annotated, Any, cast
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app_platform.api.error_handlers_app_exception import ApplicationHTTPException
+from app_platform.api.problem_types import ProblemType
 from app_platform.api.request_state import set_actor_id
 from app_platform.shared.authorization import ResolvePrincipalCallable
 from app_platform.shared.principal import Principal
@@ -39,16 +41,22 @@ _http_bearer = HTTPBearer(
 )
 
 
-def _credentials_exception() -> HTTPException:
-    return HTTPException(
+def _credentials_exception() -> ApplicationHTTPException:
+    return ApplicationHTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
+        code="invalid_credentials",
+        type_uri=ProblemType.AUTH_TOKEN_INVALID,
     )
 
 
-def _forbidden(detail: str = "Permission denied") -> HTTPException:
-    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+def _forbidden(detail: str = "Permission denied") -> ApplicationHTTPException:
+    return ApplicationHTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=detail,
+        code="permission_denied",
+        type_uri=ProblemType.AUTHZ_PERMISSION_DENIED,
+    )
 
 
 def _get_resolver(request: Request) -> ResolvePrincipalCallable:

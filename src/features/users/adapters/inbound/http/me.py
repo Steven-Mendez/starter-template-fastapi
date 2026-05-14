@@ -10,21 +10,20 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 from app_platform.api.authorization import CurrentPrincipalDep
+from app_platform.api.error_handlers_app_exception import ApplicationHTTPException
+from app_platform.api.problem_types import ProblemType
 from app_platform.shared.result import Err, Ok
 from features.authentication.adapters.inbound.http import clear_refresh_cookie
+from features.users.adapters.inbound.http.errors import raise_http_from_user_error
 from features.users.adapters.inbound.http.schemas import (
     EraseSelfRequest,
     ErasureAccepted,
     ExportResponse,
     UpdateProfileRequest,
     UserPublic,
-)
-from features.users.application.errors import (
-    UserAlreadyExistsError,
-    UserNotFoundError,
 )
 from features.users.composition.app_state import get_users_container
 
@@ -45,13 +44,8 @@ def get_me(request: Request, principal: CurrentPrincipalDep) -> UserPublic:
         case Ok(value=user):
             return UserPublic.model_validate(user)
         case Err(error=err):
-            if isinstance(err, UserNotFoundError):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)
-            )
+            raise_http_from_user_error(err)
+    return None
 
 
 @me_router.patch("/me", response_model=UserPublic)
@@ -70,17 +64,8 @@ def update_me(
         case Ok(value=user):
             return UserPublic.model_validate(user)
         case Err(error=err):
-            if isinstance(err, UserAlreadyExistsError):
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT, detail="Email already in use"
-                )
-            if isinstance(err, UserNotFoundError):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)
-            )
+            raise_http_from_user_error(err)
+    return None
 
 
 @me_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
@@ -106,13 +91,7 @@ def delete_me(
             clear_refresh_cookie(response, request)
             return
         case Err(error=err):
-            if isinstance(err, UserNotFoundError):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)
-            )
+            raise_http_from_user_error(err)
 
 
 @me_router.delete(
@@ -144,14 +123,18 @@ def erase_me(
         # Defensive: production wiring always provides both. If we get
         # here in production something is mis-composed; better to 500
         # than to silently erase without re-auth.
-        raise HTTPException(
+        raise ApplicationHTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Erasure pipeline is not wired",
+            code="erasure_pipeline_unwired",
+            type_uri=ProblemType.ABOUT_BLANK,
         )
     if not container.password_verifier(principal.user_id, body.password):
-        raise HTTPException(
+        raise ApplicationHTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
+            code="invalid_credentials",
+            type_uri=ProblemType.AUTH_INVALID_CREDENTIALS,
         )
     job_id = str(uuid4())
     container.job_queue.enqueue(
@@ -184,9 +167,11 @@ def export_me(
     """
     container = get_users_container(request)
     if container.export_user_data is None:
-        raise HTTPException(
+        raise ApplicationHTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Export pipeline is not wired",
+            code="export_pipeline_unwired",
+            type_uri=ProblemType.ABOUT_BLANK,
         )
     result = container.export_user_data.execute(principal.user_id)
     match result:
@@ -196,10 +181,5 @@ def export_me(
                 expires_at=contract.expires_at,
             )
         case Err(error=err):
-            if isinstance(err, UserNotFoundError):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)
-            )
+            raise_http_from_user_error(err)
+    return None

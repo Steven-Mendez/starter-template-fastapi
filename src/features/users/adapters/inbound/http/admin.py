@@ -11,22 +11,24 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Query, Request, Response, status
 
 from app_platform.api.authorization import require_authorization
+from app_platform.api.error_handlers_app_exception import ApplicationHTTPException
+from app_platform.api.problem_types import ProblemType
 from app_platform.shared.result import Err, Ok
 from features.users.adapters.inbound.http.cursor import (
     InvalidCursorError,
     decode_cursor,
     encode_cursor,
 )
+from features.users.adapters.inbound.http.errors import raise_http_from_user_error
 from features.users.adapters.inbound.http.schemas import (
     ErasureAccepted,
     ExportResponse,
     UserListPage,
     UserPublic,
 )
-from features.users.application.errors import UserNotFoundError
 from features.users.composition.app_state import get_users_container
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
@@ -56,9 +58,11 @@ def list_users(
         try:
             decoded_cursor = decode_cursor(cursor)
         except InvalidCursorError as exc:
-            raise HTTPException(
+            raise ApplicationHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(exc),
+                code="invalid_cursor",
+                type_uri=ProblemType.ABOUT_BLANK,
             ) from exc
 
     result = get_users_container(request).list_users.execute(
@@ -81,9 +85,8 @@ def list_users(
                 next_cursor=next_cursor,
             )
         case Err(error=err):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)
-            )
+            raise_http_from_user_error(err)
+    return None
 
 
 @admin_router.post(
@@ -108,9 +111,11 @@ def admin_erase_user(
     """
     container = get_users_container(request)
     if container.job_queue is None:
-        raise HTTPException(
+        raise ApplicationHTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Erasure pipeline is not wired",
+            code="erasure_pipeline_unwired",
+            type_uri=ProblemType.ABOUT_BLANK,
         )
     job_id = str(uuid4())
     container.job_queue.enqueue(
@@ -141,9 +146,11 @@ def admin_export_user(
     """Admin path for GDPR Art. 15 export. Same response shape as ``/me/export``."""
     container = get_users_container(request)
     if container.export_user_data is None:
-        raise HTTPException(
+        raise ApplicationHTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Export pipeline is not wired",
+            code="export_pipeline_unwired",
+            type_uri=ProblemType.ABOUT_BLANK,
         )
     result = container.export_user_data.execute(user_id)
     match result:
@@ -153,10 +160,5 @@ def admin_export_user(
                 expires_at=contract.expires_at,
             )
         case Err(error=err):
-            if isinstance(err, UserNotFoundError):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)
-            )
+            raise_http_from_user_error(err)
+    return None
