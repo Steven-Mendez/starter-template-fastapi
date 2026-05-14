@@ -39,6 +39,38 @@ def _http_exception_detail(exc: StarletteHTTPException) -> str | None:
     return json.dumps(jsonable_encoder(d))
 
 
+def pydantic_errors_to_violations(
+    exc: RequestValidationError, *, include_input: bool
+) -> list[dict[str, Any]]:
+    """Translate Pydantic ``RequestValidationError`` entries into RFC 9457 violations.
+
+    Each output entry exposes the public ``Violation`` shape documented in
+    ``docs/api.md``:
+
+    - ``loc: list[str | int]`` — canonical Pydantic location path.
+    - ``type: str`` — stable Pydantic error type (e.g. ``"missing"``,
+      ``"value_error"``).
+    - ``msg: str`` — human-readable explanation.
+    - ``input: object | None`` — the offending input value. Included only
+      when ``include_input`` is True; the key is **omitted** entirely
+      otherwise (typically in production) to avoid echoing secrets.
+
+    The ``loc``, ``type``, and ``msg`` fields are identical across
+    environments; only ``input`` is environment-gated.
+    """
+    violations: list[dict[str, Any]] = []
+    for err in exc.errors():
+        violation: dict[str, Any] = {
+            "loc": list(err["loc"]),
+            "type": err["type"],
+            "msg": err["msg"],
+        }
+        if include_input:
+            violation["input"] = err.get("input")
+        violations.append(violation)
+    return violations
+
+
 def problem_json_response(
     *,
     status_code: int,
@@ -135,9 +167,9 @@ def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        if settings.environment != "production":
-            extra: dict[str, Any] = {"errors": exc.errors()}
-        else:
+        is_production = settings.environment == "production"
+        violations = pydantic_errors_to_violations(exc, include_input=not is_production)
+        if is_production:
             logger.warning(
                 "Request validation failed",
                 extra={
@@ -145,14 +177,13 @@ def register_problem_details(app: FastAPI, settings: AppSettings) -> None:
                     "validation_errors": exc.errors(),
                 },
             )
-            extra = {}
         return problem_json_response(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             request=request,
             title=_status_title(status.HTTP_422_UNPROCESSABLE_CONTENT),
-            detail="Request validation failed",
+            detail=f"Validation failed: {len(violations)} field(s)",
             type_uri=ProblemType.VALIDATION_FAILED,
-            extra=extra if extra else None,
+            extra={"violations": violations},
         )
 
     @app.exception_handler(Exception)

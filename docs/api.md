@@ -107,7 +107,7 @@ Common fields:
 | `detail` | string | Human-readable detail when available. |
 | `request_id` | string | Request ID from middleware when available. |
 | `code` | string | Application error code for application-level errors. |
-| `errors` | array | Validation error details for request validation failures. |
+| `violations` | array | Field-level validation failures for 422 responses; see "Violation shape" below. |
 
 ### Problem Type URNs
 
@@ -140,6 +140,54 @@ The canonical catalog is defined as the `ProblemType` enum in
 | `urn:problem:generic:conflict` | `409` | `UserAlreadyExistsError`, `DuplicateEmailError`, `ConflictError`. |
 | `urn:problem:generic:not-found` | `404` | `UserNotFoundError`, `NotFoundError`. |
 | `about:blank` | varies | Genuinely uncategorized failures (configuration errors, unhandled exceptions, malformed cursors, internal 500s). |
+
+### Violation shape (422 responses)
+
+A `422 Unprocessable Content` response always carries a `violations`
+array on the Problem Details body — one entry per failed field. This is
+the RFC 9457 §3.1 "extension member" convention adapted to this
+service's terminology (`violations` rather than `invalid_params`).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `loc` | `list[str \| int]` | Canonical Pydantic location path for the failed field, preserving order and types (e.g. `["body", "address", "zip"]`, `["query", "page"]`). SDKs use this to route the failure back to the right form field. |
+| `type` | `string` | Stable Pydantic error type (e.g. `missing`, `value_error`, `string_too_short`). Treat as a public contract — new types may appear, existing types are not renamed. |
+| `msg` | `string` | Human-readable explanation. |
+| `input` | `object \| null` | The offending input value. **Present only in non-production environments.** Omitted (key absent) when `APP_ENVIRONMENT=production` to avoid echoing secrets. |
+
+The `loc`, `type`, and `msg` fields are identical across environments;
+only `input` is environment-gated. Producers MUST treat `input` as a
+debug aid — the same redaction rules used for log scrubbing apply when
+it enters logs.
+
+Example 422 body (development):
+
+```json
+{
+  "type": "urn:problem:validation:failed",
+  "title": "Unprocessable Content",
+  "status": 422,
+  "instance": "http://localhost:8000/me",
+  "detail": "Validation failed: 2 field(s)",
+  "request_id": "abc-123",
+  "violations": [
+    {
+      "loc": ["body", "email"],
+      "type": "value_error",
+      "msg": "value is not a valid email address",
+      "input": "not-an-email"
+    },
+    {
+      "loc": ["body", "name"],
+      "type": "missing",
+      "msg": "Field required",
+      "input": null
+    }
+  ]
+}
+```
+
+In production, each entry contains only `loc`, `type`, and `msg`.
 
 Example application error:
 
