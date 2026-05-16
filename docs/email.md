@@ -1,7 +1,7 @@
 # Email
 
 The `email` feature owns transactional mail dispatch. It ships with a port,
-three adapters (console, SMTP, Resend), and a template registry features
+two adapters (console, Resend), and a template registry features
 contribute to at composition time.
 
 ## At A Glance
@@ -11,7 +11,6 @@ contribute to at composition time.
 | Port | `src/features/email/application/ports/email_port.py` — `EmailPort.send(to, template_name, context) -> Result[None, EmailError]` |
 | Registry | `src/features/email/application/registry.py` — `EmailTemplateRegistry.register_template(name, path)` |
 | Console adapter | `src/features/email/adapters/outbound/console/` |
-| SMTP adapter | `src/features/email/adapters/outbound/smtp/` |
 | Resend adapter | `src/features/email/adapters/outbound/resend/` (HTTP API) |
 | Settings | `src/features/email/composition/settings.py` (`EmailSettings`) |
 | Container | `src/features/email/composition/container.py` (`build_email_container`) |
@@ -20,20 +19,13 @@ contribute to at composition time.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `APP_EMAIL_BACKEND` | `console` | One of `console`, `smtp`, `resend`. **Production refuses `console`.** |
-| `APP_EMAIL_FROM` | unset | Required when backend is `smtp` or `resend`. |
-| `APP_EMAIL_SMTP_HOST` | unset | Required when backend is `smtp`. |
-| `APP_EMAIL_SMTP_PORT` | `587` | Submission port. |
-| `APP_EMAIL_SMTP_USERNAME` / `..._PASSWORD` | unset | Optional auth credentials. |
-| `APP_EMAIL_SMTP_USE_STARTTLS` | `true` | STARTTLS upgrade on the submission port. |
-| `APP_EMAIL_SMTP_USE_SSL` | `false` | Implicit TLS on port 465. Mutually exclusive with STARTTLS. |
-| `APP_EMAIL_SMTP_TIMEOUT_SECONDS` | `10.0` | Socket timeout. |
+| `APP_EMAIL_BACKEND` | `console` | One of `console`, `resend`. **Production refuses `console`.** |
+| `APP_EMAIL_FROM` | unset | Required when backend is `resend`. |
 | `APP_EMAIL_RESEND_API_KEY` | unset | Required when backend is `resend`. |
 | `APP_EMAIL_RESEND_BASE_URL` | `https://api.resend.com` | Switch to `https://api.eu.resend.com` for the EU data plane or point at a Resend-compatible host. |
 
 The settings validator refuses to start when:
 
-- `APP_EMAIL_BACKEND=smtp` and either `APP_EMAIL_SMTP_HOST` or `APP_EMAIL_FROM` is missing,
 - `APP_EMAIL_BACKEND=resend` and either `APP_EMAIL_RESEND_API_KEY` or `APP_EMAIL_FROM` is missing.
 
 ## How To Send Mail
@@ -100,16 +92,8 @@ Logs the rendered email at `INFO` with structured fields:
 Used in development, tests, and CI. Production refuses to start with this
 backend selected.
 
-### SMTP (`SmtpEmailAdapter`)
-
-Uses `smtplib` with the configured host/port/credentials. Supports both
-STARTTLS (port 587) and implicit TLS (port 465). `EmailError` covers
-connection failure, authentication failure, and recipient rejection.
-
 The contract test suite (`src/features/email/tests/contracts/`) runs the
-same assertions against every adapter — the SMTP path uses a fake SMTP
-server provided by `aiosmtpd`, so the production code path is exercised
-against a real socket.
+same assertions against every adapter.
 
 ### Resend (`ResendEmailAdapter`)
 

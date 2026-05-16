@@ -1137,7 +1137,7 @@ The strict and email rules SHALL also apply inside header mappings.
 
 ### Requirement: Email adapters do not log message bodies or raw recipient addresses
 
-Every email adapter (`console`, `smtp`, `resend`) SHALL log recipient addresses only through `redact_email(...)`. The console adapter SHALL log the rendered body as `body_len=<n> body_sha256=<hex>`; the full body MAY be logged only when both `APP_ENVIRONMENT=development` AND `APP_EMAIL_CONSOLE_LOG_BODIES=true`.
+Every email adapter (`console`, `resend`) SHALL log recipient addresses only through `redact_email(...)`. The console adapter SHALL log the rendered body as `body_len=<n> body_sha256=<hex>`; the full body MAY be logged only when both `APP_ENVIRONMENT=development` AND `APP_EMAIL_CONSOLE_LOG_BODIES=true`.
 
 #### Scenario: Console adapter does not leak the reset token
 
@@ -1146,25 +1146,12 @@ Every email adapter (`console`, `smtp`, `resend`) SHALL log recipient addresses 
 - **THEN** the captured log line contains `body_sha256=`
 - **AND** does NOT contain the raw reset URL or token
 
-#### Scenario: SMTP adapter masks the recipient
+#### Scenario: Resend adapter masks the recipient
 
-- **GIVEN** an SMTP dispatch with `to="alice@example.com"`
+- **GIVEN** a Resend dispatch with `to="alice@example.com"`
 - **WHEN** the adapter logs the dispatch
 - **THEN** the captured log line contains `to=a***@example.com`
-
-#### Scenario: SMTP error path also redacts the recipient
-
-- **GIVEN** an SMTP dispatch where `_dispatch(envelope)` raises `smtplib.SMTPException`
-- **WHEN** the adapter logs `event=email.smtp.failed`
-- **THEN** the captured error log line contains `to=a***@example.com`
 - **AND** the line does NOT contain `alice@example.com`
-
-#### Scenario: Console body-bypass requires both flag and dev environment
-
-- **GIVEN** `APP_EMAIL_CONSOLE_LOG_BODIES=true` and `APP_ENVIRONMENT=staging`
-- **WHEN** the console adapter sends a password-reset
-- **THEN** the captured log line contains `body_sha256=` and NOT the raw body
-- **AND** the bypass is only honored when both `APP_EMAIL_CONSOLE_LOG_BODIES=true` AND `APP_ENVIRONMENT=development` hold
 
 ### Requirement: Access logs include the request_id
 

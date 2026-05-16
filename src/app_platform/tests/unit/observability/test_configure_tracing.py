@@ -91,11 +91,9 @@ def test_production_ratio_one_emits_warning(caplog: pytest.LogCaptureFixture) ->
         enable_docs=False,
         auth_cookie_secure=True,
         auth_rbac_enabled=True,
-        email_backend="smtp",
+        email_backend="resend",
         email_from="noreply@example.com",
-        email_smtp_host="smtp.example.com",
-        email_smtp_username="user",
-        email_smtp_password="pw",
+        email_resend_api_key="re_test_key",
         jobs_backend="arq",
         jobs_redis_url="redis://localhost:6379",
         # ``harden-rate-limiting`` made both of these required in

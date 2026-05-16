@@ -31,6 +31,17 @@ the orchestrator runs `openspec validate <name> --strict` after each draft.
   requirement `Every documented production refusal has a unit test`
   (`openspec/specs/authentication/spec.md`) — the right MODIFY target for
   settings/validator cleanup changes.
+- The `email` capability owns `Email backend selection` and
+  `Production settings validator` (these enumerate the backends). The
+  `project-layout` capability owns
+  `Email adapters do not log message bodies or raw recipient addresses`
+  (enumerates each adapter + per-adapter redaction scenarios). The
+  `quality-automation` capability owns
+  `docker-compose provides an SMTP catcher for dev` (bundles the
+  mailpit/SMTP mandate AND the surviving `app`-service
+  restart/healthcheck + console-default guarantees). Adapter-removal
+  changes (ROADMAP ETAPA I steps 3-7) typically need MODIFY deltas across
+  all three.
 - "oauth" in this repo is mostly legitimate (bearer-token comments,
   `OAuth2PasswordBearer`, `/docs/oauth2-redirect` Swagger path, forward-looking
   `credentials`-table SSO comments). Only the `APP_AUTH_OAUTH_*` Google

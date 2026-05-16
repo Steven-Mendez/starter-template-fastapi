@@ -1,9 +1,9 @@
 """Resend HTTP adapter for :class:`EmailPort`.
 
 POSTs the rendered email to Resend's `/emails` endpoint using a
-long-lived :class:`httpx.Client`. The adapter is sync — like
-:class:`SmtpEmailAdapter` — and is reused across requests; ``httpx.Client``
-is threadsafe for FastAPI's threadpool dispatch.
+long-lived :class:`httpx.Client`. The adapter is sync and is reused
+across requests; ``httpx.Client`` is threadsafe for FastAPI's
+threadpool dispatch.
 
 Retry policy is intentionally absent. Callers that want at-least-once
 delivery enqueue the ``send_email`` background job; retrying at the

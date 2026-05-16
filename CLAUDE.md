@@ -55,7 +55,7 @@ following the layer stack and per-feature conventions documented below.
 | `authentication` | JWT issuance, login/logout/refresh, password reset, email verify, rate limiting, principal resolution, `credentials` table |
 | `users` | The `User` entity, registration, profile, deactivation, admin user listing, `UserPort` |
 | `authorization` | ReBAC engine, `AuthorizationPort`, `AuthorizationRegistry`, SQLModel adapter, SpiceDB stub, `BootstrapSystemAdmin` |
-| `email` | `EmailPort`, console + SMTP + Resend adapters, `EmailTemplateRegistry` |
+| `email` | `EmailPort`, console + Resend adapters, `EmailTemplateRegistry` |
 | `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, `JobHandlerRegistry`, worker entrypoint |
 | `file_storage` | `FileStoragePort`, local + S3 (`boto3`) adapters |
 | `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, `DispatchPending` relay use case (runs in the worker only) |
@@ -146,7 +146,6 @@ Pure ReBAC concerns. Other features call into it through one port; it calls back
 - `application/ports/email_port.py` — `EmailPort.send(to, template_name, context) -> Result[None, EmailError]`
 - `application/registry.py` — `EmailTemplateRegistry`; features call `register_template(name, path)` at composition; sealed in `main.py`
 - `adapters/outbound/console/` — logs the rendered email to stdout (dev/test default)
-- `adapters/outbound/smtp/` — `smtplib`-based; supports STARTTLS or implicit-TLS
 - `composition/jobs.py` — registers the `send_email` background-jobs handler
 - See `docs/email.md`.
 
@@ -238,7 +237,7 @@ The settings validator refuses to start when `APP_ENVIRONMENT=production` and an
 - `APP_AUTH_COOKIE_SECURE=false`
 - `APP_ENABLE_DOCS=true`
 - `APP_AUTH_RBAC_ENABLED=false`
-- `APP_EMAIL_BACKEND=console` (must be `smtp` or `resend` in production, with the matching credentials set)
+- `APP_EMAIL_BACKEND=console` (must be `resend` in production, with the matching credentials set)
 - `APP_JOBS_BACKEND=in_process`
 - `APP_AUTH_RETURN_INTERNAL_TOKENS=true`
 - `APP_STORAGE_ENABLED=true` with `APP_STORAGE_BACKEND=local`
@@ -268,7 +267,7 @@ See `docs/operations.md` for the full env-var reference.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `APP_EMAIL_BACKEND` | `console` | `console` for dev/test, `smtp` or `resend` in production |
+| `APP_EMAIL_BACKEND` | `console` | `console` for dev/test, `resend` in production |
 | `APP_EMAIL_RESEND_API_KEY` | unset | Required when `APP_EMAIL_BACKEND=resend` |
 | `APP_EMAIL_RESEND_BASE_URL` | `https://api.resend.com` | Use `https://api.eu.resend.com` for the EU data plane |
 | `APP_JOBS_BACKEND` | `in_process` | `in_process` for dev/test, `arq` in production |

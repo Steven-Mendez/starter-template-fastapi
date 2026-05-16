@@ -22,8 +22,8 @@ _VALID_PROD_ENV = {
     "APP_APP_PUBLIC_URL": "https://example.com",
     "APP_AUTH_COOKIE_SECURE": "true",
     "APP_AUTH_REDIS_URL": "redis://localhost:6379/0",
-    "APP_EMAIL_BACKEND": "smtp",
-    "APP_EMAIL_SMTP_HOST": "smtp.example.com",
+    "APP_EMAIL_BACKEND": "resend",
+    "APP_EMAIL_RESEND_API_KEY": "re_test_key",
     "APP_EMAIL_FROM": "no-reply@example.com",
     "APP_JOBS_BACKEND": "arq",
     "APP_JOBS_REDIS_URL": "redis://localhost:6379/0",
@@ -223,22 +223,6 @@ def test_arq_backend_requires_redis_url(monkeypatch: pytest.MonkeyPatch) -> None
         AppSettings(_env_file=None)  # type: ignore[call-arg]
 
 
-def test_smtp_backend_requires_host(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_EMAIL_BACKEND", "smtp")
-    monkeypatch.setenv("APP_EMAIL_FROM", "no-reply@example.com")
-    monkeypatch.delenv("APP_EMAIL_SMTP_HOST", raising=False)
-    with pytest.raises(ValidationError, match="APP_EMAIL_SMTP_HOST"):
-        AppSettings(_env_file=None)  # type: ignore[call-arg]
-
-
-def test_smtp_backend_requires_from(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_EMAIL_BACKEND", "smtp")
-    monkeypatch.setenv("APP_EMAIL_SMTP_HOST", "smtp.example.com")
-    monkeypatch.delenv("APP_EMAIL_FROM", raising=False)
-    with pytest.raises(ValidationError, match="APP_EMAIL_FROM"):
-        AppSettings(_env_file=None)  # type: ignore[call-arg]
-
-
 def test_resend_backend_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_EMAIL_BACKEND", "resend")
     monkeypatch.setenv("APP_EMAIL_FROM", "no-reply@example.com")
@@ -260,8 +244,7 @@ def test_production_accepts_resend_backend(monkeypatch: pytest.MonkeyPatch) -> N
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("APP_EMAIL_BACKEND", "resend")
     monkeypatch.setenv("APP_EMAIL_RESEND_API_KEY", "re_test_key")
-    # Configured production values still satisfy SMTP fields, but Resend
-    # only needs FROM + key — construct should succeed without raising.
+    # Resend only needs FROM + key — construct should succeed without raising.
     settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
     assert settings.email_backend == "resend"
 

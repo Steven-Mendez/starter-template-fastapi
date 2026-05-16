@@ -31,7 +31,7 @@ HTTP client
 | `authentication` | JWT tokens, login/logout/refresh, password reset, email verify, rate limiting, the `credentials` table, principal resolution. | `UserPort` (from `users`), `EmailPort`, `JobQueuePort`, `AuthorizationPort`. |
 | `users` | The `User` entity, the `users` table, registration, profile read/update, deactivation, admin user listing. | Authorization's outbound ports (`UserRegistrarPort`, `UserAuthzVersionPort`). |
 | `authorization` | `AuthorizationPort`, the runtime `AuthorizationRegistry`, the SQLModel adapter, the SpiceDB stub, `BootstrapSystemAdmin`. | `UserRegistrarPort`, `UserAuthzVersionPort` (implemented by `users`), `AuditPort` (implemented by `authentication`). |
-| `email` | `EmailPort`, console + SMTP adapters, the `EmailTemplateRegistry`. | Nothing. |
+| `email` | `EmailPort`, console + Resend adapters, the `EmailTemplateRegistry`. | Nothing. |
 | `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, the `JobHandlerRegistry`, the worker entrypoint. | Nothing. |
 | `file_storage` | `FileStoragePort`, local adapter, S3 stub. | Nothing. |
 | `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, the `DispatchPending` relay use case. | `JobQueuePort` (the relay's destination). |
@@ -187,7 +187,6 @@ Problem Details response.
 | --- | --- | --- |
 | PostgreSQL | Every persisting feature | Always. |
 | Redis | Auth rate limiter, principal cache, `arq` jobs queue | `APP_AUTH_REDIS_URL` set, multi-replica auth, `APP_JOBS_BACKEND=arq`. |
-| SMTP server | Email feature | `APP_EMAIL_BACKEND=smtp` (required in production). |
 | Object storage | File-storage feature | A consumer feature wires `FileStoragePort` and `APP_STORAGE_BACKEND=s3` (production). |
 | OTLP collector | Observability | `APP_OTEL_EXPORTER_ENDPOINT` set. |
 | SpiceDB | Authorization | Not used today; the adapter is a stub mirroring the S3 pattern. |

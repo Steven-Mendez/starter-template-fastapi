@@ -103,13 +103,6 @@ def _build_containers() -> tuple[
         EmailSettings.from_app_settings(
             backend=settings.email_backend,
             from_address=settings.email_from,
-            smtp_host=settings.email_smtp_host,
-            smtp_port=settings.email_smtp_port,
-            smtp_username=settings.email_smtp_username,
-            smtp_password=settings.email_smtp_password,
-            smtp_use_starttls=settings.email_smtp_use_starttls,
-            smtp_use_ssl=settings.email_smtp_use_ssl,
-            smtp_timeout_seconds=settings.email_smtp_timeout_seconds,
         )
     )
     register_authentication_email_templates(email.registry)

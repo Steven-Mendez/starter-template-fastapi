@@ -58,14 +58,6 @@ services:
     environment: *app-environment
     volumes: *app-volumes
 
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: starter-template-mailpit
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    restart: unless-stopped
-
   app:
     build: *app-build
     container_name: starter-template-app

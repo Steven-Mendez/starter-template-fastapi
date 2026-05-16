@@ -182,13 +182,6 @@ def _build_app(
         EmailSettings.from_app_settings(
             backend="console",
             from_address="test@example.com",
-            smtp_host=None,
-            smtp_port=587,
-            smtp_username=None,
-            smtp_password=None,
-            smtp_use_starttls=False,
-            smtp_use_ssl=False,
-            smtp_timeout_seconds=1.0,
         )
     )
     register_authentication_email_templates(email_container.registry)

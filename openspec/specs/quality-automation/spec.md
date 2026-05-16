@@ -227,15 +227,16 @@ Project-wide `extend-ignore` SHALL document the rationale for any rule it silenc
 
 ### Requirement: docker-compose provides an SMTP catcher for dev
 
-`docker-compose.yml` SHALL include a `mailpit` service exposing SMTP on `1025` and the UI on `8025`. `.env.example` SHALL include commented env-var examples wiring the SMTP backend to the catcher.
+`docker-compose.yml` SHALL NOT ship a `mailpit` (or any other SMTP-catcher) service: the SMTP email backend no longer exists, so a local SMTP sink would catch traffic the default `console` backend never sends. `.env.example` SHALL NOT include `APP_EMAIL_SMTP_*` keys or a mailpit how-to comment block.
 
 The `app` service SHALL declare `restart: unless-stopped` and a `healthcheck` hitting `/health/live`.
 
-#### Scenario: Mailpit catches a password-reset email
+#### Scenario: No SMTP-catcher service is defined
 
-- **GIVEN** a developer runs `docker compose up` and switches `APP_EMAIL_BACKEND=smtp` + `APP_EMAIL_SMTP_HOST=mailpit`
-- **WHEN** the developer triggers a password reset
-- **THEN** the email appears in the Mailpit UI at `http://localhost:8025`
+- **GIVEN** the repository's `docker-compose.yml`
+- **WHEN** `docker compose config --services` is listed
+- **THEN** no `mailpit` service is present
+- **AND** no remaining service declares a `depends_on` referencing `mailpit`
 
 #### Scenario: App service marked unhealthy when /health/live fails
 
@@ -249,7 +250,7 @@ The `app` service SHALL declare `restart: unless-stopped` and a `healthcheck` hi
 - **GIVEN** a developer runs `docker compose up` without overriding `APP_EMAIL_BACKEND`
 - **WHEN** the API sends an email
 - **THEN** the email is routed via the console backend (printed to stdout)
-- **AND** no SMTP connection to the `mailpit` service is opened
+- **AND** no outbound SMTP connection is attempted by any code path
 
 ### Requirement: CI scans the built container image and produces an SBOM
 

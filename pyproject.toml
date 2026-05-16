@@ -78,7 +78,6 @@ sentry = ["sentry-sdk[fastapi]>=2"]
 # only the role-specific extras they need (see ``[project.optional-dependencies]``
 # and docs/operations.md).
 dev = [
-    "aiosmtpd>=1.4.6",
     # All four role/adapter extras so local dev keeps a single fat
     # install — tests cross every adapter (Resend via respx, S3 via
     # moto, the arq worker via fakeredis, etc.).

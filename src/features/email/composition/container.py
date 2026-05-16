@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from features.email.adapters.outbound.console import ConsoleEmailAdapter
-from features.email.adapters.outbound.smtp import SmtpEmailAdapter
 from features.email.application.ports.email_port import EmailPort
 from features.email.application.registry import EmailTemplateRegistry
 from features.email.composition.settings import EmailSettings
@@ -54,22 +53,6 @@ def build_email_container(
             registry=registry,
             log_bodies=settings.console_log_bodies,
             environment=environment,
-        )
-    elif settings.backend == "smtp":
-        if settings.smtp_host is None:
-            raise RuntimeError(
-                "APP_EMAIL_SMTP_HOST is required when APP_EMAIL_BACKEND=smtp"
-            )
-        port = SmtpEmailAdapter(
-            registry=registry,
-            host=settings.smtp_host,
-            port=settings.smtp_port,
-            from_address=settings.resolved_from_address(),
-            username=settings.smtp_username,
-            password=settings.smtp_password,
-            use_starttls=settings.smtp_use_starttls,
-            use_ssl=settings.smtp_use_ssl,
-            timeout=settings.smtp_timeout_seconds,
         )
     elif settings.backend == "resend":
         if not settings.resend_api_key:

@@ -32,7 +32,7 @@ A production-shaped FastAPI starter. Seven features ship out of the box (`authen
 | --- | --- |
 | [`README.md`](README.md) | Project overview, install, common commands |
 | [`docs/architecture.md`](docs/architecture.md) | Module boundaries, dependency graph, layer rules |
-| [`docs/development.md`](docs/development.md) | Local workflow, Mailpit, debugging tips |
+| [`docs/development.md`](docs/development.md) | Local workflow, debugging tips |
 | [`docs/api.md`](docs/api.md) | Routes, schemas, status codes |
 | [`docs/operations.md`](docs/operations.md) | Env-var reference, deployment, migration policy |
 | [`docs/observability.md`](docs/observability.md) | Prometheus, OTel, structured logs |
@@ -152,7 +152,7 @@ For non-trivial work: scaffold a change with the OpenSpec workflow (see [`opensp
 | `refactor` | Internal restructuring; no behavior change | `refactor(authorization): extract registry sealing` |
 | `perf` | Measurable performance improvement | `perf(users): index users.email lower()` |
 | `docs` | Docs / comments only | `docs(operations): document one-way migration policy` |
-| `test` | Test-only changes | `test(email): add SMTP STARTTLS contract` |
+| `test` | Test-only changes | `test(email): add Resend retry contract` |
 | `chore` | Dependency bumps, tooling, repo housekeeping | `chore(deps): bump ruff to 0.14.0` |
 | `ci` | CI workflow changes | `ci: pin actions to commit SHAs` |
 
@@ -507,7 +507,7 @@ This is a starter template, not a deployed service — the deployment target dep
 - [ ] `APP_AUTH_JWT_SECRET_KEY` (≥ 32 chars), `APP_AUTH_JWT_ISSUER`, `APP_AUTH_JWT_AUDIENCE` set.
 - [ ] `APP_POSTGRESQL_DSN` and `APP_AUTH_REDIS_URL` (or `APP_JOBS_REDIS_URL`) reachable.
 - [ ] `uv run alembic upgrade head` runs as a separate deploy step *before* the API container starts.
-- [ ] Email backend is `smtp` or `resend` with credentials set.
+- [ ] Email backend is `resend` with credentials set.
 - [ ] At least one worker (`python -m worker`) is running per Redis-backed deployment — the API does not consume the job queue.
 - [ ] Liveness / readiness probes wired to `/health/live` and `/health/ready`.
 

@@ -813,15 +813,8 @@ violated and `APP_ENVIRONMENT=production`.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `APP_EMAIL_BACKEND` | `console` | One of `console`, `smtp`, `resend`. **Must be `smtp` or `resend` in production.** |
-| `APP_EMAIL_FROM` | unset | Required when `APP_EMAIL_BACKEND` is `smtp` or `resend`. |
-| `APP_EMAIL_SMTP_HOST` | unset | Required when `APP_EMAIL_BACKEND=smtp`. |
-| `APP_EMAIL_SMTP_PORT` | `587` | Submission port. |
-| `APP_EMAIL_SMTP_USERNAME` | unset | Optional SMTP auth username. |
-| `APP_EMAIL_SMTP_PASSWORD` | unset | Optional SMTP auth password. |
-| `APP_EMAIL_SMTP_USE_STARTTLS` | `true` | STARTTLS upgrade on the submission port. |
-| `APP_EMAIL_SMTP_USE_SSL` | `false` | Implicit TLS (port 465). Mutually exclusive with STARTTLS. |
-| `APP_EMAIL_SMTP_TIMEOUT_SECONDS` | `10.0` | Socket timeout for SMTP operations. |
+| `APP_EMAIL_BACKEND` | `console` | One of `console`, `resend`. **Must be `resend` in production.** |
+| `APP_EMAIL_FROM` | unset | Required when `APP_EMAIL_BACKEND=resend`. |
 | `APP_EMAIL_RESEND_API_KEY` | unset | Required when `APP_EMAIL_BACKEND=resend`. |
 | `APP_EMAIL_RESEND_BASE_URL` | `https://api.resend.com` | Resend API base URL. Use `https://api.eu.resend.com` for the EU data plane. |
 

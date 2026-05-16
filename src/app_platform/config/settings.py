@@ -173,22 +173,11 @@ class AppSettings(BaseSettings):
     # ---------------------------------------------------------------------------
     # Email
     # ---------------------------------------------------------------------------
-    # ``console`` logs the rendered email (dev/test default). ``smtp`` uses
-    # smtplib to dispatch via the configured server. ``resend`` POSTs to
-    # Resend's HTTP API. The production validator refuses ``console`` when
-    # ``APP_ENVIRONMENT=production``.
-    email_backend: Literal["console", "smtp", "resend"] = "console"
+    # ``console`` logs the rendered email (dev/test default). ``resend``
+    # POSTs to Resend's HTTP API. The production validator refuses
+    # ``console`` when ``APP_ENVIRONMENT=production``.
+    email_backend: Literal["console", "resend"] = "console"
     email_from: str | None = None
-    email_smtp_host: str | None = None
-    email_smtp_port: int = 587
-    email_smtp_username: str | None = None
-    email_smtp_password: str | None = None
-    # STARTTLS upgrade on submission port (587) is the common case. Set
-    # ``email_smtp_use_ssl`` instead for implicit-TLS on port 465 — the
-    # two are mutually exclusive at the transport level.
-    email_smtp_use_starttls: bool = True
-    email_smtp_use_ssl: bool = False
-    email_smtp_timeout_seconds: float = 10.0
     # Resend HTTP backend. ``email_resend_api_key`` is required when
     # ``email_backend=resend``. ``email_resend_base_url`` defaults to the
     # US endpoint; switch to ``https://api.eu.resend.com`` for the EU
@@ -349,7 +338,7 @@ class AppSettings(BaseSettings):
         if not (0 <= self.auth_jwt_leeway_seconds <= MAX_JWT_LEEWAY_SECONDS):
             errors.append("APP_AUTH_JWT_LEEWAY_SECONDS must be between 0 and 60")
         # Email/jobs/storage need to validate their own backend-specific
-        # combinations (e.g. ``smtp`` requires a host). Importing the
+        # combinations (e.g. ``resend`` requires an API key). Importing the
         # classes lazily keeps :mod:`app_platform.config.settings` free
         # of compile-time dependencies on feature packages so the
         # platform-isolation Import Linter contract stays clean.

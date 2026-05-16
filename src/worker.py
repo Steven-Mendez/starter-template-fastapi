@@ -199,13 +199,6 @@ def _email_settings(app_settings: AppSettings) -> EmailSettings:
     return EmailSettings.from_app_settings(
         backend=app_settings.email_backend,
         from_address=app_settings.email_from,
-        smtp_host=app_settings.email_smtp_host,
-        smtp_port=app_settings.email_smtp_port,
-        smtp_username=app_settings.email_smtp_username,
-        smtp_password=app_settings.email_smtp_password,
-        smtp_use_starttls=app_settings.email_smtp_use_starttls,
-        smtp_use_ssl=app_settings.email_smtp_use_ssl,
-        smtp_timeout_seconds=app_settings.email_smtp_timeout_seconds,
         console_log_bodies=app_settings.email_console_log_bodies,
     )
 
