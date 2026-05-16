@@ -48,7 +48,7 @@ The system SHALL NOT define a top-level package named `platform`, because that n
 
 ### Requirement: Entrypoints reference modules by their real names
 
-The system SHALL configure every entrypoint — FastAPI CLI, `uvicorn`, the Docker image, the Makefile, and the Alembic environment — to import modules by their post-refactor names (`main:app`, `worker`, `app_platform.X`, `features.X`) and SHALL NOT use the `src.` prefix.
+The system SHALL configure every entrypoint — FastAPI CLI, `uvicorn`, the Docker image, the Makefile, and the Alembic environment — to import modules by their post-refactor names (`main:app`, `worker`, `app_platform.X`, `features.X`) and SHALL NOT use the `src.` prefix. The `worker` module name SHALL remain valid: `src/worker.py` continues to exist as the runtime-agnostic composition-root scaffold (no `arq` import) until the production job runtime is added at a later roadmap step.
 
 #### Scenario: FastAPI CLI entrypoint declares the bare module
 
@@ -64,6 +64,7 @@ The system SHALL configure every entrypoint — FastAPI CLI, `uvicorn`, the Dock
 
 - **WHEN** an operator inspects `Makefile`
 - **THEN** the `worker` target invokes `python -m worker` (not `python -m src.worker`), and the `outbox-retry-failed` target invokes `python -m features.outbox.management` with `PYTHONPATH=src` set in the environment
+- **AND** the `worker` target's help text does not claim it runs an `arq` worker (the worker runtime is added at a later roadmap step)
 
 #### Scenario: Alembic env imports models by their real names
 
@@ -164,41 +165,6 @@ The policy SHALL be documented in `docs/operations.md`. The project SHALL ship a
 - **THEN** the command aborts with a `NotImplementedError` whose message references `docs/operations.md#migration-policy`
 - **AND** no schema change is applied (the prior `upgrade` state remains)
 - **AND** no data is silently re-introduced under a default value
-
-### Requirement: arq worker has bounded result retention with per-handler override
-
-`WorkerSettings` SHALL set `max_jobs` and `job_timeout` from configured values (defaults: 16 and 600 seconds). Each handler's `keep_result` SHALL default to `keep_result_seconds_default` (300) and SHALL be overridable per-handler via an explicit `keep_result_seconds` argument at registration time. The platform default SHALL be configurable via `APP_JOBS_KEEP_RESULT_SECONDS_DEFAULT`. `docs/background-jobs.md` SHALL document the recommended Redis eviction policy (`maxmemory-policy allkeys-lru`).
-
-#### Scenario: Handler without override picks the platform default
-
-- **GIVEN** a handler registered with `JobHandlerRegistry.register("send_email", handler)` (no `keep_result_seconds` argument)
-- **WHEN** the worker boots
-- **THEN** the arq `Function` for `send_email` has `keep_result == 300`
-
-#### Scenario: Handler with explicit override picks the override value
-
-- **GIVEN** a handler registered with `JobHandlerRegistry.register("billing_charge", handler, keep_result_seconds=86400)`
-- **WHEN** the worker boots
-- **THEN** the arq `Function` for `billing_charge` has `keep_result == 86400`
-
-#### Scenario: Settings override the platform default
-
-- **GIVEN** `APP_JOBS_KEEP_RESULT_SECONDS_DEFAULT=600`
-- **WHEN** the worker boots
-- **THEN** every handler without an explicit override has `Function.keep_result == 600`
-
-#### Scenario: max_jobs and job_timeout flow into WorkerSettings
-
-- **GIVEN** `APP_JOBS_MAX_JOBS=32` and `APP_JOBS_JOB_TIMEOUT_SECONDS=900`
-- **WHEN** the worker boots
-- **THEN** `WorkerSettings.max_jobs == 32` and `WorkerSettings.job_timeout == 900`
-
-#### Scenario: Handler exceeding job_timeout is cancelled
-
-- **GIVEN** a handler registered with the default `job_timeout_seconds=600`
-- **WHEN** an enqueued invocation runs for more than 600 seconds
-- **THEN** arq cancels the task and records a failure
-- **AND** the worker process remains available to pick up the next job (not pinned by the hung handler)
 
 ### Requirement: All application errors descend from a common root
 
@@ -914,16 +880,15 @@ The probe SHALL return:
 
 ### Requirement: Dockerfile exposes a dedicated worker stage
 
-The `Dockerfile` SHALL define a `runtime-worker` stage declared as `FROM runtime AS runtime-worker`, so it inherits every layer of the hardened `runtime` base (digest-pinned base image, UID/GID 10001, tini entrypoint). Only `CMD` (and optionally `HEALTHCHECK`) SHALL differ from the `runtime` stage.
+The `Dockerfile` SHALL define a dedicated worker build stage that inherits the hardened runtime base (digest-pinned base image, UID/GID 10001, tini entrypoint); only `CMD` (and optionally `HEALTHCHECK`) SHALL differ from the API runtime stage. A `Makefile` target `docker-build-worker` SHALL invoke `docker build --target runtime-worker --tag worker:latest .`. `docs/operations.md` SHALL document the two-image build pattern (API target vs worker target). The stage's `CMD` SHALL run `python -m worker`, which (until the production job runtime is added at a later roadmap step) builds the scaffold and exits non-zero with a clear "no job runtime wired" message. The stage SHALL NOT be deleted: a later roadmap step revives it for the AWS SQS + Lambda runtime.
 
-A `Makefile` target `docker-build-worker` SHALL invoke `docker build --target runtime-worker --tag worker:latest .`. `docs/operations.md` SHALL document the two-image build pattern (API target vs worker target).
-
-#### Scenario: Worker image starts the arq worker
+#### Scenario: Worker image runs the scaffold and exits honestly
 
 - **GIVEN** an image built with `--target runtime-worker`
 - **WHEN** the container starts
-- **THEN** the process invokes the arq worker (process tree includes `python -m worker` or equivalent)
+- **THEN** the process invokes `python -m worker`, which builds the composition scaffold and exits with a non-zero status and a "no job runtime wired" message (the runtime arrives at a later roadmap step)
 - **AND** the process does NOT invoke uvicorn
+- **AND** the process imports no `arq` symbol
 
 #### Scenario: Worker image reuses the hardened base
 
@@ -951,7 +916,7 @@ The API server SHALL be launched with `--timeout-graceful-shutdown` equal to `AP
 
 Each finalizer step SHALL be wrapped in `try/except` + warn log so a slow step does not skip the others.
 
-The arq worker SHALL implement `on_shutdown` that waits for in-flight `DispatchPending.execute` ticks and active job handlers to complete (bounded by `APP_SHUTDOWN_TIMEOUT_SECONDS`) before disposing the engine and closing Redis.
+The future job runtime (AWS SQS + a Lambda worker, a later roadmap step) SHALL implement the equivalent drain — waiting for in-flight `DispatchPending.execute` ticks and active job handlers to complete (bounded by `APP_SHUTDOWN_TIMEOUT_SECONDS`) before disposing the engine and closing Redis. The reusable engine-dispose / Redis-close / tracing-flush helpers in `src/worker.py` SHALL remain available for that runtime to re-bind; no `arq` `on_shutdown` binding exists in the meantime.
 
 #### Scenario: SIGTERM mid-request drains before exit
 
@@ -960,17 +925,10 @@ The arq worker SHALL implement `on_shutdown` that waits for in-flight `DispatchP
 - **THEN** the in-flight request completes with its normal response
 - **AND** subsequent `/health/ready` probes return 503 immediately
 
-#### Scenario: SIGTERM mid-relay does not leave half-committed rows
+#### Scenario: Engine and Redis are released on API shutdown
 
-- **GIVEN** a worker actively dispatching outbox rows
-- **WHEN** the process receives SIGTERM
-- **THEN** the in-flight row's transaction commits or rolls back cleanly before the process exits
-- **AND** no row remains in an intermediate `processing` state without a corresponding lock release
-
-#### Scenario: Engine and Redis are released on shutdown
-
-- **GIVEN** a running API or worker process
-- **WHEN** the lifespan or `on_shutdown` finalizer runs
+- **GIVEN** a running API process
+- **WHEN** the lifespan finalizer runs
 - **THEN** `engine.dispose()` is invoked AND `redis.close()` is invoked
 - **AND** Postgres server-side stats show the connections returned to idle within the grace window
 
@@ -996,6 +954,12 @@ The arq worker SHALL implement `on_shutdown` that waits for in-flight `DispatchP
 - **THEN** uvicorn cancels the remaining request task and the lifespan finalizer still runs
 - **AND** `engine.dispose()`, `redis.close()`, and `provider.shutdown()` are still attempted
 - **AND** the process exits before the K8s `terminationGracePeriodSeconds: 35` SIGKILL deadline
+
+#### Scenario: Worker drain is deferred with the runtime
+
+- **WHEN** the codebase is loaded
+- **THEN** `src/worker.py` defines no `arq` `on_shutdown` hook and imports no `arq` symbol
+- **AND** the engine-dispose / Redis-close / tracing-flush helpers remain callable so the future job runtime can re-bind them
 
 ### Requirement: HTTP middleware stack compresses, scopes CORS, sets strict security headers, and rejects unbounded uploads
 

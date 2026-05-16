@@ -32,7 +32,7 @@ the kubelet to point liveness at `/health/live` and readiness at
 `/health/ready` runs in parallel:
 
 - `SELECT 1` against PostgreSQL.
-- `PING` against Redis when `APP_AUTH_REDIS_URL` (or `APP_JOBS_REDIS_URL`) is configured.
+- `PING` against Redis when `APP_AUTH_REDIS_URL` is configured.
 - `head_bucket` against S3 when `APP_STORAGE_ENABLED=true` and `APP_STORAGE_BACKEND=s3`.
 
 Each probe is bounded by `APP_HEALTH_READY_PROBE_TIMEOUT_SECONDS` (default
@@ -123,7 +123,7 @@ place.
 | `app_auth_logins_total` | Counter | `result ∈ {success, failure}` | `LoginUser.execute` — exactly one increment per call. |
 | `app_auth_refresh_total` | Counter | `result ∈ {success, failure}` | `RotateRefreshToken.execute` — exactly one increment per call. |
 | `app_outbox_dispatched_total` | Counter | `result ∈ {success, failure}` | `DispatchPending.execute` — one increment per row, AFTER the per-row commit. Rows that schedule a retry are not counted (still pending). |
-| `app_jobs_enqueued_total` | Counter | `handler` (bounded by `JobHandlerRegistry`) | `InProcessJobQueueAdapter.enqueue` and `ArqJobQueueAdapter.enqueue`. |
+| `app_jobs_enqueued_total` | Counter | `handler` (bounded by `JobHandlerRegistry`) | `InProcessJobQueueAdapter.enqueue` (the only shipped adapter; the `arq` adapter was removed in ROADMAP ETAPA I step 5). |
 | `app_outbox_pending_gauge` | Observable gauge | — | Bound at composition in `main.py`; runs `SELECT COUNT(*) FROM outbox_messages WHERE status='pending'` against the engine with `SET LOCAL statement_timeout='2s'` (PostgreSQL) so a slow DB cannot stall the scrape. Query failures are logged and the gauge drops out of the scrape (no 500). |
 | `app_db_pool_checked_in` | Observable gauge | — | `engine.pool.checkedin()` — connections currently idle. |
 | `app_db_pool_checked_out` | Observable gauge | — | `engine.pool.checkedout()` — connections currently in use. |
@@ -151,7 +151,7 @@ When tracing is enabled, the app instruments:
 - FastAPI requests.
 - SQLAlchemy/SQLModel database calls (gated by `APP_OTEL_INSTRUMENT_SQLALCHEMY`).
 - Outbound HTTPX calls (gated by `APP_OTEL_INSTRUMENT_HTTPX`).
-- Redis calls when `APP_AUTH_REDIS_URL` or `APP_JOBS_REDIS_URL` is set
+- Redis calls when `APP_AUTH_REDIS_URL` is set
   (gated by `APP_OTEL_INSTRUMENT_REDIS`).
 
 Health and metrics routes are excluded from FastAPI spans.
@@ -213,7 +213,7 @@ HTTP request span
    └─ outbox.enqueue (column captures traceparent)
         └─ outbox.dispatch_pending  (relay tick)
              └─ outbox.dispatch_row (injects payload["__trace"])
-                  └─ jobs.in_process|arq.handler (extracts + attaches)
+                  └─ jobs.in_process.handler (extracts + attaches)
                        └─ handler-side spans (email send, file write, …)
 ```
 
@@ -227,7 +227,8 @@ Mechanism:
 2. `DispatchPending` copies the column into the dispatched payload
    under the reserved key `__trace` (alongside `__outbox_message_id`).
    See `docs/outbox.md` for the reserved-key table.
-3. The job entrypoint (in-process adapter or the arq handler wrapper)
+3. The job entrypoint (the in-process adapter; the future AWS job
+   runtime re-applies the same logic at its own entrypoint)
    extracts the carrier and calls `context.attach(ctx)` before
    invoking the handler, then `context.detach(token)` in a `finally`
    block so the active context is restored even on handler errors.

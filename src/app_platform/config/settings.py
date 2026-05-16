@@ -191,22 +191,13 @@ class AppSettings(BaseSettings):
     # ---------------------------------------------------------------------------
     # Background jobs
     # ---------------------------------------------------------------------------
-    # ``in_process`` runs handlers inline at enqueue time (dev/test default).
-    # ``arq`` enqueues onto Redis for the worker process to consume. The
-    # production validator refuses ``in_process`` when ``APP_ENVIRONMENT=production``
-    # because losing the web process would lose every queued job.
-    jobs_backend: Literal["in_process", "arq"] = "in_process"
-    # Falls back to ``APP_AUTH_REDIS_URL`` at composition time if unset, so
-    # single-Redis deployments can leave this alone. Setting it explicitly
-    # lets the queue and the rate limiter use different Redis instances.
-    jobs_redis_url: str | None = None
-    jobs_queue_name: str = "arq:queue"
-    # arq worker tunables. ``keep_result_seconds_default`` bounds Redis memory
-    # for ``arq:queue:result:*`` keys; handlers that need longer retention
-    # (e.g. payment-idempotency replay windows) override this per-handler.
-    jobs_keep_result_seconds_default: int = 300
-    jobs_max_jobs: int = 16
-    jobs_job_timeout_seconds: int = 600
+    # ``in_process`` runs handlers inline at enqueue time and is the only
+    # backend (dev/test). The production validator refuses ``in_process``
+    # when ``APP_ENVIRONMENT=production`` because losing the web process
+    # would lose every queued job. There is no production job runtime yet:
+    # the AWS SQS adapter and a Lambda worker arrive at a later roadmap
+    # step (``arq`` was removed in ROADMAP ETAPA I step 5).
+    jobs_backend: Literal["in_process"] = "in_process"
     # ---------------------------------------------------------------------------
     # Transactional outbox
     # ---------------------------------------------------------------------------

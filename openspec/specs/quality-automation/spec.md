@@ -287,7 +287,7 @@ All `uses:` references SHALL be pinned by commit SHA (with a version comment).
 
 ### Requirement: Strategic `Any`/`object` hotspots are typed
 
-The `_principal_from_user` helper in `src/features/authentication/application/use_cases/auth/refresh_token.py` SHALL accept a `UserSnapshot` Protocol parameter (not `object`). The arq `WorkerSettings` class in `src/worker.py` SHALL declare typed class attributes for every field it actually uses (`functions`, `cron_jobs`, `redis_settings`, `on_startup`, `on_shutdown`, `queue_name`). The cron-job builders SHALL return `Sequence[CronJob]`, not `Sequence[Any]`.
+The `_principal_from_user` helper in `src/features/authentication/application/use_cases/auth/refresh_token.py` SHALL accept a `UserSnapshot` Protocol parameter (not `object`). The cron-descriptor builders SHALL return a typed `Sequence` of a runtime-agnostic descriptor (not `Sequence[Any]`) and SHALL reference no `arq` type: the `arq` `WorkerSettings` class and `Sequence[CronJob]` annotations are removed with the `arq` adapter and worker runtime (ROADMAP ETAPA I step 5); the production job runtime (AWS SQS + a Lambda worker) re-specifies its own typed runtime surface at a later roadmap step.
 
 #### Scenario: No silenced attribute-error ignores remain in `refresh_token.py`
 
@@ -295,18 +295,11 @@ The `_principal_from_user` helper in `src/features/authentication/application/us
 - **WHEN** `rg "type: ignore\[attr-defined\]" src/features/authentication/application/use_cases/auth/refresh_token.py` runs
 - **THEN** there are zero matches
 
-#### Scenario: WorkerSettings exposes typed attributes
+#### Scenario: Cron descriptor sequences are typed
 
-- **GIVEN** the codebase after this change lands
-- **WHEN** a contributor introspects `WorkerSettings` via `inspect.get_annotations(WorkerSettings)`
-- **THEN** the returned dict contains entries for `functions`, `cron_jobs`, `redis_settings`, `on_startup`, `on_shutdown`, `queue_name`
-- **AND** the call site `arq.run_worker(WorkerSettings)` no longer needs an `Any` cast
-
-#### Scenario: CronJob sequences are typed
-
-- **GIVEN** `src/features/outbox/composition/worker.py:build_relay_cron_jobs`
-- **WHEN** mypy checks the file under strict mode
-- **THEN** the return annotation is `Sequence[CronJob]` (not `Sequence[Any]`)
+- **GIVEN** `src/features/outbox/composition/worker.py` and `src/features/authentication/composition/worker.py`
+- **WHEN** mypy checks the files under strict mode
+- **THEN** the cron-descriptor builder return annotations are a concrete `Sequence[<CronDescriptor>]` (not `Sequence[Any]`) and reference no `arq` type
 - **AND** no `# type: ignore` is needed at any call site
 
 #### Scenario: Passing a non-conforming object to `_principal_from_user` fails type-check
@@ -321,10 +314,10 @@ The `_principal_from_user` helper in `src/features/authentication/application/us
 `pyproject.toml` `[project] dependencies` SHALL contain only the cross-cutting deps every layer needs (the **core** set). Role-specific deps SHALL live in `[project.optional-dependencies]`:
 
 - `api` — `fastapi[standard]` and anything else only the API process needs.
-- `worker` — `arq`, `redis`, and anything else only the background worker needs.
+- `worker` — `redis` (used by the auth distributed rate limiter and the principal cache) and anything else the Redis-using roles need. The `worker` extra SHALL NOT declare `arq`: the `arq` adapter and worker runtime are removed (ROADMAP ETAPA I step 5); the production job runtime (AWS SQS + a Lambda worker) is added at a later roadmap step.
 - `s3` — `boto3` for the S3 file-storage adapter.
 
-There SHALL be no `resend` optional-dependency extra and no `httpx` runtime/test dependency declared for an email adapter: the Resend email adapter is removed and the only email adapter (`console`) has no third-party HTTP dependency. `python-multipart` SHALL appear in exactly one place (transitively via `fastapi[standard]` in the `api` extra), not as a direct dependency.
+There SHALL be no `resend` optional-dependency extra and no `httpx` runtime/test dependency declared for an email adapter: the Resend email adapter is removed and the only email adapter (`console`) has no third-party HTTP dependency. There SHALL be no `arq` entry in any optional-dependency extra or in the `dev` dependency group. `python-multipart` SHALL appear in exactly one place (transitively via `fastapi[standard]` in the `api` extra), not as a direct dependency.
 
 The S3 adapter's composition SHALL raise a clear startup error referencing the `s3` extra when `boto3` is missing.
 
@@ -332,7 +325,7 @@ The S3 adapter's composition SHALL raise a clear startup error referencing the `
 
 - **GIVEN** a fresh `uv sync` with no extras
 - **WHEN** the user inspects `uv pip list`
-- **THEN** `fastapi`, `arq`, and `boto3` are all absent
+- **THEN** `fastapi`, `boto3`, and `arq` are all absent
 - **AND** `uv.lock` resolves successfully (the core set installs cleanly)
 
 #### Scenario: API role install brings only the API deps
@@ -340,13 +333,14 @@ The S3 adapter's composition SHALL raise a clear startup error referencing the `
 - **GIVEN** `uv sync --extra api`
 - **WHEN** the user inspects the resolved install
 - **THEN** `fastapi[standard]` and (transitively) `python-multipart` are present
-- **AND** `arq` and `redis` are absent
+- **AND** `arq` is absent
 
-#### Scenario: Worker role install brings only the worker deps
+#### Scenario: Worker role install brings redis but no arq
 
 - **GIVEN** `uv sync --extra worker`
 - **WHEN** the user inspects the resolved install
-- **THEN** `arq` and `redis` are present
+- **THEN** `redis` is present (the auth rate limiter and principal cache use it)
+- **AND** `arq` is absent (the worker runtime arrives at a later roadmap step)
 - **AND** `fastapi[standard]` is absent
 
 #### Scenario: No resend extra is declared
@@ -355,6 +349,13 @@ The S3 adapter's composition SHALL raise a clear startup error referencing the `
 - **WHEN** `[project.optional-dependencies]` is inspected
 - **THEN** there is no `resend` key
 - **AND** no `httpx` entry exists for an email adapter (neither in an extra nor in the `dev` dependency group)
+
+#### Scenario: No arq dependency is declared anywhere
+
+- **GIVEN** the repository's `pyproject.toml`
+- **WHEN** every `[project.optional-dependencies]` extra and the `dev` dependency group are inspected
+- **THEN** no entry declares `arq`
+- **AND** `uv.lock` contains no `arq` package after `uv lock` is regenerated
 
 #### Scenario: Missing s3 extra produces a clear startup error
 

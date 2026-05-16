@@ -20,7 +20,7 @@ pytestmark = pytest.mark.unit
 def test_main_module_does_not_import_relay_registrar() -> None:
     main_src = Path(__file__).resolve().parents[4] / "main.py"
     body = main_src.read_text(encoding="utf-8")
-    assert "build_relay_cron_jobs" not in body, (
+    assert "build_relay_cron_specs" not in body, (
         "src/main.py must not register the outbox relay — that is the worker's job. "
         "Move the import into src/worker.py."
     )

@@ -35,8 +35,9 @@ for the full proposal.
   tracing, structured logs.
 - [Email](docs/email.md) — `EmailPort`, the `console` adapter,
   templates.
-- [Background Jobs](docs/background-jobs.md) — `JobQueuePort`,
-  in-process/`arq` adapters, the worker process.
+- [Background Jobs](docs/background-jobs.md) — `JobQueuePort`, the
+  in-process adapter, the worker scaffold (the production job runtime
+  arrives at a later roadmap step).
 - [File Storage](docs/file-storage.md) — `FileStoragePort`, local/S3
   adapters.
 
@@ -48,7 +49,7 @@ for the full proposal.
 | `users` | The `User` entity, registration, profile read/update, deactivation, admin user listing. Owns the `UserPort` consumed by `authentication`. |
 | `authorization` | ReBAC engine. Owns `AuthorizationPort`, the runtime registry, the SQLModel adapter, and the SpiceDB stub. |
 | `email` | `EmailPort` plus the `console` adapter (dev/test; production email arrives with AWS SES at a later roadmap step). Owns the template registry features contribute to. |
-| `background_jobs` | `JobQueuePort` plus `in_process` and `arq` adapters. Worker entrypoint at `python -m worker`. |
+| `background_jobs` | `JobQueuePort` plus the `in_process` adapter (dev/test; the production job runtime, AWS SQS + a Lambda worker, arrives at a later roadmap step). Worker scaffold at `python -m worker`. |
 | `file_storage` | `FileStoragePort` plus `local` adapter and `s3` stub. |
 
 Cross-feature communication goes through ports only; Import Linter
@@ -63,7 +64,7 @@ contracts forbid direct imports (e.g. `authentication ↛ authorization`,
 | Data validation | Pydantic 2, pydantic-settings |
 | Persistence | PostgreSQL, SQLModel, SQLAlchemy, psycopg |
 | Migrations | Alembic |
-| Background jobs | arq (Redis-backed) |
+| Background jobs | in-process adapter (the production job runtime, AWS SQS + a Lambda worker, arrives at a later roadmap step) |
 | Dependency management | uv |
 | Testing | pytest, pytest-cov, pytest-html, testcontainers |
 | Quality gates | Ruff, mypy, Import Linter, pre-commit |
@@ -90,7 +91,7 @@ contracts forbid direct imports (e.g. `authentication ↛ authorization`,
 │       ├── users/                      # User entity + lifecycle, UserPort
 │       ├── authorization/              # ReBAC engine, AuthorizationPort, registry
 │       ├── email/                      # EmailPort, console adapter, templates
-│       ├── background_jobs/            # JobQueuePort, in-process/arq adapters
+│       ├── background_jobs/            # JobQueuePort, in-process adapter, worker scaffold
 │       └── file_storage/               # FileStoragePort, local/S3 adapters
 ├── Dockerfile
 ├── docker-compose.yml
@@ -182,7 +183,7 @@ common ones to know up front:
 | `APP_AUTH_JWT_SECRET_KEY` | unset | **Required in production.** |
 | `APP_AUTH_REDIS_URL` | unset | Redis URL for distributed rate limiting and the principal cache. |
 | `APP_EMAIL_BACKEND` | `console` | Only `console` (dev/test); production email not yet available (AWS SES at a later roadmap step). |
-| `APP_JOBS_BACKEND` | `in_process` | `arq` in production. |
+| `APP_JOBS_BACKEND` | `in_process` | Only `in_process` (dev/test); production refuses it — the production job runtime (AWS SQS + a Lambda worker) arrives at a later roadmap step. |
 
 ## Running Locally
 
@@ -199,10 +200,12 @@ uv run alembic upgrade head
 uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Run the background-jobs worker against Redis:
+Build the worker scaffold (no job runtime is wired — it logs the
+registered handlers/cron descriptors and exits non-zero; the AWS SQS +
+Lambda worker arrives at a later roadmap step):
 
 ```bash
-APP_JOBS_BACKEND=arq APP_JOBS_REDIS_URL=redis://localhost:6379/0 make worker
+make worker
 ```
 
 Run the app and database through Docker Compose:
@@ -275,7 +278,7 @@ migrations or the worker.
 ## Deployment Notes
 
 - Provision PostgreSQL and Redis before starting the app.
-- Set `APP_POSTGRESQL_DSN` and `APP_AUTH_REDIS_URL` (or `APP_JOBS_REDIS_URL`).
+- Set `APP_POSTGRESQL_DSN` and `APP_AUTH_REDIS_URL`.
 - Run `alembic upgrade head` before starting the production app container.
 - Set `APP_ENVIRONMENT=production` — the settings validator refuses to start
   with `console` email, `in_process` jobs, `*` CORS, insecure cookies,

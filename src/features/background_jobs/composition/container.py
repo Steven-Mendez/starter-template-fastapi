@@ -5,18 +5,16 @@ adapter based on :class:`JobsSettings.backend`, and returns a
 :class:`JobsContainer` that exposes both — the registry so other
 features can register their handlers during composition, and the port
 so consumers can enqueue work.
+
+``in_process`` is the only adapter. There is no production job runtime
+until the AWS SQS adapter and a Lambda worker are added at a later
+roadmap step (``arq`` was removed in ROADMAP ETAPA I step 5).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
-
-try:  # pragma: no cover - import-time only
-    import redis as redis_lib
-except ModuleNotFoundError:  # pragma: no cover - exercised in api-only images
-    redis_lib = None  # type: ignore[assignment]
 
 from features.background_jobs.adapters.outbound.in_process import (
     InProcessJobQueueAdapter,
@@ -36,11 +34,7 @@ class JobsContainer:
     shutdown: Callable[[], None]
 
 
-def build_jobs_container(
-    settings: JobsSettings,
-    *,
-    redis_client: Any = None,
-) -> JobsContainer:
+def build_jobs_container(settings: JobsSettings) -> JobsContainer:
     """Build the background-jobs feature's container.
 
     The registry is created empty; consumer features (e.g. the email
@@ -48,52 +42,21 @@ def build_jobs_container(
     their own composition phase. The composition root calls
     ``registry.seal()`` once every feature has run.
 
-    When ``backend=arq`` the caller MUST supply a ``redis_client``; the
-    adapter does not own its connection so the shared client used by
-    rate limiting and caching can be reused.
+    ``in_process`` is the only backend; it runs handlers inline at
+    enqueue time and owns no external resource (so ``shutdown`` is a
+    no-op). The shared Redis client used by the auth rate limiter and
+    principal cache is owned by ``src/main.py``, independent of jobs.
     """
     registry = JobHandlerRegistry()
 
     port: JobQueuePort
-    owned_client: Any = None
     if settings.backend == "in_process":
         port = InProcessJobQueueAdapter(registry=registry)
-    elif settings.backend == "arq":
-        if not settings.redis_url:
-            raise RuntimeError(
-                "APP_JOBS_REDIS_URL is required when APP_JOBS_BACKEND=arq"
-            )
-        if redis_lib is None:
-            raise RuntimeError(
-                "APP_JOBS_BACKEND=arq requires the `redis` package. "
-                "Install with: uv sync --extra worker"
-            )
-        # Lazy import — arq is in the worker-only extra.
-        from arq import constants as arq_constants
-
-        from features.background_jobs.adapters.outbound.arq import (
-            ArqJobQueueAdapter,
-        )
-
-        client = redis_client
-        if client is None:
-            client = redis_lib.Redis.from_url(
-                settings.redis_url,
-                socket_timeout=2.0,
-                socket_connect_timeout=2.0,
-            )
-            owned_client = client
-        port = ArqJobQueueAdapter(
-            registry=registry,
-            redis_client=client,
-            queue_name=settings.queue_name or arq_constants.default_queue_name,
-        )
     else:  # pragma: no cover - guarded by JobsSettings construction
         raise RuntimeError(f"Unknown jobs backend: {settings.backend!r}")
 
     def _shutdown() -> None:
-        if owned_client is not None:
-            owned_client.close()
+        return
 
     return JobsContainer(
         settings=settings,

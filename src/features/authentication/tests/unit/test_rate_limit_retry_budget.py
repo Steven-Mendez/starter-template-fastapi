@@ -48,7 +48,8 @@ def test_redis_limiter_sets_positive_retry_after() -> None:
 
 
 def test_rate_limit_error_round_trips_through_pickle() -> None:
-    """Required so arq can ship the error across the Redis boundary."""
+    """Required so the error round-trips across a serializing job-runtime
+    boundary (the future AWS SQS + Lambda worker)."""
     original = RateLimitExceededError("Rate limit exceeded", retry_after_seconds=42)
 
     restored = pickle.loads(pickle.dumps(original))

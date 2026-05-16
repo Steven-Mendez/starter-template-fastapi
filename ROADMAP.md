@@ -41,7 +41,7 @@ Yo lanzo `spec-writer` con el alcance exacto de ese paso, esperamos tu aprobaci√
 
 - [x] **4. Eliminar adaptador Resend** (`src/features/email/adapters/outbound/resend/`), sus settings, env vars `APP_EMAIL_RESEND_*`, extra `resend` en `pyproject.toml`, tests, docs.
 
-- [ ] **5. Eliminar adaptador arq** (`src/features/background_jobs/adapters/outbound/arq/`), sus settings, env vars asociadas, rama del extra `worker` en `pyproject.toml`, tests, docs.
+- [x] **5. Eliminar adaptador arq** (`src/features/background_jobs/adapters/outbound/arq/`), sus settings, env vars asociadas, rama del extra `worker` en `pyproject.toml`, tests, docs.
 
 - [ ] **6. Eliminar stub SpiceDB** (`src/features/authorization/adapters/outbound/spicedb/`). Vive en git history si se necesita referencia.
 

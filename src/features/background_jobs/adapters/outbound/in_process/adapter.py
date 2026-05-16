@@ -62,13 +62,14 @@ class InProcessJobQueueAdapter:
     ) -> None:
         """Refuse scheduling: the in-process adapter has no scheduler.
 
-        Scheduled execution is a production concern; tests that need
-        scheduled behaviour should wire the arq adapter against a
-        fakeredis or testcontainer-backed Redis.
+        Scheduled execution requires the production job runtime, which
+        is added at a later roadmap step (AWS SQS + a Lambda worker;
+        ``arq`` was removed in ROADMAP ETAPA I step 5).
         """
         raise NotImplementedError(
             "InProcessJobQueueAdapter does not support enqueue_at; "
-            "set APP_JOBS_BACKEND=arq for scheduled execution"
+            "scheduled execution requires the production job runtime "
+            "(added at a later roadmap step)"
         )
 
     def _resolve(self, job_name: str) -> Any:

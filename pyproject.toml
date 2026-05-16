@@ -6,9 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     # Core: cross-cutting deps every layer needs (domain + application).
-    # Role-specific deps (FastAPI for the API, arq for the worker, the
-    # email/storage SDKs) live in ``[project.optional-dependencies]``
-    # below — see ``trim-runtime-deps`` for the rationale.
+    # Role-specific deps (FastAPI for the API, ``redis`` for the
+    # Redis-using roles, the storage SDK) live in
+    # ``[project.optional-dependencies]`` below — see ``trim-runtime-deps``
+    # for the rationale.
     "alembic~=1.18",
     "argon2-cffi~=25.1",
     "cachetools~=5.3",
@@ -31,7 +32,7 @@ dependencies = [
 [project.optional-dependencies]
 # Role and adapter extras. Installed selectively per deployment:
 #   uv sync --extra api          # API process: pulls fastapi[standard]
-#   uv sync --extra worker       # background-jobs worker: pulls arq + redis
+#   uv sync --extra worker       # Redis-using roles: pulls redis
 #   uv sync --extra s3           # S3 file-storage adapter
 # Local development installs everything via the ``dev`` dependency-group
 # below (which also pulls test tooling). See docs/operations.md.
@@ -41,13 +42,14 @@ dependencies = [
 # a direct dep — single Renovate surface per release).
 api = ["fastapi[standard]~=0.135"]
 
-# Background-jobs worker. ``arq`` already requires ``redis>=4``; we
-# re-declare ``redis`` here to preserve the historic upper-bound pin
-# (kept in sync with what hiredis/redis-py supports). The auth feature
-# imports ``redis`` lazily so the API process does NOT need this extra
-# unless ``APP_AUTH_REDIS_URL`` is set.
+# Redis-using roles. ``arq`` was removed in ROADMAP ETAPA I step 5;
+# the production worker runtime (AWS SQS + a Lambda worker) arrives at
+# ROADMAP steps 26-27. ``redis`` stays: the auth distributed rate
+# limiter and the principal cache import it directly (lazily, so the
+# API process does NOT need this extra unless ``APP_AUTH_REDIS_URL``
+# is set). The extra key is kept as ``worker`` to minimise blast
+# radius; renaming it is deferred with the AWS-SQS naming decision.
 worker = [
-    "arq~=0.26",
     "redis>=5.0,<6",
 ]
 
@@ -72,9 +74,8 @@ sentry = ["sentry-sdk[fastapi]>=2"]
 # and docs/operations.md).
 dev = [
     # The role/adapter extras so local dev keeps a single fat install —
-    # tests cross every adapter (S3 via moto, the arq worker via
-    # fakeredis, etc.).
-    "arq~=0.26",
+    # tests cross every adapter (S3 via moto, the Redis-backed auth
+    # rate limiter / principal cache via fakeredis, etc.).
     "boto3~=1.34",
     "fakeredis>=2.35.1",
     "fastapi[standard]~=0.135",

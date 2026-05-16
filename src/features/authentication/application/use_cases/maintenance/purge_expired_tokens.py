@@ -17,8 +17,10 @@ settings knob; the default (7 days) is short enough to keep tables
 small and long enough to investigate "did the user really log out at
 time X?" incidents.
 
-Designed to run from the worker's arq cron — see
-``src/worker.py``'s registration of ``auth-purge-tokens``.
+Declared as the ``auth-purge-tokens`` runtime-agnostic cron descriptor
+collected by ``src/worker.py``'s scaffold; the production job runtime
+that fires it (AWS SQS + a Lambda worker) arrives at a later roadmap
+step.
 """
 
 from __future__ import annotations

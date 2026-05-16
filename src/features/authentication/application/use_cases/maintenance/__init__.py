@@ -1,8 +1,11 @@
 """Maintenance use cases for the authentication feature.
 
-Background-only operations that run on a schedule (typically from the
-worker via arq cron) rather than as part of a request path. Today this
-package hosts :class:`PurgeExpiredTokens`, which sweeps expired
+Background-only operations that run on a schedule (declared as a
+runtime-agnostic cron descriptor the worker scaffold collects; the
+production job runtime that fires it — AWS SQS + a Lambda worker —
+arrives at a later roadmap step) rather than as part of a request
+path. Today this package hosts :class:`PurgeExpiredTokens`, which
+sweeps expired
 ``refresh_tokens`` and ``auth_internal_tokens`` rows so neither table
 grows without bound over the lifetime of a deployment.
 """

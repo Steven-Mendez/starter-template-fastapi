@@ -67,7 +67,7 @@ make dev
 | --- | --- |
 | Install deps | `make sync` |
 | Run API (auto-reload) | `make dev` (override port: `make dev PORT=8080`) |
-| Run worker | `make worker` (requires `APP_JOBS_BACKEND=arq`) |
+| Build worker scaffold | `make worker` (no job runtime is wired; it logs handlers/cron descriptors and exits non-zero — the AWS SQS + Lambda runtime arrives at a later roadmap step) |
 | Format | `make format` |
 | Lint | `make lint` (auto-fix: `make lint-fix`) |
 | Architecture lint | `make lint-arch` |
@@ -278,7 +278,7 @@ Pre-commit hooks (installed via `make precommit-install`) run `ruff format` and 
 - **`Annotated` aliases for FastAPI dependencies** — see existing `*Dep` names in `adapters/inbound/http/dependencies.py`.
 - **`@dataclass(slots=True)`** for use cases and mutable domain entities; `@dataclass(frozen=True, slots=True)` for commands, queries, and read contracts.
 - **Logging via `logging.getLogger(__name__)`** at module top, not via `print`. Error logs include the request ID where available.
-- **Errors must be picklable** — `ApplicationError` subclasses round-trip through Redis (arq). If a class needs non-positional args, implement `__reduce__`. See [`src/app_platform/shared/tests/unit/test_application_error_pickling.py`](src/app_platform/shared/tests/unit/test_application_error_pickling.py).
+- **Errors must be picklable** — `ApplicationError` subclasses round-trip through a serializing job-runtime boundary (the future AWS SQS + Lambda worker; the `arq` runtime was removed in ROADMAP ETAPA I step 5). If a class needs non-positional args, implement `__reduce__`. See [`src/app_platform/shared/tests/unit/test_application_error_pickling.py`](src/app_platform/shared/tests/unit/test_application_error_pickling.py).
 - **Line length: 88** (Ruff default).
 - **Target `py312`** — don't use 3.13/3.14-only syntax in committed code; the lockfile and CI run on 3.12.
 
@@ -505,10 +505,10 @@ This is a starter template, not a deployed service — the deployment target dep
 - [ ] `make ci` passes locally.
 - [ ] `APP_ENVIRONMENT=production` is set; the production validator refuses to start with `*` CORS, `console` email, `in_process` jobs, insecure cookies, RBAC disabled, `auth_return_internal_tokens=true`, or `APP_OUTBOX_ENABLED=false`. Full list: [`docs/operations.md` § Environment Variable Reference](docs/operations.md#environment-variable-reference).
 - [ ] `APP_AUTH_JWT_SECRET_KEY` (≥ 32 chars), `APP_AUTH_JWT_ISSUER`, `APP_AUTH_JWT_AUDIENCE` set.
-- [ ] `APP_POSTGRESQL_DSN` and `APP_AUTH_REDIS_URL` (or `APP_JOBS_REDIS_URL`) reachable.
+- [ ] `APP_POSTGRESQL_DSN` and `APP_AUTH_REDIS_URL` reachable.
 - [ ] `uv run alembic upgrade head` runs as a separate deploy step *before* the API container starts.
 - [ ] Email backend: production email requires the AWS SES adapter (added in a later roadmap step); `console` is dev/test only.
-- [ ] At least one worker (`python -m worker`) is running per Redis-backed deployment — the API does not consume the job queue.
+- [ ] Job runtime: there is no production job runtime yet — the `arq` runtime was removed in ROADMAP ETAPA I step 5; the AWS SQS adapter + a Lambda worker arrive at a later roadmap step. `python -m worker` builds the scaffold and exits non-zero until then; production with deferred work is intentionally not bootable.
 - [ ] Liveness / readiness probes wired to `/health/live` and `/health/ready`.
 
 ### Runtime image
@@ -517,6 +517,9 @@ This is a starter template, not a deployed service — the deployment target dep
 docker build --target runtime -t starter-template-fastapi:prod .
 docker run --rm --env-file .env starter-template-fastapi:prod alembic upgrade head
 docker run --env-file .env -p 8000:8000 starter-template-fastapi:prod
+# Worker scaffold: builds the composition root, logs handlers/cron
+# descriptors, then exits non-zero — no job runtime is wired until the
+# AWS SQS + Lambda worker arrives at a later roadmap step.
 docker run --env-file .env starter-template-fastapi:prod python -m worker
 ```
 

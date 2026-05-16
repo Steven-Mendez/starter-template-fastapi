@@ -75,10 +75,11 @@ class UsersContainer:
     # current-password re-auth.
     password_verifier: PasswordVerifier | None = None
     # ``JobQueuePort`` injected at composition; the erase routes enqueue
-    # an ``erase_user`` job (via the in-process queue in tests / arq in
-    # production) and return ``202 Accepted`` while the worker runs the
-    # actual scrub. Kept optional so unit tests can construct the
-    # container without a queue.
+    # an ``erase_user`` job (via the in-process queue; the production job
+    # runtime, AWS SQS + a Lambda worker, arrives at a later roadmap
+    # step) and return ``202 Accepted`` while the handler runs the actual
+    # scrub. Kept optional so unit tests can construct the container
+    # without a queue.
     job_queue: JobQueuePort | None = None
 
     def shutdown(self) -> None:

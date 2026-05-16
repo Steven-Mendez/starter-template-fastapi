@@ -51,7 +51,8 @@ class StorageWriteFailed(ExportUserDataError):
         return f"Export storage write failed: {self.reason}"
 
     def __reduce__(self) -> tuple[type, tuple[str]]:
-        # See ``ApplicationError`` docstring: must be picklable for arq.
+        # See ``ApplicationError`` docstring: must be picklable to
+        # round-trip across a serializing job-runtime boundary.
         return (type(self), (self.reason,))
 
 

@@ -49,7 +49,7 @@ def test_register_then_enqueue_calls_email_port() -> None:
 def test_handler_raises_when_email_port_returns_err(tmp_path: Path) -> None:
     # Use the console adapter against an empty registry so the call
     # returns ``Err(UnknownTemplateError)`` — the handler then raises so
-    # arq treats the job as failed.
+    # the job runtime treats the job as failed.
     email_registry = EmailTemplateRegistry()
     email_registry.seal()
     email_port = ConsoleEmailAdapter(registry=email_registry)

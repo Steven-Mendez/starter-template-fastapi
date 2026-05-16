@@ -3,14 +3,17 @@
 Two methods cover the starter's needs:
 
 - :meth:`enqueue` — run the named handler "as soon as possible" (the
-  in-process adapter runs it inline; the arq adapter pushes onto Redis).
+  in-process adapter runs it inline; a future production adapter pushes
+  onto its broker).
 - :meth:`enqueue_at` — run the handler at a specified UTC instant; useful
   for scheduled emails or deferred cleanup.
 
 The contract is intentionally synchronous so existing sync use cases
 (``RequestPasswordReset``, ``RequestEmailVerification``) can call it
-without changing their signatures. Adapters that talk to async backends
-(arq) wrap that internally.
+without changing their signatures. An adapter that talks to an async
+backend wraps that internally. ``arq`` (the previous adapter) was
+removed in ROADMAP ETAPA I step 5; the production job runtime (AWS SQS +
+a Lambda worker) arrives at a later roadmap step.
 """
 
 from __future__ import annotations

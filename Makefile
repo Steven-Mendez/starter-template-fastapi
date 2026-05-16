@@ -18,7 +18,7 @@ sync: ## Sync dependencies (uv lock + install)
 dev: ## Run API with auto-reload (uvicorn; --no-server-header to strip stack identity)
 	PYTHONPATH=src uv run uvicorn main:app --reload --host 0.0.0.0 --port $(PORT) --no-server-header
 
-worker: ## Run the arq background-jobs worker (requires APP_JOBS_BACKEND=arq)
+worker: ## Build the worker scaffold; no job runtime is wired (exits non-zero until AWS SQS + Lambda, ROADMAP steps 26-27)
 	PYTHONPATH=src uv run python -m worker
 
 outbox-retry-failed: ## Re-arm outbox rows that reached APP_OUTBOX_MAX_ATTEMPTS

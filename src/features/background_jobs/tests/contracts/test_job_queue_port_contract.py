@@ -2,6 +2,12 @@
 
 Each adapter under test is exercised against the same scenarios so a
 new adapter can be plugged in by extending the parametrisation.
+
+``in_process`` is the only shipped adapter; ``FakeJobQueue`` is the
+test double. There is no production scheduling-capable adapter until
+the AWS SQS adapter + Lambda worker arrive at a later roadmap step
+(``arq`` was removed in ROADMAP ETAPA I step 5), so the ``enqueue_at``
+scenarios run against the fake only.
 """
 
 from __future__ import annotations
@@ -9,10 +15,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-import fakeredis
 import pytest
 
-from features.background_jobs.adapters.outbound.arq import ArqJobQueueAdapter
 from features.background_jobs.adapters.outbound.in_process import (
     InProcessJobQueueAdapter,
 )
@@ -31,10 +35,6 @@ def _in_process_factory(registry: JobHandlerRegistry) -> JobQueuePort:
     return InProcessJobQueueAdapter(registry=registry)
 
 
-def _arq_factory(registry: JobHandlerRegistry) -> JobQueuePort:
-    return ArqJobQueueAdapter(registry=registry, redis_client=fakeredis.FakeRedis())
-
-
 def _fake_factory(registry: JobHandlerRegistry) -> JobQueuePort:
     return FakeJobQueue(known_jobs=registry.registered_jobs())
 
@@ -48,8 +48,8 @@ def registry() -> JobHandlerRegistry:
 
 @pytest.mark.parametrize(
     "factory",
-    [_in_process_factory, _arq_factory, _fake_factory],
-    ids=["in_process", "arq", "fake"],
+    [_in_process_factory, _fake_factory],
+    ids=["in_process", "fake"],
 )
 def test_enqueue_succeeds_for_registered_job(
     factory: AdapterFactory, registry: JobHandlerRegistry
@@ -60,8 +60,8 @@ def test_enqueue_succeeds_for_registered_job(
 
 @pytest.mark.parametrize(
     "factory",
-    [_in_process_factory, _arq_factory, _fake_factory],
-    ids=["in_process", "arq", "fake"],
+    [_in_process_factory, _fake_factory],
+    ids=["in_process", "fake"],
 )
 def test_enqueue_unknown_job_raises(
     factory: AdapterFactory, registry: JobHandlerRegistry
@@ -76,22 +76,23 @@ def test_enqueue_unknown_job_raises(
 # Only the adapters that ship a scheduler are expected to support
 # ``enqueue_at``. ``InProcessJobQueueAdapter`` documents itself as
 # "no scheduler"; the contract pins that surface as ``NotImplementedError``
-# rather than as silent failure.
+# rather than as silent failure. The fake is the only shipped
+# scheduling-capable surface — there is no production scheduler until a
+# later roadmap step (AWS SQS + Lambda).
 
 
 def test_enqueue_at_succeeds_for_registered_job_on_scheduling_adapters(
     registry: JobHandlerRegistry,
 ) -> None:
-    """The two scheduling-capable adapters must accept ``enqueue_at``."""
+    """The scheduling-capable surface must accept ``enqueue_at``."""
     run_at = datetime.now(UTC) + timedelta(minutes=5)
-    _arq_factory(registry).enqueue_at("send_email", {"to": "a@example.com"}, run_at)
     _fake_factory(registry).enqueue_at("send_email", {"to": "a@example.com"}, run_at)
 
 
 @pytest.mark.parametrize(
     "factory",
-    [_arq_factory, _fake_factory],
-    ids=["arq", "fake"],
+    [_fake_factory],
+    ids=["fake"],
 )
 def test_enqueue_at_unknown_job_raises(
     factory: AdapterFactory, registry: JobHandlerRegistry

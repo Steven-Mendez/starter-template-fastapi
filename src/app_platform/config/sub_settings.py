@@ -158,7 +158,6 @@ class ObservabilitySettings:
     health_ready_probe_timeout_seconds: float
     shutdown_timeout_seconds: float
     auth_redis_url: str | None
-    jobs_redis_url: str | None
     environment: str
 
     @classmethod
@@ -176,7 +175,6 @@ class ObservabilitySettings:
             health_ready_probe_timeout_seconds=app.health_ready_probe_timeout_seconds,
             shutdown_timeout_seconds=app.shutdown_timeout_seconds,
             auth_redis_url=app.auth_redis_url,
-            jobs_redis_url=app.jobs_redis_url,
             environment=app.environment,
         )
 

@@ -18,10 +18,13 @@ COPY pyproject.toml uv.lock README.md ./
 # Builder stages — one per process role.
 #
 # After ``trim-runtime-deps`` the API and worker have disjoint runtime
-# dep sets: the API needs ``fastapi[standard]`` (and not ``arq``); the
-# worker needs ``arq``/``redis`` (and not ``fastapi[standard]``). We
-# build two prebuilt ``/app/.venv`` directories so each role's runtime
-# image carries only its own wheels. See docs/operations.md.
+# dep sets: the API needs ``fastapi[standard]``; the worker extra
+# carries ``redis`` (and not ``fastapi[standard]``). ``arq`` was
+# removed in ROADMAP ETAPA I step 5 — the production worker runtime
+# (AWS SQS + a Lambda worker) arrives at ROADMAP steps 26-27; the
+# stage is kept because step 27 revives it. We build two prebuilt
+# ``/app/.venv`` directories so each role's runtime image carries only
+# its own wheels. See docs/operations.md.
 # ---------------------------------------------------------------------------
 
 FROM base AS builder-api
@@ -107,7 +110,7 @@ ENTRYPOINT ["tini", "--"]
 
 # ---------------------------------------------------------------------------
 # API runtime — carries ``fastapi[standard]`` (and uvicorn/starlette
-# extras + python-multipart transitively); does NOT carry ``arq``.
+# extras + python-multipart transitively).
 # ---------------------------------------------------------------------------
 FROM runtime-base AS runtime
 
@@ -129,8 +132,16 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-
 #
 # Extends ``runtime-base`` (not ``runtime``) so the worker image does
 # NOT inherit the API's ``fastapi[standard]`` venv. The worker pulls
-# the prebuilt venv from ``builder-worker`` instead — only ``arq`` /
-# ``redis`` and the shared core deps.
+# the prebuilt venv from ``builder-worker`` instead — ``redis`` and
+# the shared core deps.
+#
+# The worker *runtime* is not wired: ``arq`` was removed in ROADMAP
+# ETAPA I step 5; the production worker runtime (AWS SQS + a Lambda
+# worker) arrives at ROADMAP steps 26-27. ``python -m worker`` builds
+# the composition scaffold and exits non-zero with a clear "no job
+# runtime wired" message — the image builds, the container exits
+# loudly. The stage is intentionally kept (step 27 revives it); do
+# NOT delete it.
 #
 # Build with:  docker build --target runtime-worker -t worker:latest .
 # ---------------------------------------------------------------------------

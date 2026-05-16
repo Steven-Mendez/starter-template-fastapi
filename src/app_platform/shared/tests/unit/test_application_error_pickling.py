@@ -1,7 +1,10 @@
 """Pickle round-trip contract for every concrete ``ApplicationError`` subclass.
 
-arq dispatches jobs through Redis and pickles any exception raised inside a
-handler. ``Exception.__reduce__`` only round-trips positional ``args``;
+A serializing job runtime dispatches jobs through a broker and pickles any
+exception raised inside a handler. (The `arq` runtime was removed in ROADMAP
+ETAPA I step 5; the future AWS SQS + Lambda worker serializes the same way,
+so this contract stays.) ``Exception.__reduce__`` only round-trips
+positional ``args``;
 subclasses that need additional state MUST implement ``__reduce__`` returning
 ``(cls, (positional_args,))``. This test walks every leaf subclass of
 ``ApplicationError`` and asserts the round-trip preserves both type and

@@ -24,37 +24,50 @@ _VALID_PROD_ENV = {
     "APP_AUTH_REDIS_URL": "redis://localhost:6379/0",
     "APP_EMAIL_BACKEND": "console",
     "APP_EMAIL_FROM": "no-reply@example.com",
-    "APP_JOBS_BACKEND": "arq",
-    "APP_JOBS_REDIS_URL": "redis://localhost:6379/0",
+    # APP_JOBS_BACKEND / APP_JOBS_REDIS_URL are deliberately absent: after
+    # ROADMAP ETAPA I step 5 (arq removed, AWS SQS not yet added) there is
+    # no production-valid jobs value — ``in_process`` is the only value
+    # and the production validator always refuses it. Omitting the key
+    # leaves the settings default (``in_process``) so the jobs-backend
+    # refusal is always-present in any env built from this baseline.
+    # APP_OUTBOX_ENABLED stays ``true`` (Key decision 3 — the outbox prod
+    # requirement is unchanged, so its refusal must NOT be always-present).
     "APP_OUTBOX_ENABLED": "true",
 }
 
 # After ROADMAP ETAPA I step 4 (Resend removed, AWS SES not yet added)
 # there is no production-capable email backend: ``console`` is the only
-# value and the production validator refuses it. Every ``_VALID_PROD_ENV``
-# environment therefore *always* carries this one email-backend error.
-# Tests that target a *different* refusal still match their own env var
-# in the aggregated message; tests that previously expected a fully-valid
-# production construction now assert that the email-backend refusal is
-# the *only* remaining error (i.e. the axis under test added none).
+# value and the production validator refuses it. After step 5 (arq
+# removed, AWS SQS not yet added) there is likewise no production-capable
+# jobs backend: ``in_process`` is the only value and the production
+# validator refuses it too. Every ``_VALID_PROD_ENV`` environment
+# therefore *always* carries these two backend errors. Tests that target
+# a *different* refusal still match their own env var in the aggregated
+# message; tests that previously expected a fully-valid production
+# construction now assert that only these two always-present refusals
+# remain (i.e. the axis under test added none of its own).
 _EMAIL_BACKEND_PROD_REFUSAL = "APP_EMAIL_BACKEND must not be 'console' in production"
+_JOBS_BACKEND_PROD_REFUSAL = "APP_JOBS_BACKEND must not be 'in_process' in production"
 
 
-def _assert_only_email_backend_refusal(exc: ValidationError) -> None:
-    """Assert the lone production error is the always-present email refusal.
+def _assert_only_always_present_refusals(exc: ValidationError) -> None:
+    """Assert the only production errors are the two always-present refusals.
 
     Used by the former "accepts X in production" tests: production no
-    longer boots (no email transport until AWS SES), so the strongest
-    honest assertion is that the value under test contributed no error
-    of its own — only the email-backend refusal remains.
+    longer boots (no email transport until AWS SES, no job runtime
+    until AWS SQS), so the strongest honest assertion is that the value
+    under test contributed no error of its own — only the email-backend
+    and jobs-backend refusals remain.
     """
     message = str(exc)
     assert _EMAIL_BACKEND_PROD_REFUSAL in message, message
-    # The aggregated message lists one bullet per error. Exactly one
-    # bullet — the email-backend refusal — must be present.
+    assert _JOBS_BACKEND_PROD_REFUSAL in message, message
+    # The aggregated message lists one bullet per error. Exactly two
+    # bullets — the email-backend and jobs-backend refusals — must be
+    # present and nothing else.
     bullets = [line for line in message.splitlines() if line.lstrip().startswith("- ")]
-    assert len(bullets) == 1, (
-        f"expected only the email-backend refusal; got bullets: {bullets}"
+    assert len(bullets) == 2, (
+        f"expected only the two always-present backend refusals; got bullets: {bullets}"
     )
 
 
@@ -84,7 +97,7 @@ def test_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(k, v)
     with pytest.raises(ValidationError) as exc_info:
         AppSettings(_env_file=None)  # type: ignore[call-arg]
-    _assert_only_email_backend_refusal(exc_info.value)
+    _assert_only_always_present_refusals(exc_info.value)
 
     # Parsing the same overrides under a non-production environment
     # bypasses the production validator and confirms the fields load.
@@ -206,7 +219,7 @@ def test_production_accepts_samesite_lax_or_strict(
     monkeypatch.setenv("APP_AUTH_COOKIE_SAMESITE", value)
     with pytest.raises(ValidationError) as exc_info:
         AppSettings(_env_file=None)  # type: ignore[call-arg]
-    _assert_only_email_backend_refusal(exc_info.value)
+    _assert_only_always_present_refusals(exc_info.value)
     assert "APP_AUTH_COOKIE_SAMESITE" not in str(exc_info.value)
 
 
@@ -255,20 +268,27 @@ def test_production_rejects_return_internal_tokens(
 def test_production_rejects_in_process_jobs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """There is no production-capable jobs backend after step 5.
+
+    ``in_process`` is the only value and the production validator
+    refuses it; the message must name no removed backend (no ``arq``,
+    no ``APP_JOBS_REDIS_URL`` instruction). Production-with-deferred-
+    work is intentionally not bootable until the AWS SQS adapter and a
+    Lambda worker arrive at a later roadmap step.
+    """
     for k, v in _VALID_PROD_ENV.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("APP_JOBS_BACKEND", "in_process")
-    monkeypatch.delenv("APP_JOBS_REDIS_URL", raising=False)
-    with pytest.raises(ValidationError, match="APP_JOBS_BACKEND"):
+    with pytest.raises(ValidationError, match="APP_JOBS_BACKEND") as exc_info:
         AppSettings(_env_file=None)  # type: ignore[call-arg]
-
-
-def test_arq_backend_requires_redis_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_JOBS_BACKEND", "arq")
-    monkeypatch.delenv("APP_JOBS_REDIS_URL", raising=False)
-    monkeypatch.delenv("APP_AUTH_REDIS_URL", raising=False)
-    with pytest.raises(ValidationError, match="APP_JOBS_REDIS_URL"):
-        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    message = str(exc_info.value)
+    lowered = message.lower()
+    assert "arq" not in lowered, (
+        f"the refusal must not name the removed arq backend; got: {message}"
+    )
+    assert "app_jobs_redis_url" not in lowered, (
+        f"the refusal must not instruct setting APP_JOBS_REDIS_URL; got: {message}"
+    )
 
 
 def test_resend_backend_value_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -343,7 +363,7 @@ def test_production_accepts_enabled_outbox(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("APP_OUTBOX_ENABLED", "true")
     with pytest.raises(ValidationError) as exc_info:
         AppSettings(_env_file=None)  # type: ignore[call-arg]
-    _assert_only_email_backend_refusal(exc_info.value)
+    _assert_only_always_present_refusals(exc_info.value)
     assert "APP_OUTBOX_ENABLED" not in str(exc_info.value)
 
 
@@ -415,7 +435,7 @@ def test_production_accepts_non_empty_trusted_proxy_ips(
     monkeypatch.setenv("APP_TRUSTED_PROXY_IPS", '["10.0.0.0/8", "192.168.0.0/16"]')
     with pytest.raises(ValidationError) as exc_info:
         AppSettings(_env_file=None)  # type: ignore[call-arg]
-    _assert_only_email_backend_refusal(exc_info.value)
+    _assert_only_always_present_refusals(exc_info.value)
     assert "APP_TRUSTED_PROXY_IPS" not in str(exc_info.value)
 
 

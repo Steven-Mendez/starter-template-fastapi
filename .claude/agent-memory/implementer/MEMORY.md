@@ -1,2 +1,3 @@
 - [Settings Literal narrowing fires before EmailSettings guard](project_settings_literal_validation_order.md) — narrowing an `AppSettings` Literal field changes which validator rejects bad env values
 - [ROADMAP ETAPA I removes non-AWS prod adapters](project_roadmap_etapa_i.md) — SMTP/Resend/arq/SpiceDB removed; console/in-process kept; AWS adapters arrive at later steps
+- [Settings field removal has out-of-feature ripples](project_settings_field_removal_ripples.md) — deleting an APP_* field also breaks ObservabilitySettings/tracing/CLI; grep all of src/, the spec audit misses these

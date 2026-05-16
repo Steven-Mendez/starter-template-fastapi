@@ -110,8 +110,6 @@ def _build_containers() -> tuple[
     jobs = build_jobs_container(
         JobsSettings.from_app_settings(
             backend=settings.jobs_backend,
-            redis_url=settings.jobs_redis_url or settings.auth_redis_url,
-            queue_name=settings.jobs_queue_name,
         )
     )
     outbox = build_outbox_container(

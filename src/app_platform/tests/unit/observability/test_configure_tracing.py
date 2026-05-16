@@ -39,7 +39,7 @@ def _settings(**overrides: Any) -> AppSettings:
 
 
 def test_redis_instrumentor_skipped_when_no_redis_url() -> None:
-    settings = _settings(auth_redis_url=None, jobs_redis_url=None)
+    settings = _settings(auth_redis_url=None)
 
     with patch("opentelemetry.instrumentation.redis.RedisInstrumentor") as redis_cls:
         tracing_module.configure_tracing(settings)
@@ -74,8 +74,11 @@ def test_sqlalchemy_instrumentor_skipped_when_toggle_off() -> None:
         sa_cls.assert_not_called()
 
 
-def test_redis_instrumentor_runs_when_jobs_redis_url_set() -> None:
-    settings = _settings(jobs_redis_url="redis://localhost:6379")
+def test_redis_instrumentor_runs_when_auth_redis_url_set() -> None:
+    # ``jobs_redis_url`` was removed with the arq adapter (ROADMAP ETAPA
+    # I step 5); ``auth_redis_url`` is now the only Redis URL signal the
+    # tracing setup reads (the auth rate limiter / principal cache).
+    settings = _settings(auth_redis_url="redis://localhost:6379")
     with patch("opentelemetry.instrumentation.redis.RedisInstrumentor") as redis_cls:
         tracing_module.configure_tracing(settings)
         redis_cls.assert_called_once()
@@ -104,7 +107,6 @@ def test_production_ratio_one_emits_warning(caplog: pytest.LogCaptureFixture) ->
         otel_instrument_httpx=False,
         otel_instrument_redis=False,
         auth_redis_url=None,
-        jobs_redis_url=None,
     )
 
     with caplog.at_level("WARNING", logger="app_platform.observability.tracing"):

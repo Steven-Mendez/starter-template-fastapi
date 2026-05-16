@@ -144,9 +144,7 @@ def configure_tracing(settings: Any) -> None:
 
         HTTPXClientInstrumentor().instrument()
 
-    if settings.otel_instrument_redis and (
-        settings.auth_redis_url or settings.jobs_redis_url
-    ):
+    if settings.otel_instrument_redis and settings.auth_redis_url:
         from opentelemetry.instrumentation.redis import RedisInstrumentor
 
         RedisInstrumentor().instrument()

@@ -32,7 +32,7 @@ HTTP client
 | `users` | The `User` entity, the `users` table, registration, profile read/update, deactivation, admin user listing. | Authorization's outbound ports (`UserRegistrarPort`, `UserAuthzVersionPort`). |
 | `authorization` | `AuthorizationPort`, the runtime `AuthorizationRegistry`, the SQLModel adapter, the SpiceDB stub, `BootstrapSystemAdmin`. | `UserRegistrarPort`, `UserAuthzVersionPort` (implemented by `users`), `AuditPort` (implemented by `authentication`). |
 | `email` | `EmailPort`, the `console` adapter (dev/test; production email arrives with AWS SES at a later roadmap step), the `EmailTemplateRegistry`. | Nothing. |
-| `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, the `JobHandlerRegistry`, the worker entrypoint. | Nothing. |
+| `background_jobs` | `JobQueuePort`, the in-process adapter (dev/test; the only shipped adapter — the production job runtime, AWS SQS + a Lambda worker, arrives at a later roadmap step), the `JobHandlerRegistry`, the worker scaffold. | Nothing. |
 | `file_storage` | `FileStoragePort`, local adapter, S3 stub. | Nothing. |
 | `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, the `DispatchPending` relay use case. | `JobQueuePort` (the relay's destination). |
 
@@ -58,7 +58,7 @@ imports). Every cross-feature call goes through an application port.
 | Module | Responsibility |
 | --- | --- |
 | `src/main.py` | Builds the FastAPI app, mounts every feature's routes, and wires the per-feature containers inside the lifespan event. |
-| `src/worker.py` | Background-jobs worker entrypoint — loads the same composition root, registers handlers, runs `arq`. |
+| `src/worker.py` | Runtime-agnostic worker composition-root scaffold — loads the same composition root, registers handlers, collects cron descriptors, then exits non-zero (no job runtime is wired until AWS SQS + a Lambda worker, a later roadmap step). |
 | `src/app_platform/api/app_factory.py` | Creates the FastAPI app, configures docs URLs, CORS, trusted hosts, request context middleware, content-size limits, and Problem Details handlers. |
 | `src/app_platform/config/settings.py` | `AppSettings` — the env-loading boundary. Exposes typed per-feature views via `settings.authentication`, `settings.email`, etc. |
 | `src/app_platform/config/sub_settings.py` | `DatabaseSettings`, `ApiSettings`, `ObservabilitySettings` — cross-cutting platform configuration projections. |
@@ -186,7 +186,7 @@ Problem Details response.
 | Service | Where | Required when |
 | --- | --- | --- |
 | PostgreSQL | Every persisting feature | Always. |
-| Redis | Auth rate limiter, principal cache, `arq` jobs queue | `APP_AUTH_REDIS_URL` set, multi-replica auth, `APP_JOBS_BACKEND=arq`. |
+| Redis | Auth rate limiter, principal cache | `APP_AUTH_REDIS_URL` set, multi-replica auth. |
 | Object storage | File-storage feature | A consumer feature wires `FileStoragePort` and `APP_STORAGE_BACKEND=s3` (production). |
 | OTLP collector | Observability | `APP_OTEL_EXPORTER_ENDPOINT` set. |
 | SpiceDB | Authorization | Not used today; the adapter is a stub mirroring the S3 pattern. |

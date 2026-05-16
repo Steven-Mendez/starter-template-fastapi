@@ -19,8 +19,8 @@ keeps a single fat install via the `dev` dependency-group.
 | --- | --- | --- |
 | `uv sync` | core only (pydantic, sqlmodel, alembic, argon2, OTel, …) | Tooling that just imports the core layers (rare). Does **not** start the API or worker. |
 | `uv sync --extra api` | + `fastapi[standard]` (uvicorn, starlette extras, `python-multipart`) | API host |
-| `uv sync --extra worker` | + `arq`, `redis` | Background-jobs worker host |
-| `uv sync --extra api --extra worker` | + both of the above | Single-host deployments running both roles in one venv |
+| `uv sync --extra worker` | + `redis` | Hosts using the Redis-backed auth rate limiter / principal cache (the `arq` worker runtime was removed in ROADMAP ETAPA I step 5; the AWS SQS + Lambda runtime arrives at a later roadmap step) |
+| `uv sync --extra api --extra worker` | + both of the above | Single-host deployments running the API with the Redis-backed limiter/cache in one venv |
 | `uv sync --extra s3` | + `boto3` | Any host that sets `APP_STORAGE_BACKEND=s3` |
 | `uv sync` (with the `dev` group) | everything above + test/lint tooling | Local development (`uv sync` reads `[dependency-groups] dev` by default) |
 
@@ -75,7 +75,7 @@ Dockerfiles.
 | Stage | Built with | Runs | Listens on |
 | --- | --- | --- | --- |
 | `runtime` | `docker build --target runtime …` | `uvicorn main:app --no-server-header --timeout-graceful-shutdown 30` | TCP 8000 |
-| `runtime-worker` | `docker build --target runtime-worker …` | `python -m worker` (arq) | none |
+| `runtime-worker` | `docker build --target runtime-worker …` | `python -m worker` (scaffold; exits non-zero — no job runtime wired until AWS SQS + Lambda, a later roadmap step) | none |
 
 The `runtime-worker` stage is declared `FROM runtime AS runtime-worker`,
 so it inherits every hardening layer of the API image (digest-pinned
@@ -110,16 +110,20 @@ Run the API:
 docker run --env-file .env -p 8000:8000 starter-template-fastapi:prod
 ```
 
-Run the worker (no port; requires `APP_JOBS_BACKEND=arq` and a reachable
-`APP_JOBS_REDIS_URL`):
+Run the worker scaffold (no port; builds the composition root, logs
+registered handlers + cron descriptors, then exits non-zero — no job
+runtime is wired until the AWS SQS adapter and a Lambda worker are
+added at a later roadmap step; the `arq` runtime was removed in ROADMAP
+ETAPA I step 5):
 
 ```bash
 docker run --env-file .env worker:latest
 ```
 
 The API image default command starts Uvicorn and does not run
-migrations. The worker image default command starts the arq worker and
-does not bind a TCP listener.
+migrations. The worker image default command runs the worker scaffold
+(which exits non-zero until the AWS job runtime is wired) and does not
+bind a TCP listener.
 
 The API `uvicorn` invocation MUST include `--no-server-header` in
 production. Uvicorn adds the `Server: uvicorn` response header at the
@@ -139,9 +143,11 @@ the same `Secret`/`ConfigMap` for `APP_*` environment variables:
 - API `Deployment` runs the `runtime` image with a `livenessProbe` /
   `readinessProbe` against `/health/live` and `/health/ready`.
 - Worker `Deployment` runs the `runtime-worker` image with **no HTTP
-  probes**; the kubelet restarts the pod on non-zero exit. Set
-  `terminationGracePeriodSeconds` ≥ the worker's longest job timeout so
-  arq can drain in-flight jobs cleanly on SIGTERM.
+  probes**; the kubelet restarts the pod on non-zero exit. The worker
+  scaffold currently exits non-zero by design (no job runtime is wired
+  until the AWS SQS + Lambda runtime is added at a later roadmap step),
+  so a worker `Deployment` will crash-loop until then; the future job
+  runtime will implement the in-flight-job drain on SIGTERM.
 
 Both `Deployment`s SHOULD set `terminationGracePeriodSeconds: 35`
 (`APP_SHUTDOWN_TIMEOUT_SECONDS + 5` slack). The inner-process timeout
@@ -583,46 +589,32 @@ Transactional email and other deferred work are dispatched through the
 | `APP_JOBS_BACKEND` | Behaviour | Allowed in production |
 |---|---|---|
 | `in_process` | Runs handlers synchronously inline at enqueue time | **No** — startup fails |
-| `arq` | Enqueues onto Redis; a separate worker process consumes the queue | Yes |
 
-In production you **must** run at least one worker process alongside the
-API processes; without it, enqueued jobs accumulate in Redis and are
-never executed. The worker uses the same composition root as the web
-app, so every feature that registers a job handler at startup
-(currently just `send_email` from the email feature) sees the same set
-of handlers in both processes.
+`in_process` is the only accepted value. The `arq` backend and its
+worker runtime were removed in ROADMAP ETAPA I step 5; the production
+job runtime (the `aws_sqs` adapter + a Lambda worker) is added at a
+later roadmap step (steps 26-27). Production with deferred work is
+therefore intentionally not bootable yet — the settings validator
+refuses `in_process` in production and there is no other backend to
+fall back to. The `outbox_messages` table and its request-path writers
+are unchanged; only the runtime that drains the outbox is removed.
 
-### Configuration
-
-```bash
-export APP_JOBS_BACKEND=arq
-# Falls back to APP_AUTH_REDIS_URL when this is unset, so single-Redis
-# deployments can leave it unset.
-export APP_JOBS_REDIS_URL=redis://redis:6379/0
-# Optional; defaults to ``arq:queue``.
-export APP_JOBS_QUEUE_NAME=arq:queue
-```
-
-The settings validator refuses to start in production when:
-
-- `APP_JOBS_BACKEND=in_process`
-- `APP_JOBS_BACKEND=arq` and neither `APP_JOBS_REDIS_URL` nor
-  `APP_AUTH_REDIS_URL` is set.
+The settings validator refuses to start in production when
+`APP_JOBS_BACKEND=in_process` (the only value). The refusal message
+names no removed backend.
 
 ### Running the worker
 
-Locally:
-
 ```bash
-APP_JOBS_BACKEND=arq APP_JOBS_REDIS_URL=redis://localhost:6379/0 \
-  make worker
+make worker
 ```
 
-In production, run `python -m worker` as a separate process (a
-sidecar container, a Kubernetes Deployment, a systemd unit, etc.). The
-worker logs the names of every registered job handler at startup so
-operators can confirm what it will consume before the first job
-arrives.
+`src/worker.py` is a runtime-agnostic composition-root scaffold. It
+builds the same composition root the API uses (so composition errors
+surface loudly), logs every registered job handler and cron descriptor,
+then exits non-zero stating no job runtime is wired. The future job
+runtime (AWS SQS + a Lambda worker) re-binds the preserved registry +
+cron descriptors to a real scheduler.
 
 ### Adding a job handler in a feature
 
@@ -818,12 +810,7 @@ violated and `APP_ENVIRONMENT=production`.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `APP_JOBS_BACKEND` | `in_process` | One of `in_process`, `arq`. **Must be `arq` in production.** |
-| `APP_JOBS_REDIS_URL` | unset | Required when `APP_JOBS_BACKEND=arq`; falls back to `APP_AUTH_REDIS_URL`. |
-| `APP_JOBS_QUEUE_NAME` | `arq:queue` | `arq` queue name. |
-| `APP_JOBS_KEEP_RESULT_SECONDS_DEFAULT` | `300` | TTL for `arq:queue:result:*` keys when a handler does not override `keep_result_seconds`. Bounds Redis memory. See `docs/background-jobs.md#redis-operational-guidance`. |
-| `APP_JOBS_MAX_JOBS` | `16` | Max concurrent jobs per arq worker. Tune to deployment CPU/memory. |
-| `APP_JOBS_JOB_TIMEOUT_SECONDS` | `600` | Hard kill for a single job. A handler that overruns is terminated rather than pinning a worker. |
+| `APP_JOBS_BACKEND` | `in_process` | Only accepted value is `in_process`. **Production refuses it** — there is no production job backend until the AWS SQS adapter + a Lambda worker are added at a later roadmap step (the `arq` runtime was removed in ROADMAP ETAPA I step 5). |
 
 ### Transactional outbox (`OutboxSettings`)
 

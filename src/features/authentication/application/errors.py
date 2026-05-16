@@ -88,6 +88,6 @@ class RateLimitExceededError(AuthError):
         self,
     ) -> tuple[type[RateLimitExceededError], tuple[str, int]]:
         # Custom reduce so the error round-trips through pickle (and therefore
-        # the arq Redis boundary): ``Exception.__reduce__`` only carries
-        # ``self.args`` and would drop ``retry_after_seconds``.
+        # a serializing job-runtime boundary): ``Exception.__reduce__`` only
+        # carries ``self.args`` and would drop ``retry_after_seconds``.
         return (type(self), (self.args[0], self.retry_after_seconds))

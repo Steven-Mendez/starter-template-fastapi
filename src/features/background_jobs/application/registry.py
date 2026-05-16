@@ -3,12 +3,13 @@
 Mirrors :class:`EmailTemplateRegistry`: each feature that owns a job
 calls :meth:`register_handler` at composition time. The registry is
 sealed in ``main.py`` before the application serves traffic (and in
-``src/worker.py`` before the worker begins polling), after which
-further registrations raise.
+``src/worker.py``'s composition scaffold), after which further
+registrations raise.
 
 A handler is a sync ``Callable[[dict[str, Any]], None]``. The in-process
-adapter invokes it inline; the arq adapter wraps it in an async shim so
-arq's worker can ``await`` it.
+adapter invokes it inline. The future production job runtime (AWS SQS +
+a Lambda worker, a later roadmap step) re-binds the same registry at its
+own entrypoint.
 """
 
 from __future__ import annotations
@@ -27,7 +28,13 @@ JobHandler = Callable[[dict[str, Any]], None]
 
 @dataclass(frozen=True, slots=True)
 class JobHandlerEntry:
-    """Registered handler plus its per-handler arq tunables."""
+    """Registered handler plus its optional per-handler runtime tunables.
+
+    ``keep_result_seconds`` is a result-retention hint a future
+    serializing job runtime (AWS SQS + a Lambda worker, a later roadmap
+    step) may honour; the in-process adapter ignores it (it runs the
+    handler inline and keeps no result record).
+    """
 
     handler: JobHandler
     keep_result_seconds: int | None = None

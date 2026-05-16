@@ -8,9 +8,9 @@ one transaction and the per-row state changes (``mark_delivered``,
 ``JobQueuePort.enqueue`` does not hold the lock window open longer than
 necessary.
 
-The repository is intentionally synchronous: the relay loop in the
-worker drives ticks one at a time, and arq's ``cron_jobs`` API does not
-require async functions for the inner work.
+The repository is intentionally synchronous: the relay drives ticks one
+at a time, and the runtime-agnostic cron descriptor exposes a plain
+zero-arg sync callable, so the inner work needs no async machinery.
 """
 
 from __future__ import annotations

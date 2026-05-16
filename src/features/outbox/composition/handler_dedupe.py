@@ -68,7 +68,7 @@ def build_handler_dedupe(engine: Engine) -> Callable[[str], bool]:
                 return False
             except sa.exc.SQLAlchemyError:
                 # Don't swallow unexpected DB errors — let the handler
-                # treat the job as failed so arq retries.
+                # treat the job as failed so the outbox relay retries it.
                 session.rollback()
                 raise
             return True

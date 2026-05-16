@@ -128,9 +128,14 @@ reserved keys without breaking older deployments.
 
 ## How the relay works
 
-The worker (`src/worker.py`) registers `DispatchPending` as an arq
-cron job that fires every `APP_OUTBOX_RELAY_INTERVAL_SECONDS`. Each
-tick:
+The worker scaffold (`src/worker.py`) collects `DispatchPending` as a
+runtime-agnostic `outbox-relay` cron descriptor scheduled every
+`APP_OUTBOX_RELAY_INTERVAL_SECONDS`. The worker runtime that fires it
+is added at a later roadmap step (the `arq` runtime was removed in
+ROADMAP ETAPA I step 5; AWS SQS + a Lambda worker arrive at steps
+26-27). The `outbox_messages` table and its request-path writers are
+unchanged — only the runtime that drains it is removed. When the
+runtime fires the descriptor, each tick:
 
 1. Opens a short transaction, runs
    `SELECT ... FROM outbox_messages WHERE status='pending' AND

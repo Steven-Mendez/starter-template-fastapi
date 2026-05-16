@@ -1,15 +1,15 @@
 """Unit tests for W3C trace-context propagation across the job boundary.
 
-The in-process and arq adapters both extract the carrier from
-``payload['__trace']`` and attach the resulting OTel context around the
-handler call, so a handler-side span becomes a child of the originating
-request's trace.
+The in-process adapter extracts the carrier from
+``payload['__trace']`` and attaches the resulting OTel context around
+the handler call, so a handler-side span becomes a child of the
+originating request's trace.
 
 These tests exercise the in-process adapter's extract/attach/detach
-contract directly; the arq adapter's wrapper is identical and is
-covered structurally by the same extract logic — the arq integration
-test in ``tests/integration/test_arq_round_trip.py`` exercises the full
-worker path.
+contract directly. ``in_process`` is the only shipped adapter (``arq``
+was removed in ROADMAP ETAPA I step 5); the future production job
+runtime (AWS SQS + a Lambda worker, a later roadmap step) re-applies
+the same extract/attach/detach logic at its own job entrypoint.
 """
 
 from __future__ import annotations

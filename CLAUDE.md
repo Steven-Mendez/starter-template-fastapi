@@ -13,7 +13,7 @@ uv run alembic upgrade head
 # Development
 make dev                                  # run with auto-reload (FastAPI CLI)
 make dev PORT=8080                        # override port
-make worker                               # run the background-jobs arq worker
+make worker                               # build the worker scaffold (no job runtime wired; exits non-zero until AWS SQS + Lambda, a later roadmap step)
 
 # Quality
 make format                               # Ruff formatter
@@ -56,7 +56,7 @@ following the layer stack and per-feature conventions documented below.
 | `users` | The `User` entity, registration, profile, deactivation, admin user listing, `UserPort` |
 | `authorization` | ReBAC engine, `AuthorizationPort`, `AuthorizationRegistry`, SQLModel adapter, SpiceDB stub, `BootstrapSystemAdmin` |
 | `email` | `EmailPort`, console adapter (dev/test; production email arrives with AWS SES at a later roadmap step), `EmailTemplateRegistry` |
-| `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, `JobHandlerRegistry`, worker entrypoint |
+| `background_jobs` | `JobQueuePort`, the `in_process` adapter (only shipped adapter; production job runtime — AWS SQS + a Lambda worker — arrives at a later roadmap step), `JobHandlerRegistry`, runtime-agnostic worker scaffold |
 | `file_storage` | `FileStoragePort`, local + S3 (`boto3`) adapters |
 | `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, `DispatchPending` relay use case (runs in the worker only) |
 
@@ -88,7 +88,7 @@ with an explicit Import Linter exception.
 | Module | Role |
 |---|---|
 | `src/main.py` | Composition root — mounts every feature's routes and wires containers in the lifespan event |
-| `src/worker.py` | Worker entrypoint for `arq` jobs; loads the same composition root and registers handlers |
+| `src/worker.py` | Runtime-agnostic worker composition-root scaffold — loads the same composition root, registers handlers, collects cron descriptors, then exits non-zero (no job runtime is wired until AWS SQS + a Lambda worker, a later roadmap step) |
 | `src/app_platform/api/app_factory.py` | FastAPI factory: CORS, trusted hosts, docs, middleware, Problem Details handlers |
 | `src/app_platform/config/settings.py` | `AppSettings` — `APP_`-prefixed pydantic-settings; exposes typed per-feature views (`settings.email`, `settings.authentication`, …); aggregates per-feature production validation |
 | `src/app_platform/config/sub_settings.py` | `DatabaseSettings`, `ApiSettings`, `ObservabilitySettings` — cross-cutting platform projections |
@@ -153,9 +153,9 @@ Pure ReBAC concerns. Other features call into it through one port; it calls back
 
 - `application/ports/job_queue_port.py` — `JobQueuePort.enqueue(name, payload)` and `enqueue_at(name, payload, run_at)`
 - `application/registry.py` — `JobHandlerRegistry`; sealed in `main.py` and `src/worker.py`
-- `adapters/outbound/in_process/` — runs handlers inline at enqueue time (dev/test only)
-- `adapters/outbound/arq/` — Redis-backed via `arq`
-- `src/worker.py` — same composition root as `main.py`; `make worker` runs it locally
+- `adapters/outbound/in_process/` — runs handlers inline at enqueue time (dev/test only); the only shipped adapter
+- `application/cron.py` — runtime-agnostic `CronSpec` descriptor (relay/prune/auth-purge schedules, declared without a scheduler)
+- `src/worker.py` — runtime-agnostic composition-root scaffold (same composition root as `main.py`); `make worker` builds it, logs handlers + cron descriptors, then exits non-zero. No job runtime is wired (the `arq` runtime was removed in ROADMAP ETAPA I step 5; AWS SQS + a Lambda worker arrive at a later roadmap step)
 - See `docs/background-jobs.md`.
 
 ### File-storage feature (`src/features/file_storage/`)
@@ -214,13 +214,13 @@ Run boundary checks: `make lint-arch`
 | Unit | `unit` | `*/tests/unit/` | Pure logic, no IO; uses fakes from `*/tests/fakes/` |
 | End-to-end | `e2e` | `*/tests/e2e/` | HTTP flows through FastAPI with in-memory fakes |
 | Contract | (called by unit/integration) | `*/tests/contracts/` | Same behavior assertions run against fake and real adapters |
-| Integration | `integration` | `*/tests/integration/` | Requires Docker/testcontainers; hits real PostgreSQL (or Redis for arq) |
+| Integration | `integration` | `*/tests/integration/` | Requires Docker/testcontainers; hits real PostgreSQL |
 
 Coverage gate: `make ci` enforces an 80% line-coverage floor (`pyproject.toml [tool.coverage.report] fail_under`) and a separate 60% branch-coverage floor (`BRANCH_COVERAGE_FLOOR` in the Makefile, override via env).
 
 ## Coding conventions
 
-- Use cases return `Result[T, ApplicationError]`, never raise through the application layer. Every feature's base error (`AuthError`, `AuthorizationError`, `EmailError`, `JobError`, `OutboxError`, `FileStorageError`, `UserError`) inherits from `ApplicationError` defined in `src/app_platform/shared/errors.py`. Concrete subclasses MUST be picklable so they round-trip across the arq Redis boundary — if a class requires non-positional constructor arguments, implement `__reduce__` returning `(cls, (positional_args,))` (see `src/app_platform/shared/tests/unit/test_application_error_pickling.py`).
+- Use cases return `Result[T, ApplicationError]`, never raise through the application layer. Every feature's base error (`AuthError`, `AuthorizationError`, `EmailError`, `JobError`, `OutboxError`, `FileStorageError`, `UserError`) inherits from `ApplicationError` defined in `src/app_platform/shared/errors.py`. Concrete subclasses MUST be picklable so they round-trip across a serializing job-runtime boundary (the future AWS SQS + Lambda worker; the `arq` runtime was removed in ROADMAP ETAPA I step 5) — if a class requires non-positional constructor arguments, implement `__reduce__` returning `(cls, (positional_args,))` (see `src/app_platform/shared/tests/unit/test_application_error_pickling.py`).
 - `@dataclass(slots=True)` for use cases and mutable domain entities; `@dataclass(frozen=True, slots=True)` for immutable commands/queries/contracts.
 - FastAPI dependencies are declared as `Annotated` type aliases (see existing `*Dep` names in `adapters/inbound/http/dependencies.py`).
 - Feature HTTP errors map application errors to HTTP status codes in `adapters/inbound/http/errors.py`; the platform renders the final Problem Details response.
@@ -238,7 +238,7 @@ The settings validator refuses to start when `APP_ENVIRONMENT=production` and an
 - `APP_ENABLE_DOCS=true`
 - `APP_AUTH_RBAC_ENABLED=false`
 - `APP_EMAIL_BACKEND=console` (the only accepted value; production refuses `console` and there is no production email backend yet — AWS SES arrives at a later roadmap step)
-- `APP_JOBS_BACKEND=in_process`
+- `APP_JOBS_BACKEND=in_process` (the only accepted value; production refuses `in_process` and there is no production job backend yet — the AWS SQS adapter + a Lambda worker arrive at a later roadmap step)
 - `APP_AUTH_RETURN_INTERNAL_TOKENS=true`
 - `APP_STORAGE_ENABLED=true` with `APP_STORAGE_BACKEND=local`
 - `APP_AUTH_REDIS_URL` unset (required for both the auth rate limiter and the principal cache — without it, multi-replica deploys silently multiply rate-limit budgets by worker count and revoked principals keep acting on workers that did not see the in-process cache invalidation)
@@ -256,7 +256,7 @@ See `docs/operations.md` for the full env-var reference.
 | `APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL/PASSWORD` | unset | Creates initial super-admin if both are set |
 | `APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING` | `false` | Default-deny: when `false`, bootstrap refuses to promote an existing account that does not already hold `system:main#admin`. Set to `true` only when intentionally promoting a pre-created account; the supplied password is then verified against the stored credential before any relationship write |
 | `APP_AUTH_RETURN_INTERNAL_TOKENS` | `false` | Exposes single-use tokens in responses — test-only; refused in production |
-| `APP_AUTH_REDIS_URL` | unset | Enables distributed Redis rate limiter and shared principal cache; also default fallback for the arq queue |
+| `APP_AUTH_REDIS_URL` | unset | Enables distributed Redis rate limiter and shared principal cache |
 | `APP_AUTH_RATE_LIMIT_ENABLED` | `true` | Enables auth rate limiting |
 | `APP_AUTH_RBAC_ENABLED` | `true` | Enables ReBAC checks |
 | `APP_AUTH_PRINCIPAL_CACHE_TTL_SECONDS` | `5` | Bounds the worst-case revocation lag for cached principals |
@@ -268,8 +268,7 @@ See `docs/operations.md` for the full env-var reference.
 | Variable | Default | Purpose |
 |---|---|---|
 | `APP_EMAIL_BACKEND` | `console` | Only `console` (dev/test); production refuses it and has no email backend until AWS SES at a later roadmap step |
-| `APP_JOBS_BACKEND` | `in_process` | `in_process` for dev/test, `arq` in production |
-| `APP_JOBS_REDIS_URL` | unset | Required for `arq`; falls back to `APP_AUTH_REDIS_URL` |
+| `APP_JOBS_BACKEND` | `in_process` | Only `in_process` (dev/test); production refuses it and has no job backend until the AWS SQS adapter + a Lambda worker at a later roadmap step |
 | `APP_STORAGE_BACKEND` | `local` | `local` for dev/test, `s3` in production when `APP_STORAGE_ENABLED=true` |
 | `APP_OUTBOX_ENABLED` | `false` | Must be `true` in production; the worker schedules the relay only when this is set |
 | `APP_OUTBOX_RELAY_INTERVAL_SECONDS` | `5.0` | Cron cadence of the relay (snapped to nearest divisor of 60) |

@@ -1,13 +1,26 @@
-"""arq worker entrypoint.
+"""Runtime-agnostic worker composition-root scaffold.
 
-Builds the same composition root the web app uses for everything the
-worker needs — the email feature (so the ``send_email`` handler can
-render and dispatch templates), plus any future features that register
-their handlers in their composition modules. The web app and the
-worker therefore see the same set of registered jobs.
+This builds the *same* composition root the web app uses for
+everything a job runtime needs — the email feature (so the
+``send_email`` handler can render and dispatch templates), the jobs /
+outbox / users / file-storage containers, the registered handlers
+(``send_email``, ``delete_user_assets``, ``erase_user``), and the
+relay + auth-purge cron descriptors. Building it here means a future
+job runtime sees exactly the set of jobs and schedules the web
+process can enqueue, and composition errors still surface loudly.
 
-Run with ``make worker``; requires ``APP_JOBS_BACKEND=arq`` and a
-reachable ``APP_JOBS_REDIS_URL``.
+There is no job runtime wired. ``arq`` (the previous worker runtime)
+was removed in ROADMAP ETAPA I step 5; the production worker runtime
+(AWS SQS + a Lambda worker) arrives at ROADMAP steps 26-27. Until
+then ``make worker`` builds this scaffold, logs the registered
+handlers and collected cron descriptors, and exits non-zero with a
+clear message — the same "honest loud refusal over a silent no-op"
+stance the production validator takes.
+
+The engine-dispose / Redis-close / tracing-flush logic is kept as
+plain reusable helpers (:func:`dispose_engine`, :func:`close_redis`,
+:func:`flush_tracing`, :func:`drain_worker`) so the future runtime
+can re-bind them as its shutdown hook without re-deriving the drain.
 """
 
 from __future__ import annotations
@@ -15,15 +28,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from collections.abc import Awaitable, Callable, Coroutine
+from dataclasses import dataclass, field
 from typing import Any
 
-import redis as redis_lib
-from arq import run_worker
-from arq.connections import RedisSettings
-from arq.cron import CronJob
-from arq.typing import StartupShutdown
-from arq.worker import Function
 from sqlalchemy import Engine, create_engine
 
 from app_platform.config.settings import AppSettings, get_settings
@@ -42,15 +49,12 @@ from features.authentication.application.use_cases.maintenance import (
     PurgeExpiredTokens,
 )
 from features.authentication.composition.worker import (
-    build_auth_maintenance_cron_jobs,
+    build_auth_maintenance_cron_specs,
 )
 from features.authentication.email_templates import (
     register_authentication_email_templates,
 )
-from features.background_jobs.adapters.outbound.arq import (
-    build_arq_functions,
-    job_handler_logging_startup,
-)
+from features.background_jobs.application.cron import CronSpec
 from features.background_jobs.composition.container import build_jobs_container
 from features.background_jobs.composition.settings import JobsSettings
 from features.email.composition.container import build_email_container
@@ -61,7 +65,7 @@ from features.file_storage.composition.settings import StorageSettings
 from features.outbox.composition.container import build_outbox_container
 from features.outbox.composition.handler_dedupe import build_handler_dedupe
 from features.outbox.composition.settings import OutboxSettings
-from features.outbox.composition.worker import build_relay_cron_jobs
+from features.outbox.composition.worker import build_relay_cron_specs
 from features.users.composition.container import build_users_container
 from features.users.composition.jobs import (
     register_delete_user_assets_handler,
@@ -70,129 +74,94 @@ from features.users.composition.jobs import (
 
 _logger = logging.getLogger("worker")
 
-# Module-level handles used by ``on_shutdown``. They are populated by
-# ``build_worker_settings`` so the shutdown hook can reach the engine
-# and Redis client built during composition without arq's ``ctx`` dict
-# carrying typed references.
-#
-# ``_RELAY_TICK_IN_FLIGHT`` is set while a ``DispatchPending.execute``
-# tick is running; ``_RELAY_TICK_IDLE`` is its inverse — set whenever a
-# tick is NOT running. ``on_shutdown`` awaits the idle event (bounded
-# by ``APP_SHUTDOWN_TIMEOUT_SECONDS``) so an in-flight tick can commit
-# or roll back cleanly before the engine is disposed and the Redis
-# pool is closed. Two events instead of one ``while sleep`` poll keeps
-# the hot path off the event loop and satisfies ASYNC110.
-_RELAY_TICK_IN_FLIGHT: asyncio.Event | None = None
-_RELAY_TICK_IDLE: asyncio.Event | None = None
-_SHUTDOWN_TIMEOUT_SECONDS: float = 30.0
-_ENGINE: Engine | None = None
-_REDIS_CLIENT: Any | None = None
+_NO_RUNTIME_MESSAGE = (
+    "No background-job runtime is wired. `arq` was removed in ROADMAP "
+    "ETAPA I step 5; the production worker runtime (AWS SQS + a Lambda "
+    "worker) arrives at ROADMAP steps 26-27. `make worker` will not "
+    "process jobs until then."
+)
 
 
-def _ensure_relay_events() -> tuple[asyncio.Event, asyncio.Event]:
-    """Lazily build the relay-tick events on first use.
+def dispose_engine(engine: Engine | None) -> None:
+    """Dispose the SQLAlchemy engine, swallowing and logging failures.
 
-    ``asyncio.Event`` no longer binds to a running loop in 3.10+, so it
-    is safe to construct at import time, but lazy construction lets the
-    test suite reset them between scenarios without touching globals
-    from the test side.
+    Reusable drain helper: the future job runtime's shutdown hook can
+    call this directly so the drain logic is declared once.
     """
-    global _RELAY_TICK_IN_FLIGHT, _RELAY_TICK_IDLE  # noqa: PLW0603
-    if _RELAY_TICK_IN_FLIGHT is None:
-        _RELAY_TICK_IN_FLIGHT = asyncio.Event()
-    if _RELAY_TICK_IDLE is None:
-        _RELAY_TICK_IDLE = asyncio.Event()
-        _RELAY_TICK_IDLE.set()
-    return _RELAY_TICK_IN_FLIGHT, _RELAY_TICK_IDLE
+    if engine is None:
+        return
+    try:
+        engine.dispose()
+    except Exception:
+        _logger.warning("event=worker.shutdown.engine.dispose_failed")
 
 
-def _set_shutdown_handles(
-    *,
-    engine: Engine,
-    redis_client: Any,
-    shutdown_timeout_seconds: float,
-) -> None:
-    """Wire the engine, Redis client, and timeout into the shutdown path.
+def close_redis(redis_client: Any) -> None:
+    """Close the Redis client (sync or async), logging failures.
 
-    Extracted as a small helper so tests can clear the module-level
-    handles between runs (the arq worker entrypoint is a single process,
-    but the test suite invokes ``build_worker_settings`` multiple times).
+    Reusable drain helper. The scaffold's ``main()`` runs the drain
+    synchronously (no event loop), so an async ``close()`` is driven to
+    completion via ``asyncio.run``. A future job runtime that drains
+    from inside its own loop re-binds this logic with ``await``.
     """
-    global _ENGINE, _REDIS_CLIENT, _SHUTDOWN_TIMEOUT_SECONDS  # noqa: PLW0603
-    _ENGINE = engine
-    _REDIS_CLIENT = redis_client
-    _SHUTDOWN_TIMEOUT_SECONDS = shutdown_timeout_seconds
+    if redis_client is None:
+        return
+    try:
+        close = redis_client.close
+        result = close()
+        if asyncio.iscoroutine(result):
+            asyncio.run(result)
+    except Exception:
+        _logger.warning("event=worker.shutdown.redis.close_failed")
 
 
-def _wrap_relay_tick(
-    tick: Callable[[dict[str, Any]], Awaitable[None]],
-) -> Callable[[dict[str, Any]], Coroutine[Any, Any, None]]:
-    """Wrap the relay cron's coroutine so it marks itself in-flight.
+def flush_tracing() -> None:
+    """Flush the OTel ``BatchSpanProcessor``, logging failures.
 
-    The wrapper sets a module-level ``asyncio.Event`` while
-    ``DispatchPending.execute`` is running so ``on_shutdown`` can
-    ``await`` for the tick to finish (bounded by the shutdown timeout)
-    before disposing the engine. The original coroutine's return value
-    and exceptions pass through unchanged.
+    Reusable drain helper for the future job runtime's shutdown hook.
     """
-
-    async def _instrumented(ctx: dict[str, Any]) -> None:
-        in_flight, idle = _ensure_relay_events()
-        in_flight.set()
-        idle.clear()
-        try:
-            await tick(ctx)
-        finally:
-            in_flight.clear()
-            idle.set()
-
-    return _instrumented
-
-
-async def _on_shutdown(ctx: dict[str, Any]) -> None:  # noqa: ARG001
-    """arq ``on_shutdown`` hook: drain the relay, dispose pools.
-
-    Each step is wrapped in ``try/except`` + warn log so a slow or
-    broken step (e.g. an unreachable Redis) does not prevent the
-    others. Order: wait for the in-flight relay tick to complete (so
-    a half-claimed outbox batch commits or rolls back cleanly),
-    dispose the SQLAlchemy engine, close the Redis client, and flush
-    the OTel ``BatchSpanProcessor``.
-    """
-    in_flight = _RELAY_TICK_IN_FLIGHT
-    idle = _RELAY_TICK_IDLE
-    if in_flight is not None and idle is not None and in_flight.is_set():
-        try:
-            await asyncio.wait_for(idle.wait(), _SHUTDOWN_TIMEOUT_SECONDS)
-        except TimeoutError:
-            _logger.warning(
-                "event=worker.shutdown.relay.tick_drain_timeout timeout_s=%.1f",
-                _SHUTDOWN_TIMEOUT_SECONDS,
-            )
-        except Exception:
-            _logger.warning("event=worker.shutdown.relay.tick_drain_failed")
-
-    engine = _ENGINE
-    if engine is not None:
-        try:
-            engine.dispose()
-        except Exception:
-            _logger.warning("event=worker.shutdown.engine.dispose_failed")
-
-    redis_client = _REDIS_CLIENT
-    if redis_client is not None:
-        try:
-            close = redis_client.close
-            result = close()
-            if asyncio.iscoroutine(result):
-                await result
-        except Exception:
-            _logger.warning("event=worker.shutdown.redis.close_failed")
-
     try:
         shutdown_tracing()
     except Exception:  # pragma: no cover — shutdown_tracing already swallows
         _logger.warning("event=worker.shutdown.tracing.shutdown_failed")
+
+
+def drain_worker(*, engine: Engine | None, redis_client: Any) -> None:
+    """Run the full worker drain in shutdown order.
+
+    Order mirrors the API lifespan finalizer: dispose the SQLAlchemy
+    engine, close the Redis client, flush the tracer provider. Each
+    step is independently guarded so a slow/broken step does not skip
+    the others. The future job runtime re-binds this as its shutdown
+    hook (after first waiting for any in-flight tick to complete,
+    bounded by ``APP_SHUTDOWN_TIMEOUT_SECONDS``).
+    """
+    dispose_engine(engine)
+    close_redis(redis_client)
+    flush_tracing()
+
+
+@dataclass(slots=True)
+class WorkerScaffold:
+    """The composition scaffold a future job runtime re-binds.
+
+    Holds the engine + (future) Redis client the drain helpers need,
+    the resolved jobs settings, the registered handler names, and the
+    collected runtime-agnostic cron descriptors. No scheduler is
+    attached — a later roadmap step (AWS SQS + a Lambda worker) binds
+    ``cron_specs`` and the drain to a real runtime.
+    """
+
+    engine: Engine
+    redis_client: Any
+    jobs_settings: JobsSettings
+    registered_jobs: list[str] = field(default_factory=list)
+    cron_specs: tuple[CronSpec, ...] = ()
+    shutdown_timeout_seconds: float = 30.0
+
+    def drain(self) -> None:
+        """Run the worker drain (the future runtime's shutdown hook)."""
+        drain_worker(engine=self.engine, redis_client=self.redis_client)
 
 
 def _email_settings(app_settings: AppSettings) -> EmailSettings:
@@ -203,11 +172,12 @@ def _email_settings(app_settings: AppSettings) -> EmailSettings:
     )
 
 
-def build_worker_settings() -> type:
-    """Build the arq ``WorkerSettings`` class with our registered handlers.
+def build_worker_scaffold() -> WorkerScaffold:
+    """Build the shared composition root + handler/cron registry.
 
-    Exposed at module level for tests that want to assert which
-    functions get wired without spinning up an actual worker.
+    Exposed at module level for tests that assert which handlers and
+    cron descriptors get wired without a job runtime. Composition
+    errors surface here exactly as they would for the web process.
     """
     app_settings = get_settings()
     configure_logging(
@@ -227,35 +197,15 @@ def build_worker_settings() -> type:
     register_authentication_email_templates(email.registry)
     email.registry.seal()
 
-    redis_url = app_settings.jobs_redis_url or app_settings.auth_redis_url
     jobs_settings = JobsSettings.from_app_settings(
         backend=app_settings.jobs_backend,
-        redis_url=redis_url,
-        queue_name=app_settings.jobs_queue_name,
     )
-    if jobs_settings.backend != "arq":
-        raise RuntimeError(
-            "Worker entrypoint requires APP_JOBS_BACKEND=arq; "
-            f"got {jobs_settings.backend!r}"
-        )
-    if not jobs_settings.redis_url:
-        raise RuntimeError(
-            "APP_JOBS_REDIS_URL (or APP_AUTH_REDIS_URL) must be set for the worker"
-        )
-
-    # Share a Redis client between the rate-limit/cache layer and the
-    # job-queue adapter so the worker holds exactly one connection pool.
-    redis_client = redis_lib.Redis.from_url(
-        jobs_settings.redis_url,
-        socket_timeout=2.0,
-        socket_connect_timeout=2.0,
-    )
-    jobs = build_jobs_container(jobs_settings, redis_client=redis_client)
+    jobs = build_jobs_container(jobs_settings)
 
     # Outbox relay: builds its own short-lived sessions against the
     # shared SQLModel engine, so we construct an engine pinned to the
     # configured DSN. The web process owns its engine through the auth
-    # repository; the worker is a separate process with its own pool.
+    # repository; a worker is a separate process with its own pool.
     engine = create_engine(
         app_settings.postgresql_dsn,
         pool_pre_ping=app_settings.db_pool_pre_ping,
@@ -293,7 +243,7 @@ def build_worker_settings() -> type:
         users.user_assets_cleanup,
         dedupe=build_handler_dedupe(engine),
     )
-    # Wire the GDPR erase-user pipeline so the worker can process
+    # Wire the GDPR erase-user pipeline so a future runtime can process
     # ``erase_user`` outbox rows. The worker needs its own auth
     # repository to back the audit-reader and artifacts-cleanup
     # adapters; the web process owns a separate one (its connection
@@ -315,7 +265,8 @@ def build_worker_settings() -> type:
         dedupe=build_handler_dedupe(engine),
     )
     jobs.registry.seal()
-    cron_jobs = list(build_relay_cron_jobs(outbox))
+
+    cron_specs: list[CronSpec] = list(build_relay_cron_specs(outbox))
     # Authentication maintenance crons: ``auth-purge-tokens`` sweeps
     # expired refresh and internal token rows so neither table grows
     # without bound. Disabled when the operator sets
@@ -325,79 +276,56 @@ def build_worker_settings() -> type:
     purge_expired_tokens = PurgeExpiredTokens(
         _repository=auth_repository_for_worker,
     )
-    cron_jobs.extend(
-        build_auth_maintenance_cron_jobs(
+    cron_specs.extend(
+        build_auth_maintenance_cron_specs(
             purge_expired_tokens=purge_expired_tokens,
             retention_days=app_settings.auth_token_retention_days,
             interval_minutes=app_settings.auth_token_purge_interval_minutes,
         )
     )
-    # Instrument the ``outbox-relay`` cron so ``on_shutdown`` can wait
-    # for an in-flight ``DispatchPending.execute`` tick to finish
-    # (commit or rollback) before the engine is disposed. The prune
-    # cron is left alone — it runs once an hour, never overlaps a
-    # shutdown of practical interest, and its rows are bounded by the
-    # prune batch size.
-    for cron_job in cron_jobs:
-        if cron_job.name == "outbox-relay":
-            # arq's ``CronJob.coroutine`` is typed ``WorkerCoroutine``,
-            # an alias for a ``ctx -> Coroutine`` shape; our wrapper
-            # produces the structurally-equivalent ``Callable[[ctx],
-            # Awaitable[None]]``. The ``cast`` keeps mypy happy without
-            # importing arq's private alias.
-            from typing import cast
 
-            from arq.typing import WorkerCoroutine
-
-            cron_job.coroutine = cast(
-                "WorkerCoroutine", _wrap_relay_tick(cron_job.coroutine)
-            )
-
-    # Publish the engine, Redis client, and shutdown budget so the
-    # ``on_shutdown`` hook can dispose them. ``ctx`` is the only handle
-    # arq passes to ``on_shutdown``, and it carries dynamic state; the
-    # composition-time references live on the module instead.
-    _set_shutdown_handles(
+    # No job runtime owns a Redis client here: the previous arq adapter
+    # did, but the in-process adapter does not. The drain helper still
+    # takes a ``redis_client`` so the future runtime can pass its own.
+    return WorkerScaffold(
         engine=engine,
-        redis_client=redis_client,
+        redis_client=None,
+        jobs_settings=jobs_settings,
+        registered_jobs=sorted(jobs.registry.registered_jobs()),
+        cron_specs=tuple(cron_specs),
         shutdown_timeout_seconds=app_settings.shutdown_timeout_seconds,
     )
 
-    functions = build_arq_functions(
-        jobs.registry,
-        keep_result_seconds_default=jobs_settings.keep_result_seconds_default,
-    )
-    redis_settings = RedisSettings.from_dsn(jobs_settings.redis_url)
-
-    class WorkerSettings:
-        """arq's ``WorkerSettings`` shape, populated from composition."""
-
-        functions: list[Function]
-        cron_jobs: list[CronJob]
-        redis_settings: RedisSettings
-        queue_name: str
-        max_jobs: int
-        job_timeout: int
-        keep_result: int
-        on_startup: StartupShutdown
-        on_shutdown: StartupShutdown | None = None
-
-    WorkerSettings.functions = functions
-    WorkerSettings.cron_jobs = list(cron_jobs)
-    WorkerSettings.redis_settings = redis_settings
-    WorkerSettings.queue_name = jobs_settings.queue_name
-    WorkerSettings.max_jobs = jobs_settings.max_jobs
-    WorkerSettings.job_timeout = jobs_settings.job_timeout_seconds
-    WorkerSettings.keep_result = jobs_settings.keep_result_seconds_default
-    WorkerSettings.on_startup = job_handler_logging_startup
-    WorkerSettings.on_shutdown = _on_shutdown
-    return WorkerSettings
-
 
 def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
-    """CLI entrypoint invoked by ``make worker``."""
-    run_worker(build_worker_settings())
-    return 0
+    """CLI entrypoint invoked by ``make worker``.
+
+    Builds the scaffold (so composition errors still surface loudly),
+    logs the registered handlers + collected cron descriptors, then
+    exits non-zero stating no job runtime is wired. The future job
+    runtime (AWS SQS + a Lambda worker, ROADMAP steps 26-27) replaces
+    this exit with its event loop.
+    """
+    scaffold = build_worker_scaffold()
+    _logger.info(
+        "event=worker.scaffold.built backend=%s handlers=%d jobs=%s",
+        scaffold.jobs_settings.backend,
+        len(scaffold.registered_jobs),
+        ",".join(scaffold.registered_jobs),
+    )
+    for spec in scaffold.cron_specs:
+        _logger.info(
+            "event=worker.scaffold.cron name=%s interval_seconds=%d run_at_startup=%s",
+            spec.name,
+            spec.interval_seconds,
+            spec.run_at_startup,
+        )
+    # The composition root is intact; release the resources the
+    # scaffold opened (no runtime owns them) before the honest exit.
+    scaffold.drain()
+    _logger.error("event=worker.no_runtime %s", _NO_RUNTIME_MESSAGE)
+    print(_NO_RUNTIME_MESSAGE, file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

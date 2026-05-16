@@ -91,8 +91,9 @@ def register_send_email_handler(
             context=context,
         )
         if isinstance(result, Err):
-            # Surface the failure so arq treats the job as failed and
-            # retries it according to its configured policy. ``to`` is
+            # Surface the failure so the job runtime treats the job as
+            # failed and retries it per its policy (the outbox relay's
+            # at-least-once redelivery in the current shipped path). ``to`` is
             # passed through ``redact_email`` because positional %s args
             # bypass the stdlib PII filter (it intentionally scans only
             # record attributes, not string args).

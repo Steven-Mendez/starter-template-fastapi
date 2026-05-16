@@ -221,13 +221,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         email.registry.seal()
         # Build the jobs container after email so the email feature's
         # send_email handler can register itself with the queue's registry.
-        # The arq adapter, when selected, reuses the shared rate-limit/cache
-        # Redis URL if APP_JOBS_REDIS_URL is unset.
+        # ``in_process`` is the only backend; the shared rate-limit/cache
+        # Redis client is wired separately below, independent of jobs.
         jobs = build_jobs_container(
             JobsSettings.from_app_settings(
                 backend=app_settings.jobs_backend,
-                redis_url=app_settings.jobs_redis_url or app_settings.auth_redis_url,
-                queue_name=app_settings.jobs_queue_name,
             )
         )
         # Outbox sits between jobs and auth: it depends on the engine and
@@ -362,7 +360,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             if redis_lib is None:
                 raise RuntimeError(
                     "APP_AUTH_REDIS_URL is set but the `redis` package is not "
-                    "installed. Install with: uv sync --extra worker"
+                    "installed. Install the Redis-using extra with: "
+                    "uv sync --extra worker"
                 )
             # Bound socket waits so a slow or unreachable Redis cannot stall
             # health probes or rate-limit checks indefinitely. Liveness will
