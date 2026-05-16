@@ -1,6 +1,9 @@
 # API Reference
 
 This document describes the HTTP API exposed by the current source code.
+Every endpoint, request/response field, status code, response header,
+error `code`, and Problem-Type `type` URN below is verifiable in
+`src/features/*/adapters/inbound/http/` or `src/app_platform/api/`.
 
 ## Base URL
 
@@ -10,8 +13,35 @@ Local development default:
 http://localhost:8000
 ```
 
-Kanban resources are mounted under `/api`. Health endpoints are mounted at
-`/health/live`, `/health/ready`, and `/health`.
+## Mounting and route prefixes
+
+There is **no** app-level `/api` prefix. Each feature router carries its
+own prefix and is mounted at the application root:
+
+- The authentication feature mounts `build_auth_router()` via
+  `mount_auth_routes(app)` (`src/main.py` →
+  `src/features/authentication/composition/wiring.py`). It aggregates
+  the `auth_router` (prefix `/auth`,
+  `src/features/authentication/adapters/inbound/http/auth.py`) and the
+  `admin_router` (prefix `/admin`,
+  `src/features/authentication/adapters/inbound/http/admin.py`).
+- The users feature mounts `build_users_router()` via
+  `mount_users_routes(app)` (`src/main.py` →
+  `src/features/users/composition/wiring.py`). It aggregates the
+  `me_router` (no prefix — routes are `/me`, `/me/erase`, `/me/export`,
+  `src/features/users/adapters/inbound/http/me.py`) and the
+  `admin_router` (prefix `/admin`,
+  `src/features/users/adapters/inbound/http/admin.py`).
+- The platform `root_router` (`/`, `/health/live`, `/health/ready`) is
+  included by `src/app_platform/api/app_factory.py`.
+
+The only health routes are `GET /health/live` and `GET /health/ready`.
+There is **no** `GET /health` route.
+
+The `email`, `background_jobs`, `file_storage`, and `outbox` features
+expose **no inbound HTTP routes**. They are reached through application
+ports from the request path or the background worker, never over HTTP,
+so they have no entries in this document.
 
 ## OpenAPI
 
@@ -69,28 +99,55 @@ e.g. `responses=USERS_RESPONSES`.
 
 ## Authentication
 
-Read endpoints do not require authentication.
+The service uses **JWT Bearer access tokens** plus an **httpOnly
+refresh-token cookie**. There is no API-key mechanism.
 
-Write endpoints require `X-API-Key` only when `APP_WRITE_API_KEY` is configured.
-If `APP_WRITE_API_KEY` is empty or unset, write endpoints are open.
+### Access token (Bearer)
 
-Protected write endpoints:
-
-- `POST /api/boards`
-- `PATCH /api/boards/{board_id}`
-- `DELETE /api/boards/{board_id}`
-- `POST /api/boards/{board_id}/columns`
-- `DELETE /api/columns/{column_id}`
-- `POST /api/columns/{column_id}/cards`
-- `PATCH /api/cards/{card_id}`
-
-Header format:
+`POST /auth/login` and `POST /auth/refresh` return a `TokenResponse`
+whose `access_token` is a signed JWT. Protected endpoints expect it in
+the `Authorization` header:
 
 ```http
-X-API-Key: <APP_WRITE_API_KEY>
+Authorization: Bearer <access_token>
 ```
 
-Invalid or missing API keys return `401` with Problem Details JSON.
+The Bearer scheme is implemented by `HTTPBearer` in
+`src/app_platform/api/authorization.py`; the principal is resolved
+through `app.state.principal_resolver`. A missing, malformed, or stale
+token returns `401` with a Problem Details body
+(`urn:problem:auth:token-invalid` or `urn:problem:auth:token-stale`).
+
+### Refresh-token cookie
+
+On `POST /auth/login` and `POST /auth/refresh`, the refresh token is set
+as a cookie (`src/features/authentication/adapters/inbound/http/auth.py`,
+`_set_refresh_cookie`):
+
+- name `refresh_token`
+- `HttpOnly` (not readable by JavaScript)
+- `Path=/auth` (only sent to `/auth/refresh` and `/auth/logout`)
+- `Secure` and `SameSite` controlled by `APP_AUTH_COOKIE_SECURE` /
+  `APP_AUTH_COOKIE_SAMESITE`
+- `Max-Age` = `APP_AUTH_REFRESH_TOKEN_EXPIRE_DAYS` (in seconds)
+
+`POST /auth/refresh`, `POST /auth/logout`, and `DELETE /me` clear the
+cookie by emitting a matching `Set-Cookie: refresh_token=; Max-Age=0;
+Path=/auth` (`clear_refresh_cookie` in
+`src/features/authentication/adapters/inbound/http/cookies.py`).
+
+`POST /auth/refresh` and `POST /auth/logout` additionally enforce a
+CSRF origin check (`_enforce_cookie_origin`): a request that carries the
+refresh cookie but presents no trusted `Origin`/`Referer` (per
+`APP_CORS_ORIGINS`) is refused with `403 Untrusted origin`.
+
+### Authorization (admin endpoints)
+
+Admin routes add `require_authorization("<action>", "system", None)`
+(`src/app_platform/api/authorization.py`), which resolves the Bearer
+principal and then checks the relation on the `system:main` singleton
+through the `AuthorizationPort`. A non-admin principal gets `403` with
+`urn:problem:authz:permission-denied`.
 
 ## Common Response Headers
 
@@ -98,6 +155,11 @@ Every response includes `X-Request-ID`.
 
 - If the request provides `X-Request-ID`, the response echoes it.
 - If the request omits `X-Request-ID`, the middleware generates a UUID string.
+
+`429` responses additionally carry a `Retry-After` header (seconds).
+`POST /admin/users/{user_id}/erase` and `DELETE /me/erase` return a
+`Location` header pointing at the erase-job status path. The degraded
+`GET /health/ready` (`503` `{"status":"fail"}`) carries `Retry-After: 1`.
 
 ## Pagination
 
@@ -132,9 +194,10 @@ authoritative semantics are:
 | `GET /admin/users` | `?cursor=<base64>` | `next_cursor` |
 | `GET /admin/audit-log` | `?before=<base64>` | `next_before` (walks newest-first) |
 
-Both endpoints accept a `?limit=<n>` parameter (default 100, max 500).
-Each page contains up to `limit` rows ordered by `(created_at, id)` —
-ascending for `/admin/users`, descending for `/admin/audit-log`.
+Both endpoints accept a `?limit=<n>` parameter (default 100, range
+1–500). Each page contains up to `limit` rows ordered by
+`(created_at, id)` — ascending for `/admin/users`, descending for
+`/admin/audit-log`.
 
 ## Error Format
 
@@ -194,7 +257,7 @@ service's terminology (`violations` rather than `invalid_params`).
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `loc` | `list[str \| int]` | Canonical Pydantic location path for the failed field, preserving order and types (e.g. `["body", "address", "zip"]`, `["query", "page"]`). SDKs use this to route the failure back to the right form field. |
+| `loc` | `list[str \| int]` | Canonical Pydantic location path for the failed field, preserving order and types (e.g. `["body", "address", "zip"]`, `["query", "limit"]`). SDKs use this to route the failure back to the right form field. |
 | `type` | `string` | Stable Pydantic error type (e.g. `missing`, `value_error`, `string_too_short`). Treat as a public contract — new types may appear, existing types are not renamed. |
 | `msg` | `string` | Human-readable explanation. |
 | `input` | `object \| null` | The offending input value. **Present only in non-production environments.** Omitted (key absent) when `APP_ENVIRONMENT=production` to avoid echoing secrets. |
@@ -233,16 +296,38 @@ Example 422 body (development):
 
 In production, each entry contains only `loc`, `type`, and `msg`.
 
-Example application error:
+### Example application error
+
+A wrong-password `POST /auth/login` raises `InvalidCredentialsError`,
+which `raise_http_from_auth_error`
+(`src/features/authentication/adapters/inbound/http/errors.py`) maps to
+`401` with `code=invalid_credentials` and
+`type=urn:problem:auth:invalid-credentials`:
 
 ```json
 {
-  "type": "https://starter-template-fastapi.dev/problems/board-not-found",
-  "title": "Not Found",
-  "status": 404,
-  "instance": "http://localhost:8000/api/boards/00000000-0000-0000-0000-000000000000",
-  "detail": "Board not found",
-  "code": "board_not_found",
+  "type": "urn:problem:auth:invalid-credentials",
+  "title": "Unauthorized",
+  "status": 401,
+  "instance": "http://localhost:8000/auth/login",
+  "detail": "Invalid credentials",
+  "code": "invalid_credentials",
+  "request_id": "abc-123"
+}
+```
+
+A non-admin principal calling `GET /admin/users` is rejected by
+`require_authorization` with `403`, `code=permission_denied`,
+`type=urn:problem:authz:permission-denied`:
+
+```json
+{
+  "type": "urn:problem:authz:permission-denied",
+  "title": "Forbidden",
+  "status": 403,
+  "instance": "http://localhost:8000/admin/users",
+  "detail": "Permission denied",
+  "code": "permission_denied",
   "request_id": "abc-123"
 }
 ```
@@ -251,410 +336,228 @@ Example application error:
 
 | Status | Meaning |
 | --- | --- |
-| `200` | Successful read, patch, liveness, or ready health response. |
-| `201` | Board, column, or card created. |
-| `204` | Board or column deleted. |
-| `401` | Write API key is configured and the request did not provide the correct `X-API-Key`. |
-| `404` | Board, column, or card was not found. |
-| `409` | Card move violated a domain rule. |
-| `422` | Request validation failed, or a patch request contained no effective changes. |
+| `200` | Successful read / login / refresh / logout / patch, or a ready `/health/ready` / liveness response. |
+| `201` | User created (`POST /auth/register`). |
+| `202` | Accepted-for-async: `POST /auth/password/forgot`, `POST /auth/email/verify/request`, `DELETE /me/erase`, `POST /admin/users/{user_id}/erase`. |
+| `204` | `DELETE /me` (self-deactivation), no body. |
+| `400` | Malformed pagination cursor (`?cursor=`/`?before=`), or a one-shot token already consumed (`TokenAlreadyUsedError`). |
+| `401` | Missing/invalid/stale Bearer token, wrong credentials on `POST /auth/login`, or wrong password on `DELETE /me/erase` re-auth. |
+| `403` | Authenticated but not authorized (non-admin on an `/admin/*` route, inactive account, unverified email on login, or an untrusted origin on a refresh-cookie request). |
+| `404` | User/record not found (`UserNotFoundError` / `NotFoundError`). |
+| `409` | Email already registered (`DuplicateEmailError` / `UserAlreadyExistsError` / `ConflictError`). |
+| `422` | Request body / query / path validation failed (carries `violations`). |
+| `429` | Auth rate limit exceeded (carries `Retry-After`). |
 | `500` | Unmapped domain error or unhandled server error. |
-| `503` | Application container was unavailable or readiness was degraded. |
+| `503` | Principal resolver / authorization port / erase / export pipeline not wired, auth not configured, or `/health/ready` not yet ready / degraded. |
 
-Path IDs are parsed as UUIDs by FastAPI. Invalid UUID path values return `422`.
+Path IDs (e.g. `{user_id}`) are parsed as UUIDs by FastAPI. Invalid
+UUID path values return `422`.
 
 ## Schemas
 
-### BoardCreate
+Audited from
+`src/features/authentication/adapters/inbound/http/schemas.py` and
+`src/features/users/adapters/inbound/http/schemas.py`.
+
+### RegisterRequest
+
+Body of `POST /auth/register`.
 
 | Field | Type | Required | Validation |
 | --- | --- | --- | --- |
-| `title` | string | yes | Length 1 to 500. |
+| `email` | string | yes | Length 3–254; normalized; must contain `@`. |
+| `password` | string | yes | Length 12–256; ≥ 3 of {upper, lower, digit, symbol} or length ≥ 20. |
 
-### BoardUpdate
+### LoginRequest
+
+Body of `POST /auth/login`.
 
 | Field | Type | Required | Validation |
 | --- | --- | --- | --- |
-| `title` | string or null | no | When present and not null, length 1 to 500. |
+| `email` | string | yes | Length 3–254; normalized. |
+| `password` | string | yes | Length 1–256. |
 
-An empty board patch returns application error `patch_no_changes` with `422`.
+### PasswordForgotRequest
 
-### BoardSummary
+Body of `POST /auth/password/forgot`.
+
+| Field | Type | Required | Validation |
+| --- | --- | --- | --- |
+| `email` | string | yes | Length 3–254; normalized. |
+
+### PasswordResetRequest
+
+Body of `POST /auth/password/reset`.
+
+| Field | Type | Required | Validation |
+| --- | --- | --- | --- |
+| `token` | string | yes | Length 32–512. |
+| `new_password` | string | yes | Length 12–256; same complexity rule as `RegisterRequest.password`. |
+
+### EmailVerifyRequest
+
+Body of `POST /auth/email/verify`.
+
+| Field | Type | Required | Validation |
+| --- | --- | --- | --- |
+| `token` | string | yes | Length 32–512. |
+
+### UserPublic (authentication)
+
+Returned by `POST /auth/register`.
 
 | Field | Type |
 | --- | --- |
-| `id` | string |
-| `title` | string |
+| `id` | UUID |
+| `email` | string |
+| `is_active` | boolean |
+| `is_verified` | boolean |
+| `authz_version` | integer |
+| `created_at` | datetime |
+| `updated_at` | datetime |
+| `last_login_at` | datetime or null |
+
+### UserPublic (users)
+
+Returned in `UserListPage.items` from `GET /admin/users`.
+
+| Field | Type |
+| --- | --- |
+| `id` | UUID |
+| `email` | string |
+| `is_active` | boolean |
+| `is_verified` | boolean |
+| `authz_version` | integer |
+| `created_at` | datetime |
+| `updated_at` | datetime |
+
+### UserPublicSelf
+
+Returned by `GET /me` and `PATCH /me`.
+
+| Field | Type |
+| --- | --- |
+| `id` | UUID |
+| `email` | string |
+| `is_active` | boolean |
+| `is_verified` | boolean |
+| `created_at` | datetime |
+| `updated_at` | datetime |
+
+### PrincipalPublic
+
+Returned by `GET /auth/me`, and nested as `TokenResponse.user`.
+
+| Field | Type |
+| --- | --- |
+| `id` | UUID |
+| `email` | string |
+| `is_active` | boolean |
+| `is_verified` | boolean |
+
+### TokenResponse
+
+Returned by `POST /auth/login` and `POST /auth/refresh`.
+
+| Field | Type |
+| --- | --- |
+| `access_token` | string (JWT) |
+| `token_type` | string (`"bearer"`) |
+| `expires_in` | integer (seconds) |
+| `user` | `PrincipalPublic` |
+
+### MessageResponse
+
+| Field | Type |
+| --- | --- |
+| `message` | string |
+
+### InternalTokenResponse
+
+Returned by `POST /auth/password/forgot` and
+`POST /auth/email/verify/request`. `dev_token` is `null` in production;
+it is populated only when `APP_AUTH_RETURN_INTERNAL_TOKENS=true`.
+
+| Field | Type |
+| --- | --- |
+| `message` | string |
+| `dev_token` | string or null |
+| `expires_at` | datetime or null |
+
+### AuditEventRead
+
+| Field | Type |
+| --- | --- |
+| `id` | UUID |
+| `user_id` | UUID or null |
+| `event_type` | string |
+| `metadata` | object |
 | `created_at` | datetime |
 
-### BoardDetail
+### AuditLogRead
+
+Returned by `GET /admin/audit-log`.
 
 | Field | Type |
 | --- | --- |
-| `id` | string |
-| `title` | string |
-| `created_at` | datetime |
-| `columns` | array of `ColumnRead` |
+| `items` | array of `AuditEventRead` |
+| `count` | integer |
+| `limit` | integer |
+| `next_before` | string or null |
 
-### ColumnCreate
+### UpdateProfileRequest
 
-| Field | Type | Required | Validation |
-| --- | --- | --- | --- |
-| `title` | string | yes | Length 1 to 500. |
+Body of `PATCH /me`.
 
-### ColumnRead
+| Field | Type | Required |
+| --- | --- | --- |
+| `email` | string or null | no |
 
-| Field | Type |
-| --- | --- |
-| `id` | string |
-| `board_id` | string |
-| `title` | string |
-| `position` | integer |
-| `cards` | array of `CardRead` |
+### UserListPage
 
-### CardCreate
-
-| Field | Type | Required | Validation |
-| --- | --- | --- | --- |
-| `title` | string | yes | Length 1 to 500. |
-| `description` | string or null | no | No explicit length limit in code. |
-| `priority` | `low`, `medium`, or `high` | no | Defaults to `medium`. |
-| `due_at` | datetime or null | no | Parsed by Pydantic. |
-
-### CardUpdate
-
-| Field | Type | Required | Validation |
-| --- | --- | --- | --- |
-| `title` | string or null | no | When present and not null, length 1 to 500. |
-| `description` | string or null | no | No explicit length limit in code. |
-| `column_id` | UUID or null | no | Target column for moving a card. |
-| `position` | integer or null | no | Must be greater than or equal to 0 when present. |
-| `priority` | `low`, `medium`, or `high` | no | Updates card priority. |
-| `due_at` | datetime or null | no | A present `null` clears the due date. |
-
-An empty card patch returns application error `patch_no_changes` with `422`.
-
-### CardRead
+Returned by `GET /admin/users`.
 
 | Field | Type |
 | --- | --- |
-| `id` | string |
-| `column_id` | string |
-| `title` | string |
-| `description` | string or null |
-| `position` | integer |
-| `priority` | `low`, `medium`, or `high` |
-| `due_at` | datetime or null |
+| `items` | array of `UserPublic` (users variant) |
+| `count` | integer |
+| `limit` | integer |
+| `next_cursor` | string or null |
 
-### HealthRead
+### EraseSelfRequest
 
-| Field | Type |
-| --- | --- |
-| `status` | `ok` or `degraded` |
-| `persistence.backend` | string |
-| `persistence.ready` | boolean |
-| `auth.jwt_secret_configured` | boolean |
-| `auth.principal_cache_ready` | boolean |
-| `auth.rate_limiter_backend` | `in_memory` or `redis` |
-| `auth.rate_limiter_ready` | boolean |
-| `redis.configured` | boolean or omitted when Redis is not configured |
-| `redis.ready` | boolean or omitted when Redis is not configured |
+Body of `DELETE /me/erase` (password re-auth).
 
-### HealthLive
+| Field | Type | Required |
+| --- | --- | --- |
+| `password` | string | yes |
+
+### ErasureAccepted
+
+Returned by `DELETE /me/erase` and
+`POST /admin/users/{user_id}/erase`.
 
 | Field | Type |
 | --- | --- |
-| `status` | `ok` |
-
-## Endpoints
-
-### GET /
-
-Returns a service status payload.
-
-Response `200`:
-
-```json
-{
-  "name": "starter-template-fastapi",
-  "message": "FastAPI service is running."
-}
-```
-
-### GET /health/live
-
-Returns process liveness. It does not check external dependencies.
-
-Response `200`:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### GET /health/ready
-
-Returns readiness information.
-
-Response `200` when dependencies are ready:
-
-```json
-{
-  "status": "ok",
-  "persistence": {
-    "backend": "postgresql",
-    "ready": true
-  },
-  "auth": {
-    "jwt_secret_configured": true,
-    "principal_cache_ready": true,
-    "rate_limiter_backend": "in_memory",
-    "rate_limiter_ready": true
-  }
-}
-```
-
-Response `503` when any readiness check is degraded:
-
-```json
-{
-  "status": "degraded",
-  "persistence": {
-    "backend": "postgresql",
-    "ready": false
-  },
-  "auth": {
-    "jwt_secret_configured": true,
-    "principal_cache_ready": true,
-    "rate_limiter_backend": "in_memory",
-    "rate_limiter_ready": true
-  }
-}
-```
-
-### GET /health
-
-Backward-compatible alias for `GET /health/ready`.
-
-### POST /api/boards
-
-Creates a board.
-
-Request:
-
-```json
-{
-  "title": "Roadmap"
-}
-```
-
-Response `201`:
-
-```json
-{
-  "id": "00000000-0000-0000-0000-000000000001",
-  "title": "Roadmap",
-  "created_at": "2026-01-01T12:00:00Z"
-}
-```
-
-### GET /api/boards
-
-Lists board summaries.
-
-Response `200`:
-
-```json
-[
-  {
-    "id": "00000000-0000-0000-0000-000000000001",
-    "title": "Roadmap",
-    "created_at": "2026-01-01T12:00:00Z"
-  }
-]
-```
-
-### GET /api/boards/{board_id}
-
-Gets a board with columns and cards.
-
-Response `200`:
-
-```json
-{
-  "id": "00000000-0000-0000-0000-000000000001",
-  "title": "Roadmap",
-  "created_at": "2026-01-01T12:00:00Z",
-  "columns": [
-    {
-      "id": "00000000-0000-0000-0000-000000000002",
-      "board_id": "00000000-0000-0000-0000-000000000001",
-      "title": "To Do",
-      "position": 0,
-      "cards": []
-    }
-  ]
-}
-```
-
-Errors:
-
-- `404` with `code=board_not_found` when the board does not exist.
-
-### PATCH /api/boards/{board_id}
-
-Renames a board.
-
-Request:
-
-```json
-{
-  "title": "Updated roadmap"
-}
-```
-
-Response `200` is a `BoardSummary`.
-
-Errors:
-
-- `404` with `code=board_not_found` when the board does not exist.
-- `422` with `code=patch_no_changes` when no fields are provided.
-
-### DELETE /api/boards/{board_id}
-
-Deletes a board. Columns and cards are removed by database cascade behavior.
-
-Response `204` has no body.
-
-Errors:
-
-- `404` with `code=board_not_found` when the board does not exist.
-
-### POST /api/boards/{board_id}/columns
-
-Creates a column at the next position in a board.
-
-Request:
-
-```json
-{
-  "title": "To Do"
-}
-```
-
-Response `201`:
-
-```json
-{
-  "id": "00000000-0000-0000-0000-000000000002",
-  "board_id": "00000000-0000-0000-0000-000000000001",
-  "title": "To Do",
-  "position": 0,
-  "cards": []
-}
-```
-
-Errors:
-
-- `404` with `code=board_not_found` when the board does not exist.
-
-### DELETE /api/columns/{column_id}
-
-Deletes a column and recalculates remaining column positions.
-
-Response `204` has no body.
-
-Errors:
-
-- `404` with `code=column_not_found` when the column does not exist.
-
-### POST /api/columns/{column_id}/cards
-
-Creates a card in a column.
-
-Request:
-
-```json
-{
-  "title": "Write API docs",
-  "description": "Document current routes and errors",
-  "priority": "high",
-  "due_at": "2026-12-01T00:00:00Z"
-}
-```
-
-Response `201`:
-
-```json
-{
-  "id": "00000000-0000-0000-0000-000000000003",
-  "column_id": "00000000-0000-0000-0000-000000000002",
-  "title": "Write API docs",
-  "description": "Document current routes and errors",
-  "position": 0,
-  "priority": "high",
-  "due_at": "2026-12-01T00:00:00Z"
-}
-```
-
-Errors:
-
-- `404` with `code=column_not_found` when the column does not exist.
-
-### GET /api/cards/{card_id}
-
-Gets one card.
-
-Response `200` is a `CardRead`.
-
-Errors:
-
-- `404` with `code=card_not_found` when the card does not exist.
-
-### PATCH /api/cards/{card_id}
-
-Updates card fields and optionally moves the card.
-
-Rename and change priority:
-
-```json
-{
-  "title": "Publish API docs",
-  "priority": "medium"
-}
-```
-
-Clear due date:
-
-```json
-{
-  "due_at": null
-}
-```
-
-Move to another column at position 0:
-
-```json
-{
-  "column_id": "00000000-0000-0000-0000-000000000004",
-  "position": 0
-}
-```
-
-Response `200` is a `CardRead`.
-
-Errors:
-
-- `404` with `code=card_not_found` when the card does not exist.
-- `409` with `code=invalid_card_move` when a move violates domain rules.
-- `422` with `code=patch_no_changes` when no fields are provided.
+| `status` | string (`"accepted"`) |
+| `job_id` | string |
+| `estimated_completion_seconds` | integer |
+
+### ExportResponse
+
+Returned by `GET /me/export` and
+`GET /admin/users/{user_id}/export`.
+
+| Field | Type |
+| --- | --- |
+| `download_url` | string |
+| `expires_at` | datetime |
 
 ### Self-view vs admin-view user schemas
 
 `GET /me` and `PATCH /me` respond with `UserPublicSelf`. `GET /admin/users`
-and other admin user endpoints respond with `UserPublic`. The two schemas
-are intentionally distinct so that internal bookkeeping fields a user
+responds with `UserPublic` (users variant). The two schemas are
+intentionally distinct so that internal bookkeeping fields a user
 should not see about themselves never appear on self-views.
 
 The redacted field set on self-views — the exhaustive list of fields
@@ -671,44 +574,337 @@ pins the symmetric difference of the two schemas' `model_fields` to
 exactly `{"authz_version"}` so any future addition to either schema
 forces a deliberate decision about which view it belongs on.
 
+## Endpoints
+
+### GET /
+
+Returns a static heartbeat payload identifying the service.
+
+Response `200`:
+
+```json
+{
+  "name": "starter-template-fastapi",
+  "message": "FastAPI service is running."
+}
+```
+
+### GET /health/live
+
+Process liveness. Does not check external dependencies.
+
+Response `200`:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+### GET /health/ready
+
+Readiness probe. While the lifespan has not finished starting up the
+probe short-circuits without touching any dependency.
+
+Response `503` during startup (no `Retry-After` — kubelet's own backoff
+is sufficient):
+
+```json
+{
+  "status": "starting"
+}
+```
+
+Response `200` when ready and every configured dependency responds
+within its timeout (`deps` is keyed by dependency name — `db`, and
+`redis`/`s3` when configured — each value `"ok"`):
+
+```json
+{
+  "status": "ok",
+  "deps": {
+    "db": "ok"
+  }
+}
+```
+
+Response `503` with a `Retry-After: 1` header when any probe times out
+or raises (failing dependencies carry `{"status":"fail","reason":"…"}`):
+
+```json
+{
+  "status": "fail",
+  "deps": {
+    "db": {
+      "status": "fail",
+      "reason": "timeout"
+    }
+  }
+}
+```
+
+### POST /auth/register
+
+Auth: none (rate-limited per IP and per target email).
+
+Request: `RegisterRequest`.
+
+Response `201`: `UserPublic` (authentication variant).
+
+Errors: `409` `code=duplicate_email` when the email already exists;
+`422` on validation failure; `429` when rate-limited.
+
+### POST /auth/login
+
+Auth: none (rate-limited per (IP, email) and per account).
+
+Request: `LoginRequest`.
+
+Response `200`: `TokenResponse`, and a `Set-Cookie: refresh_token=…;
+HttpOnly; Path=/auth` header.
+
+Errors: `401` `code=invalid_credentials` on wrong email/password; `403`
+`code=email_not_verified` when verification is required; `429` when
+rate-limited.
+
+### POST /auth/refresh
+
+Auth: refresh cookie + origin check.
+
+Request body: none — the refresh token is read from the `refresh_token`
+cookie.
+
+Response `200`: `TokenResponse` plus a rotated refresh cookie.
+
+Errors: `401` `code=invalid_token` when the cookie is missing/invalid;
+`403 Untrusted origin` when the CSRF origin check fails.
+
+### POST /auth/logout
+
+Auth: refresh cookie + origin check.
+
+Request body: none.
+
+Response `200`: `MessageResponse` (`{"message":"Logged out"}`), and the
+refresh cookie is cleared (`Set-Cookie: refresh_token=; Max-Age=0;
+Path=/auth`).
+
+Errors: `403 Untrusted origin` when the CSRF origin check fails.
+
+### POST /auth/logout-all
+
+Auth: Bearer.
+
+Request body: none.
+
+Response `200`: `MessageResponse` (`{"message":"All sessions
+revoked"}`); the refresh cookie is cleared.
+
+Errors: `401` when the Bearer token is missing/invalid.
+
+### GET /auth/me
+
+Auth: Bearer.
+
+Response `200`: `PrincipalPublic`.
+
+Errors: `401` when the Bearer token is missing/invalid.
+
+### POST /auth/password/forgot
+
+Auth: none (rate-limited per (IP, email) and per account).
+
+Request: `PasswordForgotRequest`.
+
+Response `202`: `InternalTokenResponse`. The response is identical
+whether or not the account exists (anti-enumeration).
+
+Errors: `429` when rate-limited.
+
+### POST /auth/password/reset
+
+Auth: none (rate-limited on a SHA-256 prefix of the token).
+
+Request: `PasswordResetRequest`.
+
+Response `200`: `MessageResponse` (`{"message":"Password reset
+complete"}`). All existing sessions are revoked on success.
+
+Errors: `400` `code=token_already_used` for a consumed token; `401`
+`code=invalid_token` for an unknown token; `422` on validation failure;
+`429` when rate-limited.
+
+### POST /auth/email/verify/request
+
+Auth: Bearer (rate-limited per user).
+
+Request body: none.
+
+Response `202`: `InternalTokenResponse`.
+
+Errors: `401` when the Bearer token is missing/invalid; `429` when
+rate-limited.
+
+### POST /auth/email/verify
+
+Auth: none.
+
+Request: `EmailVerifyRequest`.
+
+Response `200`: `MessageResponse` (`{"message":"Email verified"}`).
+
+Errors: `400` `code=token_already_used` for a consumed token; `401`
+`code=invalid_token` for an unknown token; `422` on validation failure.
+
+### GET /admin/audit-log
+
+Auth: Bearer + `require_authorization("read_audit", "system", None)`.
+
+Query parameters: `user_id?` (UUID), `event_type?` (string, 1–150),
+`since?` (datetime), `before?` (opaque cursor), `limit` (integer,
+1–500, default 100).
+
+Response `200`: `AuditLogRead`, newest-first, keyset-paginated via
+`?before=` / `next_before`.
+
+Errors: `400` for a malformed `before` cursor; `403`
+`code=permission_denied` for a non-admin principal; `401` when the
+Bearer token is missing/invalid.
+
+### GET /me
+
+Auth: Bearer.
+
+Response `200`: `UserPublicSelf`.
+
+Errors: `401` when the Bearer token is missing/invalid; `404`
+`code=user_not_found` when the record is gone.
+
+### PATCH /me
+
+Auth: Bearer.
+
+Request: `UpdateProfileRequest` (currently only `email`).
+
+Response `200`: `UserPublicSelf`.
+
+Errors: `401`; `404` `code=user_not_found`; `409`
+`code=user_already_exists` if the new email is taken; `422` on
+validation failure.
+
 ### DELETE /me
 
-Deactivates the calling user's own account (soft delete). Authentication is
-required via a Bearer access token.
+Auth: Bearer.
 
-Self-deactivation is destructive; in a single response cycle the server:
+Deactivates the calling user's own account (soft delete). In a single
+response cycle the server revokes every server-side refresh-token family
+for the user (inside the same Unit of Work that flips
+`is_active=False`) and clears the browser-side refresh cookie
+(`Set-Cookie: refresh_token=; Max-Age=0; Path=/auth`). A subsequent
+`POST /auth/refresh` with a captured refresh token returns `401`.
 
-1. Revokes every server-side refresh-token family for the user, inside the
-   same Unit of Work that flips ``is_active=False``. This is the durable
-   defense — a subsequent ``POST /auth/refresh`` with a captured refresh
-   token returns ``401``.
-2. Clears the browser-side refresh cookie by emitting
-   ``Set-Cookie: refresh_token=; Max-Age=0; Path=/auth`` on the response.
-   Cookie attributes (path, secure, samesite) mirror the original
-   ``Set-Cookie`` so the browser actually deletes the entry.
+Response `204`: no body.
 
-Response `204` has no body.
+Errors: `401` when the Bearer token is missing/invalid; `404`
+`code=user_not_found` when the record is already gone.
 
-Errors:
+### DELETE /me/erase
 
-- `401` when the access token is missing or invalid.
-- `404` when the user record is missing (e.g. already hard-deleted).
+Auth: Bearer + password re-authentication (GDPR Art. 17 self-erase).
+
+Request: `EraseSelfRequest` (the caller's current password). A stolen
+access token alone cannot erase the account.
+
+Response `202`: `ErasureAccepted`, plus a `Location` header pointing at
+the erase-job status path. The actual scrub runs asynchronously in the
+worker.
+
+Errors: `401` `code=invalid_credentials` when the password is wrong;
+`503` `code=erasure_pipeline_unwired` when the erase pipeline is not
+composed.
+
+### GET /me/export
+
+Auth: Bearer (GDPR Art. 15 self-export).
+
+Response `200`: `ExportResponse` (`download_url` + `expires_at`). The
+download URL points at a JSON blob the client fetches before
+`expires_at`.
+
+Errors: `401` when the Bearer token is missing/invalid; `503`
+`code=export_pipeline_unwired` when the export pipeline is not composed.
+
+### GET /admin/users
+
+Auth: Bearer + `require_authorization("manage_users", "system", None)`.
+
+Query parameters: `cursor?` (opaque cursor), `limit` (integer, 1–500,
+default 100).
+
+Response `200`: `UserListPage`, keyset-paginated via `?cursor=` /
+`next_cursor`.
+
+Errors: `400` `code=invalid_cursor` for a malformed cursor; `403`
+`code=permission_denied` for a non-admin principal; `401` when the
+Bearer token is missing/invalid.
+
+### POST /admin/users/{user_id}/erase
+
+Auth: Bearer + `require_authorization("manage_users", "system", None)`.
+
+Path parameter: `user_id` (UUID). No password re-auth — the admin's
+session is the audit trail.
+
+Response `202`: `ErasureAccepted`, plus a `Location` header pointing at
+the erase-job status path.
+
+Errors: `403` `code=permission_denied` for a non-admin principal;
+`401` when the Bearer token is missing/invalid; `503`
+`code=erasure_pipeline_unwired` when the erase pipeline is not composed.
+
+### GET /admin/users/{user_id}/export
+
+Auth: Bearer + `require_authorization("manage_users", "system", None)`.
+
+Path parameter: `user_id` (UUID).
+
+Response `200`: `ExportResponse` (same shape as `GET /me/export`).
+
+Errors: `403` `code=permission_denied` for a non-admin principal;
+`401` when the Bearer token is missing/invalid; `503`
+`code=export_pipeline_unwired` when the export pipeline is not composed.
 
 ## Curl Examples
 
-With no write API key configured:
+Register a user:
 
 ```bash
-curl -s -X POST http://localhost:8000/api/boards \
+curl -s -X POST http://localhost:8000/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Roadmap"}'
+  -d '{"email":"alice@example.com","password":"correct horse battery staple"}'
 ```
 
-With `APP_WRITE_API_KEY=secret`:
+Log in (capture the access token; the refresh cookie is set on the
+response):
 
 ```bash
-curl -s -X POST http://localhost:8000/api/boards \
+curl -s -X POST http://localhost:8000/auth/login \
   -H 'Content-Type: application/json' \
-  -H 'X-API-Key: secret' \
-  -d '{"title":"Roadmap"}'
+  -c cookies.txt \
+  -d '{"email":"alice@example.com","password":"correct horse battery staple"}'
+```
+
+Call a Bearer-protected endpoint with the returned `access_token`:
+
+```bash
+curl -s http://localhost:8000/me \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+Rotate the refresh token using the stored cookie (origin-checked):
+
+```bash
+curl -s -X POST http://localhost:8000/auth/refresh \
+  -H 'Origin: http://localhost:8000' \
+  -b cookies.txt -c cookies.txt
 ```

@@ -96,6 +96,8 @@ The system SHALL update `CLAUDE.md`, `README.md`, and any `docs/*.md` file that 
 
 The documentation SHALL NOT instruct readers to recover the removed in-tree `_template` feature scaffold from git history, and SHALL NOT retain a `docs/feature-template.md` guide. Guidance for starting a new feature SHALL describe building the standard `domain/ application/ adapters/ composition/ tests/` layout from scratch following the documented hexagonal conventions, not copying or recovering a deleted scaffold. This restriction applies only to scaffold-recovery prose; unrelated uses of the words "template" and "scaffold" — the email `EmailTemplateRegistry` / `register_template` API and `docs/email.md`, and the file-storage S3 "ships as scaffolding" stub note — are out of scope and SHALL remain.
 
+The `docs/api.md` API reference SHALL document only HTTP routes that exist in the inbound HTTP layer (`src/features/*/adapters/inbound/http/` and `src/app_platform/api/`). It SHALL NOT reference the fictional Kanban API (`/api/boards`, `/api/columns`, `/api/cards`) or any other endpoint, request/response schema, error code, header, or authentication mechanism that is not present in the source code.
+
 #### Scenario: CLAUDE.md commands and module map use the new names
 
 - **WHEN** a contributor reads `CLAUDE.md`
@@ -113,6 +115,15 @@ The documentation SHALL NOT instruct readers to recover the removed in-tree `_te
 - **AND** no `docs/feature-template.md` file exists
 - **AND** the "adding a new feature" guidance describes creating the `domain/ application/ adapters/ composition/ tests/` layout from scratch and wiring it through the authorization, email, and background-jobs registries with `require_authorization`-gated routes and no cross-feature imports
 - **AND** the unrelated `EmailTemplateRegistry` / `register_template` references and the file-storage S3 "ships as scaffolding" note are still present and unchanged
+
+#### Scenario: API reference documents only routes that exist in code
+
+- **WHEN** a contributor reads `docs/api.md`
+- **THEN** the document contains no reference to `/api/boards`, `/api/columns`, `/api/cards`, or any Kanban board/column/card endpoint, schema, or error code
+- **AND** the document contains no reference to an `X-API-Key` header or an `APP_WRITE_API_KEY` setting (no such authentication mechanism exists in the code)
+- **AND** the document contains no `GET /health` route (only `GET /health/live` and `GET /health/ready` exist) and no `HealthRead` schema with `persistence.*`/`auth.*` fields
+- **AND** every endpoint, request/response schema field, status code, response header, error `code`, and Problem-Type `type` URN documented is verifiable in `src/features/*/adapters/inbound/http/` or `src/app_platform/api/`
+- **AND** the document states that the `email`, `background_jobs`, `file_storage`, and `outbox` features expose no inbound HTTP routes
 
 ### Requirement: Destructive migrations raise on downgrade and are scanned in CI
 
