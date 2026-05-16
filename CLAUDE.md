@@ -47,7 +47,7 @@ KANBAN_SKIP_TESTCONTAINERS=1 make test-integration
 ## Architecture
 
 Feature-first hexagonal architecture enforced by Import Linter contracts.
-Six features ship out of the box. New features are created from scratch
+Seven features ship out of the box. New features are created from scratch
 following the layer stack and per-feature conventions documented below.
 
 | Feature | Role |
@@ -161,7 +161,7 @@ Pure ReBAC concerns. Other features call into it through one port; it calls back
 
 - `application/ports/file_storage_port.py` — `FileStoragePort.put`/`.get`/`.delete`/`.signed_url`
 - `adapters/outbound/local/` — writes to `APP_STORAGE_LOCAL_PATH`, sha256 prefix dirs
-- `adapters/outbound/s3/` — stub; raises `NotImplementedError`
+- `adapters/outbound/s3/` — real `boto3`-backed `FileStoragePort` adapter, selected with `APP_STORAGE_BACKEND=s3` (requires the `s3` extra and bucket configuration)
 - See `docs/file-storage.md`.
 
 ### Request flow

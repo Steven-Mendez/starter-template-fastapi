@@ -144,6 +144,17 @@ The `docs/api.md` API reference SHALL document only HTTP routes that exist in th
 - **AND** the `file_storage` row describes a `local` adapter and a real `boto3`-backed `s3` adapter selectable via `APP_STORAGE_BACKEND=s3`
 - **AND** the README contains no broken link to `openspec/changes/starter-template-foundation/` and no `src/cli/` command-reference section (the latter is owned by a later roadmap step)
 
+#### Scenario: CLAUDE.md presents a code-true seven-feature inventory with no stale-adapter claims
+
+- **WHEN** a contributor reads `CLAUDE.md`
+- **THEN** the architecture overview prose states that **seven** features ship out of the box, consistent with the feature matrix in the same section and with the seven feature packages under `src/features/` (`authentication`, `users`, `authorization`, `email`, `background_jobs`, `file_storage`, `outbox`)
+- **AND** the feature matrix contains a row for every one of those seven features, with no row omitted and no row referencing a removed adapter (`smtp`, `resend`, `arq`, `spicedb`/SpiceDB)
+- **AND** the file-storage feature section describes the `s3` adapter as a real `boto3`-backed `FileStoragePort` implementation selectable via `APP_STORAGE_BACKEND=s3`, and no prose describes it as a "stub", as raising `NotImplementedError`, or as a placeholder
+- **AND** the "adding a new feature" guidance describes creating the `domain/ application/ adapters/ composition/ tests/` layout from scratch, with no prose instructing recovery of a removed `_template` scaffold from git history
+- **AND** the production checklist and key-env-vars prose match the per-feature `composition/settings.py` production validators (email refuses `console`, background_jobs refuses `in_process`, file-storage refuses `local` when `APP_STORAGE_ENABLED=true`, and outbox must be enabled in production)
+- **AND** `CLAUDE.md` contains no `src/cli/` command-reference section (that is owned by a later roadmap step)
+- **AND** the only `arq` references that remain state that `arq` was removed in ROADMAP ETAPA I step 5
+
 ### Requirement: Destructive migrations raise on downgrade and are scanned in CI
 
 Migrations whose `upgrade()` performs destructive operations (column drops, table drops, index drops, or `op.execute` running a `DROP` / `ALTER TABLE ... DROP`) SHALL have a `downgrade()` whose first executable statement is `raise NotImplementedError("...")` and whose message references `docs/operations.md#migration-policy`. Narrowing `alter_column` (e.g., `String(length=255)` → `String(length=64)`) is destructive but cannot be detected statically; operators MUST opt in by hand to the same convention.

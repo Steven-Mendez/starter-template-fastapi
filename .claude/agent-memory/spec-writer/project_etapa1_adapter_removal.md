@@ -63,6 +63,34 @@ inventory". **Reconciliation hazard:** step 7 (`fix-s3-stub-drift`) is
 in-flight on the SAME requirement — archive step MUST re-copy the canonical
 block at archive time if step 7 lands first. Archive WITHOUT `--skip-specs`.
 
+**Step 10 (CLAUDE.md AWS-first) — change `claude-md-reframe`, drafted
+2026-05-16.** ONLY `CLAUDE.md` + OpenSpec artifacts. CLAUDE.md was ALREADY
+partially correct (steps 1–7 edited incrementally). Audit found EXACTLY two
+false statements, no third: (1) `CLAUDE.md:50` "Six features ship out of the
+box" — WRONG, its own matrix at :53–61 lists 7 incl. `outbox` and
+`ls src/features/` = 7; fix "Six"→"Seven", change nothing else in the
+sentence. (2) `CLAUDE.md:164` "`adapters/outbound/s3/` — stub; raises
+`NotImplementedError`" — step 7's deferred CLAUDE propagation; fix to real
+`boto3` adapter via `APP_STORAGE_BACKEND=s3` (consistent w/ :60, canonical
+spec.md:99). EVERYTHING ELSE verified correct, NOT churned: matrix rows
+55–61 (console-only/SES-later, in_process-only/SQS-later, SpiceDB-free,
+"local + S3 (`boto3`)", outbox row present), "Adding a new feature" 196–207
+(from-scratch, zero `_template`/recovery residue — step 1 done), production
+checklist 230–247 + env tables 249–278 (audited against all 4 infra
+`validate_production` validators — email refuses console, jobs refuses
+in_process, file_storage refuses local when STORAGE_ENABLED, outbox must be
+enabled — all match), the two `arq` refs 157/222 (accurately say "removed in
+step 5"). Zero SMTP/Resend/SpiceDB/mailpit hits. Single delta target:
+`project-layout` MODIFY `Documentation reflects the new layout` — restate
+VERBATIM (NOW 4 SHALL paragraphs + 6 scenarios: step 7 folded S3 paragraph
+at canonical spec.md:99 + S3 scenario :130, step 9 folded README AWS-first
+scenario :137), ADD one scenario "CLAUDE.md presents a code-true
+seven-feature inventory with no stale-adapter claims". **Reconciliation
+hazard:** step 7 (`fix-s3-stub-drift`) change dir still exists (in flight on
+SAME requirement) — archiver MUST re-copy canonical block at archive time.
+Archive WITHOUT `--skip-specs`. Step 12 (`src/cli/` docs) explicitly
+deferred — NO cli section added.
+
 **Step 6 (SpiceDB stub) is categorically SMALLER than 3/4/5 — pure dead-code
 deletion, NO production-validator involvement.** Unlike email/jobs backends,
 there is NO authz backend selector setting, NO env var, NO `Literal`, NO
