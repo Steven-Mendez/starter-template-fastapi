@@ -37,7 +37,6 @@ A production-shaped FastAPI starter. Seven features ship out of the box (`authen
 | [`docs/operations.md`](docs/operations.md) | Env-var reference, deployment, migration policy |
 | [`docs/observability.md`](docs/observability.md) | Prometheus, OTel, structured logs |
 | [`docs/email.md`](docs/email.md) / [`docs/background-jobs.md`](docs/background-jobs.md) / [`docs/file-storage.md`](docs/file-storage.md) / [`docs/outbox.md`](docs/outbox.md) | Per-feature deep dives |
-| [`docs/feature-template.md`](docs/feature-template.md) | Recovering and renaming the feature scaffold |
 | [`CLAUDE.md`](CLAUDE.md) | Architecture and conventions cheatsheet for AI agents |
 
 ### Where to get help

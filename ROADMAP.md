@@ -33,7 +33,7 @@ Yo lanzo `spec-writer` con el alcance exacto de ese paso, esperamos tu aprobaci�
 
 > Antes de añadir nada. Trabajar sobre ruido duplica esfuerzo.
 
-- [ ] **1. Eliminar el scaffold `_template`** de todo: `README.md`, `CLAUDE.md`, `docs/feature-template.md`, `docs/architecture.md`, sección "Adding a new feature". No documentarlo, no recuperarlo de git history. Borrar `docs/feature-template.md`.
+- [x] **1. Eliminar el scaffold `_template`** de todo: `README.md`, `CLAUDE.md`, `docs/feature-template.md`, `docs/architecture.md`, sección "Adding a new feature". No documentarlo, no recuperarlo de git history. Borrar `docs/feature-template.md`.
 
 - [ ] **2. Eliminar variables `APP_AUTH_OAUTH_*` y código muerto asociado** en `.env.example`, `AuthenticationSettings`, validators de producción. Auditar si hay referencias en docs.
 

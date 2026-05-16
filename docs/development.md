@@ -200,7 +200,7 @@ hand.
 | New persistence behavior | `src/features/<feature>/adapters/outbound/persistence/sqlmodel/` and repository contract or integration tests. |
 | New database schema change | SQLModel models plus a new Alembic migration under `alembic/versions/`. |
 | New cross-cutting platform behavior | `src/app_platform/` with platform tests under `src/app_platform/tests/`. |
-| New feature | Recover the scaffold from git history and follow [Feature Template Guide](feature-template.md). |
+| New feature | Create `src/features/<feature>/` with the `domain/ application/ adapters/ composition/ tests/` layout; follow the "Adding a new feature" steps in `CLAUDE.md`. |
 
 ## Adding A Migration
 

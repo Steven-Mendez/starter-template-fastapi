@@ -47,9 +47,8 @@ KANBAN_SKIP_TESTCONTAINERS=1 make test-integration
 ## Architecture
 
 Feature-first hexagonal architecture enforced by Import Linter contracts.
-Six features ship out of the box. The previous in-tree `_template`
-scaffold has been removed — copy from git history when starting a new
-feature.
+Six features ship out of the box. New features are created from scratch
+following the layer stack and per-feature conventions documented below.
 
 | Feature | Role |
 |---|---|
@@ -167,19 +166,6 @@ Pure ReBAC concerns. Other features call into it through one port; it calls back
 - `adapters/outbound/s3/` — stub; raises `NotImplementedError` (mirrors SpiceDB pattern)
 - See `docs/file-storage.md`.
 
-### Scaffold for new features
-
-The in-tree `_template` feature has been removed. To start a new feature,
-recover the scaffold from git history:
-`git checkout <pre-removal-sha>^ -- src/features/_template`, then
-`mv src/features/_template src/features/<your-feature>`.
-
-The scaffold demonstrates a domain entity with a small invariant, a
-`UnitOfWorkPort` + SQLModel adapter that commits the resource row and the
-`owner` authorization tuple in the same transaction, HTTP routes gated by
-`require_authorization(...)`, and wiring into the authorization registry
-with `owner ⊇ writer ⊇ reader`.
-
 ### Request flow
 
 ```
@@ -211,7 +197,7 @@ Run boundary checks: `make lint-arch`
 
 ## Adding a new feature
 
-1. Recover the scaffold from git history (`git checkout <pre-removal-sha>^ -- src/features/_template`), then move it to `src/features/<name>/` and rename the entity, table, routes, and tests inside the copy.
+1. Create `src/features/<name>/` from scratch following the layer stack (`domain → application → adapters → composition`) and the per-feature conventions documented above; add the entity, table, routes, and tests.
 2. Decide which resource types your feature owns. For each *leaf* type (one whose tuples will live in the `relationships` table), call `registry.register_resource_type("<type>", actions={...}, hierarchy={...})` from your feature's wiring module. For each *inherited* type (delegates to a parent via a lookup), call `registry.register_parent("<type>", parent_of=..., inherits_from="<parent>")`.
 3. Build your feature's container in `main.py` after the authorization container exists; pass `authorization.port` and `authorization.registry` in.
 4. Gate your HTTP routes with the platform-level `require_authorization("<action>", "<resource_type>", id_loader=...)` dependency.
@@ -239,7 +225,7 @@ Coverage gate: `make ci` enforces an 80% line-coverage floor (`pyproject.toml [t
 - `@dataclass(slots=True)` for use cases and mutable domain entities; `@dataclass(frozen=True, slots=True)` for immutable commands/queries/contracts.
 - FastAPI dependencies are declared as `Annotated` type aliases (see existing `*Dep` names in `adapters/inbound/http/dependencies.py`).
 - Feature HTTP errors map application errors to HTTP status codes in `adapters/inbound/http/errors.py`; the platform renders the final Problem Details response.
-- New feature code goes under `src/features/<feature_name>/` mirroring the scaffold recovered from git history (see "Adding a new feature").
+- New feature code goes under `src/features/<feature_name>/` following the layer stack and the "Adding a new feature" steps above.
 - New migrations: update SQLModel tables first, then `uv run alembic revision --autogenerate -m "..."`. **Index changes on tables expected to hold production data MUST use `create_index_concurrently` / `drop_index_concurrently` from `alembic/migration_helpers.py`** — plain `op.create_index` takes `ACCESS EXCLUSIVE` and blocks writes during the build. See `docs/architecture.md` for the rule and the recent `alembic/versions/20260518_0015_users_created_at_index.py` for a worked example.
 - Per-feature settings: every feature ships a `composition/settings.py` with a typed projection and a `validate_production(errors: list[str]) -> None` method. `AppSettings` aggregates them.
 

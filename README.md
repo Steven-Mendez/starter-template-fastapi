@@ -6,12 +6,11 @@ needs — authentication, users, authorization, transactional email — plus
 ports for background jobs and file storage, all sitting on a feature-first
 hexagonal layout enforced by Import Linter.
 
-The intended first move on a new project is **clone, recover the scaffold
-from git history, run**. The starter previously shipped an in-tree
-`_template` feature; it was removed (see the `remove-template-feature`
-OpenSpec change). Restore it from the pre-removal commit — it keeps the
-same architecture so the routes, persistence, and authorization wiring
-come along.
+The intended first move on a new project is **clone, run, then build your
+first feature from scratch** following the documented hexagonal layout
+(`domain/ application/ adapters/ composition/ tests/`) so the routes,
+persistence, and authorization wiring follow the same conventions as the
+bundled features.
 
 ## What's New
 
@@ -20,9 +19,7 @@ The `starter-template-foundation` change reshaped the repository: the
 infrastructure features (`email`, `background_jobs`, `file_storage`) were
 added. See
 [`openspec/changes/starter-template-foundation/`](openspec/changes/starter-template-foundation/)
-for the full proposal. The `remove-template-feature` change then removed
-the in-tree `_template` scaffold; see its directory under
-[`openspec/changes/`](openspec/changes/) for the rationale.
+for the full proposal.
 
 ## Documentation
 
@@ -42,9 +39,6 @@ the in-tree `_template` scaffold; see its directory under
   in-process/`arq` adapters, the worker process.
 - [File Storage](docs/file-storage.md) — `FileStoragePort`, local/S3
   adapters.
-- [Feature Template Guide](docs/feature-template.md) — recovering the
-  scaffold from git history and the "copy and rename" workflow for new
-  features.
 
 ## Feature Inventory
 
@@ -141,12 +135,11 @@ curl -s -X POST http://localhost:8000/auth/register \
 ## Starting A New Project
 
 1. Clone this repository and rename the remote/origin to your project.
-2. Recover the feature scaffold from git history
-   (`git checkout <pre-removal-sha>^ -- src/features/_template`), then
-   move it to `src/features/<your-feature>/`.
-3. Rename the entity, the table, the routes, and the tests inside the copy
-   — see [`docs/feature-template.md`](docs/feature-template.md) for the
-   walk-through.
+2. Create `src/features/<your-feature>/` with the
+   `domain/ application/ adapters/ composition/ tests/` layout.
+3. Add the entity, the table, the routes, and the tests — follow the
+   "Adding a new feature" steps in
+   [`CLAUDE.md`](CLAUDE.md#adding-a-new-feature).
 4. Register the new feature with the authorization registry in
    `src/main.py` (one `registry.register_resource_type(...)` call).
 5. Generate an Alembic revision for your new table:

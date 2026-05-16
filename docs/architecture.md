@@ -10,8 +10,9 @@ package owns cross-cutting concerns (FastAPI factory, middleware, settings,
 error handling, the shared engine, the cross-feature `relationships` table).
 The `features` package owns business capabilities. Every feature follows the
 same layout — `domain/`, `application/`, `adapters/`, `composition/`, `tests/`
-— so adding a new feature is a copy-and-rename of the scaffold recovered
-from git history (see [Feature Template Guide](feature-template.md)).
+— so adding a new feature means creating that same
+`domain/ application/ adapters/ composition/ tests/` layout by hand and
+wiring it through the authorization/email/jobs registries.
 
 ```text
 HTTP client
