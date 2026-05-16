@@ -1,2 +1,2 @@
 - [OpenSpec convention & house style](project_openspec_convention.md) — change layout, strict-validation delta rules, MODIFIED name-match rule, auth validator-surface requirement target
-- [ETAPA I adapter removal](project_etapa1_adapter_removal.md) — steps 3–7 remove non-AWS adapters; production-validator must stay an honest refusal, not relax; shared _VALID_PROD_ENV ripple
+- [ETAPA I adapter removal](project_etapa1_adapter_removal.md) — steps 3–6 remove non-AWS adapters (validator stays honest); step 7 DECIDED 2026-05-16 = drift-fix NOT deletion, S3 adapter retained

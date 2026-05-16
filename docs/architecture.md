@@ -33,7 +33,7 @@ HTTP client
 | `authorization` | `AuthorizationPort`, the runtime `AuthorizationRegistry`, the SQLModel adapter, `BootstrapSystemAdmin`. | `UserRegistrarPort`, `UserAuthzVersionPort` (implemented by `users`), `AuditPort` (implemented by `authentication`). |
 | `email` | `EmailPort`, the `console` adapter (dev/test; production email arrives with AWS SES at a later roadmap step), the `EmailTemplateRegistry`. | Nothing. |
 | `background_jobs` | `JobQueuePort`, the in-process adapter (dev/test; the only shipped adapter — the production job runtime, AWS SQS + a Lambda worker, arrives at a later roadmap step), the `JobHandlerRegistry`, the worker scaffold. | Nothing. |
-| `file_storage` | `FileStoragePort`, local adapter, S3 stub. | Nothing. |
+| `file_storage` | `FileStoragePort`, the `local` adapter (dev/test) and a real `boto3`-backed `s3` adapter (the AWS backend, selected with `APP_STORAGE_BACKEND=s3`). | Nothing. |
 | `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, the `DispatchPending` relay use case. | `JobQueuePort` (the relay's destination). |
 
 ### Dependency Graph
@@ -242,14 +242,17 @@ behind invalid index objects when interrupted.
 | Separate credentials table | A `User` can have multiple credentials (password today, passkey tomorrow). Coupling the hash to the user row would force a schema migration when adding new credential types. |
 | Background-jobs worker | Email sends are slow; doing them inline turns `POST /auth/password-reset` into a 2 s endpoint. The queue keeps the API responsive and lets the worker absorb retry policy. |
 | Email template registry | Templates live with the feature that sends them; the email feature provides the registry rather than owning the templates itself. Mirrors the authorization-registry pattern. |
-| S3 stub | The adapter raises `NotImplementedError` from its methods. A real implementation needs provider-specific choices (boto3 IAM) the consumer must make. |
+| S3 adapter (provider-agnostic endpoint) | The `boto3` adapter takes no template-specific endpoint knob; operators point at R2 / MinIO / other S3-compatible services via `AWS_ENDPOINT_URL_S3` at the SDK level. |
 
 ## Tradeoffs And Limitations
 
 - No OAuth/SSO yet — the `credentials` table is shaped to support it, the
   endpoints are not implemented.
-- The S3 file-storage adapter is a stub. Filling it in requires `boto3` and
-  IAM configuration outside the scope of a starter.
+- The S3 file-storage adapter is a real `boto3` implementation; running it in
+  production is an operational prerequisite, not a code task — it requires
+  `boto3` (the `s3` extra) plus bucket and IAM configuration (see
+  `docs/file-storage.md` and
+  `src/features/file_storage/adapters/outbound/s3/README.md`).
 - The SQLModel authorization adapter is the only shipped implementation;
   the `AuthorizationPort` remains the single swap boundary so a future
   ReBAC backend is a one-feature swap when needed.

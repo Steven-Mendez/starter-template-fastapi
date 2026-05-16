@@ -57,41 +57,46 @@ Reword docstrings to be backend-neutral (port stays the swap boundary; just
 stop naming a deleted stub + the out-of-scope SpiceDB/AuthZed vendor list).
 AVP/Cedar is ROADMAP step 53 — out of scope. Change: `remove-spicedb-stub`.
 
-**Step 7 (S3) — the ROADMAP/brief premise is FALSE; it is steps-3/4-class,
-NOT step-6-class.** ROADMAP.md:48 + briefs call S3 a "stub raising
-`NotImplementedError`" mirroring SpiceDB. WRONG against code: `S3FileStorageAdapter`
-is a fully real, contract-tested `boto3` adapter (real put/get/delete/list/
-signed_url, moto-mocked 3-way contract `[fake,local,s3]`, 8-test
-`test_s3_adapter.py`). Canonical `openspec/specs/file-storage/spec.md` even has
-a req literally named `S3 adapter is a real boto3 implementation` ("SHALL NOT
-raise NotImplementedError"). So apply the steps-3/4 precedent: collapse
-`StorageBackend`/`storage_backend` `Literal["local","s3"]`→`["local"]`, keep
-the prod validator refusing `local`-when-`APP_STORAGE_ENABLED=true`, reword
-message to drop `s3`/`APP_STORAGE_S3_BUCKET` BUT KEEP the literal substring
-`APP_STORAGE_BACKEND` (the shared-baseline test asserts `match="APP_STORAGE_BACKEND"`).
-Real deps go: `s3=["boto3~=1.34"]` extra + dev-group `boto3~=1.34`/`moto~=5.0`/
-`boto3-stubs[s3]`; `uv lock`. **No `boto3` Import Linter `forbidden_modules`
-entry exists** (unlike step-4 httpx) — nothing to preserve there.
-**`_VALID_PROD_ENV` sets NO `APP_STORAGE_*`** → storage is disabled in baseline
-→ storage refusal is NOT always-present → `_assert_only_always_present_refusals`
-stays at TWO entries (email+jobs), NOT three; `src/app_platform/tests/test_settings.py`
-needs NO edit (`test_production_rejects_local_storage_enabled` already opts in
-and resolves via the retained `APP_STORAGE_BACKEND` substring). `CONTRIBUTING.md`
-+ `docs/background-jobs.md` audited: ZERO real S3 refs (no edit). In-tree drift
-to fix while removing: `docs/architecture.md:245/251` + `src/features/file_storage/__init__.py`
-falsely call the real adapter a "stub". Delta targets: `file-storage` (REMOVE
-`S3 adapter is a real boto3 implementation`; MODIFY `FileStoragePort contract`,
-`Local adapter remains the development default`, `Settings select the active
-adapter`, `Adapters are isolated from inbound layers`), `project-layout`
-(REMOVE `S3 adapter is configured for FastAPI concurrency`; MODIFY
-`Documentation reflects the new layout` — its S3-"scaffolding" carve-out),
-`quality-automation` (MODIFY `Runtime dependencies are split into core, api,
-worker, and adapter extras` + `Integration markers reflect real-backend usage`),
-`authentication` (MODIFY validator-surface req). Keep Renovate `boto3+botocore`
-group + its quality-automation scenario UNTOUCHED (inert; pre-empts AWS-S3
-naming) — flag the omission. Real `aws_s3` adapter = later roadmap step (NOT
-step 23: 23=SecretsPort, 24=aws_s3; phrase as "a later roadmap step", don't
-hard-code). Change: `remove-s3-stub`.
+**Step 7 (S3) — DECIDED 2026-05-16: Option A, drift-fix NOT deletion. The
+ROADMAP/brief premise is FALSE.** ROADMAP.md:48 + briefs call S3 a "stub
+raising `NotImplementedError`" mirroring SpiceDB. WRONG against code:
+`S3FileStorageAdapter` is a fully real, contract-tested `boto3` adapter (real
+put/get/delete/list/signed_url, moto-mocked 3-way contract `[fake,local,s3]`,
+8-test `test_s3_adapter.py`). Canonical `openspec/specs/file-storage/spec.md`
+even has a req literally named `S3 adapter is a real boto3 implementation`
+("SHALL NOT raise NotImplementedError"). **The repo owner chose Option A: the
+real adapter STAYS (it is exactly what ROADMAP step 24 wants; S3 is NOT on the
+SMTP/Resend/arq/SpiceDB remove-list).** Step 7 is wording-only: correct the
+false "stub"/`NotImplementedError`/"placeholder" prose so docs match code, and
+fix the false ROADMAP line-48 text + checkbox.
+
+**This SUPERSEDES the earlier pre-planned deletion approach** (collapse the
+`StorageBackend` `Literal`, drop the `s3` extra/`moto`, reword validator,
+`_VALID_PROD_ENV` analysis, REMOVE `S3 adapter is a real boto3 implementation`,
+etc.) — that plan is NOT executed. No code/test/extra/setting/`Literal`/
+migration change. Steps-3/4 precedent does NOT apply here: S3 *is* the AWS
+backend, there is no non-AWS production backend to remove.
+
+Wording sites to correct (verified): `src/features/file_storage/__init__.py:4`
+("`s3` as a stub for production"), `docs/architecture.md:36` (feature row
+"local adapter, S3 stub"), `docs/architecture.md:245` (Design-Decisions "S3
+stub" row — REWRITE both cells to a code-true decision, e.g. provider-agnostic
+`AWS_ENDPOINT_URL_S3`; do NOT delete the row), `docs/architecture.md:251`
+(Tradeoffs "is a stub" bullet — reframe as operational prerequisite, keep the
+bullet). `docs/file-storage.md` is ALREADY accurate — audited, NO edit (its
+line-5 "ships as scaffolding" = unwired feature, accurate). `README.md:53` +
+`CLAUDE.md:164` carry the same false wording but are DEFERRED to ROADMAP
+steps 9/10 (whole-file rewrites) — proposal carries a propagation note that
+9/10 MUST land "real boto3 adapter". `ROADMAP.md:121` (step-24 sub-bullet) NOT
+edited (step 24's change owns it). Single delta target: `project-layout` MODIFY
+`Documentation reflects the new layout` — restate verbatim, NARROW the S3
+"ships as scaffolding **stub**" carve-out to drop the word that blesses "stub",
+add one scenario "no doc calls the real S3 adapter a stub", carry the
+`src.`-prefix / scaffold-recovery / `docs/api.md` scenarios forward. The
+`file-storage` capability is NOT touched (its "S3 adapter is a real boto3
+implementation" req is already correct — it is the spec-level proof the premise
+was false). Archive WITHOUT `--skip-specs`. Change: `fix-s3-stub-drift`
+(NOT `remove-s3-stub`).
 
 **Step 5 (arq) is categorically bigger than 3/4 — it removes a RUNTIME, not
 a port leaf.** `src/worker.py` IS arq (`run_worker`/`WorkerSettings`/`CronJob`);
