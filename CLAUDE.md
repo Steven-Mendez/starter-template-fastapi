@@ -54,7 +54,7 @@ following the layer stack and per-feature conventions documented below.
 |---|---|
 | `authentication` | JWT issuance, login/logout/refresh, password reset, email verify, rate limiting, principal resolution, `credentials` table |
 | `users` | The `User` entity, registration, profile, deactivation, admin user listing, `UserPort` |
-| `authorization` | ReBAC engine, `AuthorizationPort`, `AuthorizationRegistry`, SQLModel adapter, SpiceDB stub, `BootstrapSystemAdmin` |
+| `authorization` | ReBAC engine, `AuthorizationPort`, `AuthorizationRegistry`, SQLModel adapter, `BootstrapSystemAdmin` |
 | `email` | `EmailPort`, console adapter (dev/test; production email arrives with AWS SES at a later roadmap step), `EmailTemplateRegistry` |
 | `background_jobs` | `JobQueuePort`, the `in_process` adapter (only shipped adapter; production job runtime — AWS SQS + a Lambda worker — arrives at a later roadmap step), `JobHandlerRegistry`, runtime-agnostic worker scaffold |
 | `file_storage` | `FileStoragePort`, local + S3 (`boto3`) adapters |
@@ -138,7 +138,6 @@ Pure ReBAC concerns. Other features call into it through one port; it calls back
 - `application/use_cases/bootstrap_system_admin.py` — `BootstrapSystemAdmin` (composes `UserRegistrarPort` + `AuthorizationPort` + `AuditPort`)
 - `application/ports/outbound/` — `UserAuthzVersionPort` (cache invalidation, implemented by `users`), `UserRegistrarPort` (register-or-lookup for bootstrap, implemented by `users`), `AuditPort` (`authz.*` events, implemented by `authentication`)
 - `adapters/outbound/sqlmodel/` — `SQLModelAuthorizationAdapter` (engine-owning) and `SessionSQLModelAuthorizationAdapter` (session-scoped, used by feature UoWs)
-- `adapters/outbound/spicedb/` — `SpiceDBAuthorizationAdapter` stub; one swap to drop in a real SpiceDB integration
 - `composition/wiring.py` — `register_authorization_error_handlers(app)` maps `NotAuthorizedError` → 403 and `UnknownActionError` → 500
 
 ### Email feature (`src/features/email/`)
@@ -162,7 +161,7 @@ Pure ReBAC concerns. Other features call into it through one port; it calls back
 
 - `application/ports/file_storage_port.py` — `FileStoragePort.put`/`.get`/`.delete`/`.signed_url`
 - `adapters/outbound/local/` — writes to `APP_STORAGE_LOCAL_PATH`, sha256 prefix dirs
-- `adapters/outbound/s3/` — stub; raises `NotImplementedError` (mirrors SpiceDB pattern)
+- `adapters/outbound/s3/` — stub; raises `NotImplementedError`
 - See `docs/file-storage.md`.
 
 ### Request flow

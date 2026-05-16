@@ -43,7 +43,7 @@ Yo lanzo `spec-writer` con el alcance exacto de ese paso, esperamos tu aprobaci√
 
 - [x] **5. Eliminar adaptador arq** (`src/features/background_jobs/adapters/outbound/arq/`), sus settings, env vars asociadas, rama del extra `worker` en `pyproject.toml`, tests, docs.
 
-- [ ] **6. Eliminar stub SpiceDB** (`src/features/authorization/adapters/outbound/spicedb/`). Vive en git history si se necesita referencia.
+- [x] **6. Eliminar stub SpiceDB** (`src/features/authorization/adapters/outbound/spicedb/`). Vive en git history si se necesita referencia.
 
 - [ ] **7. Eliminar stub S3** que levanta `NotImplementedError`. El puerto `FileStoragePort` queda solo con `local` (dev) hasta el paso 23 que a√±ade el adaptador real.
 

@@ -30,7 +30,7 @@ HTTP client
 | --- | --- | --- |
 | `authentication` | JWT tokens, login/logout/refresh, password reset, email verify, rate limiting, the `credentials` table, principal resolution. | `UserPort` (from `users`), `EmailPort`, `JobQueuePort`, `AuthorizationPort`. |
 | `users` | The `User` entity, the `users` table, registration, profile read/update, deactivation, admin user listing. | Authorization's outbound ports (`UserRegistrarPort`, `UserAuthzVersionPort`). |
-| `authorization` | `AuthorizationPort`, the runtime `AuthorizationRegistry`, the SQLModel adapter, the SpiceDB stub, `BootstrapSystemAdmin`. | `UserRegistrarPort`, `UserAuthzVersionPort` (implemented by `users`), `AuditPort` (implemented by `authentication`). |
+| `authorization` | `AuthorizationPort`, the runtime `AuthorizationRegistry`, the SQLModel adapter, `BootstrapSystemAdmin`. | `UserRegistrarPort`, `UserAuthzVersionPort` (implemented by `users`), `AuditPort` (implemented by `authentication`). |
 | `email` | `EmailPort`, the `console` adapter (dev/test; production email arrives with AWS SES at a later roadmap step), the `EmailTemplateRegistry`. | Nothing. |
 | `background_jobs` | `JobQueuePort`, the in-process adapter (dev/test; the only shipped adapter — the production job runtime, AWS SQS + a Lambda worker, arrives at a later roadmap step), the `JobHandlerRegistry`, the worker scaffold. | Nothing. |
 | `file_storage` | `FileStoragePort`, local adapter, S3 stub. | Nothing. |
@@ -189,7 +189,6 @@ Problem Details response.
 | Redis | Auth rate limiter, principal cache | `APP_AUTH_REDIS_URL` set, multi-replica auth. |
 | Object storage | File-storage feature | A consumer feature wires `FileStoragePort` and `APP_STORAGE_BACKEND=s3` (production). |
 | OTLP collector | Observability | `APP_OTEL_EXPORTER_ENDPOINT` set. |
-| SpiceDB | Authorization | Not used today; the adapter is a stub mirroring the S3 pattern. |
 
 ## Database Migrations
 
@@ -243,7 +242,7 @@ behind invalid index objects when interrupted.
 | Separate credentials table | A `User` can have multiple credentials (password today, passkey tomorrow). Coupling the hash to the user row would force a schema migration when adding new credential types. |
 | Background-jobs worker | Email sends are slow; doing them inline turns `POST /auth/password-reset` into a 2 s endpoint. The queue keeps the API responsive and lets the worker absorb retry policy. |
 | Email template registry | Templates live with the feature that sends them; the email feature provides the registry rather than owning the templates itself. Mirrors the authorization-registry pattern. |
-| S3 and SpiceDB stubs | Both adapters raise `NotImplementedError` from their methods. Real implementations need provider-specific choices (boto3 IAM, SpiceDB hosting) the consumer must make. |
+| S3 stub | The adapter raises `NotImplementedError` from its methods. A real implementation needs provider-specific choices (boto3 IAM) the consumer must make. |
 
 ## Tradeoffs And Limitations
 
@@ -251,8 +250,9 @@ behind invalid index objects when interrupted.
   endpoints are not implemented.
 - The S3 file-storage adapter is a stub. Filling it in requires `boto3` and
   IAM configuration outside the scope of a starter.
-- The SpiceDB authorization adapter is a stub. The SQLModel adapter is the
-  default; switching is a one-feature swap when needed.
+- The SQLModel authorization adapter is the only shipped implementation;
+  the `AuthorizationPort` remains the single swap boundary so a future
+  ReBAC backend is a one-feature swap when needed.
 - No admin web UI; the API surface is the entire admin surface.
 - No multi-tenancy primitives (organizations, workspaces). They belong on top
   of `users` in consumer projects.

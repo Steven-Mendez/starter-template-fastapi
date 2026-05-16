@@ -47,7 +47,7 @@ for the full proposal.
 | --- | --- |
 | `authentication` | JWT issuance, login/logout, refresh, password reset, email verify, rate limiting, principal resolution, credential storage. |
 | `users` | The `User` entity, registration, profile read/update, deactivation, admin user listing. Owns the `UserPort` consumed by `authentication`. |
-| `authorization` | ReBAC engine. Owns `AuthorizationPort`, the runtime registry, the SQLModel adapter, and the SpiceDB stub. |
+| `authorization` | ReBAC engine. Owns `AuthorizationPort`, the runtime registry, and the SQLModel adapter. |
 | `email` | `EmailPort` plus the `console` adapter (dev/test; production email arrives with AWS SES at a later roadmap step). Owns the template registry features contribute to. |
 | `background_jobs` | `JobQueuePort` plus the `in_process` adapter (dev/test; the production job runtime, AWS SQS + a Lambda worker, arrives at a later roadmap step). Worker scaffold at `python -m worker`. |
 | `file_storage` | `FileStoragePort` plus `local` adapter and `s3` stub. |

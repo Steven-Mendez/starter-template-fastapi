@@ -6,7 +6,7 @@ function. The Zanzibar-style "userset rewrite" — superior relations
 satisfying inferior checks — is encoded as the per-resource-type
 ``hierarchy`` map a feature passes to ``register_resource_type``.
 
-For SpiceDB this would be a schema fragment such as::
+In a Zanzibar-style schema this would be a fragment such as::
 
     definition thing {
         relation reader: user

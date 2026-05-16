@@ -13,8 +13,8 @@ Scaling note
 Check-time resolution keeps writes cheap and the model easy to read,
 but the query cost is roughly ``O(walked_resources * hierarchy_size)``.
 For high-throughput deployments where ``lookup_resources`` returns
-thousands of ids per request, switch to a real ReBAC engine
-(SpiceDB / OpenFGA / AuthZed Cloud) — they materialize implied tuples
+thousands of ids per request, switch to a real ReBAC engine behind
+the ``AuthorizationPort`` — such engines materialize implied tuples
 at write time using a watch-and-expand pipeline. The port boundary is
 designed so that swap is one adapter, not an engine rewrite.
 

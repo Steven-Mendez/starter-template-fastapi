@@ -1,8 +1,8 @@
 """Authorization (ReBAC) application layer.
 
 Adapters under ``src/features/authorization/adapters/outbound/`` provide
-concrete implementations of :class:`AuthorizationPort` (in-repo
-SQLModel default; SpiceDB stub).
+concrete implementations of :class:`AuthorizationPort` (the in-repo
+SQLModel adapter).
 
 The Zanzibar-style relationship model is encoded across:
 

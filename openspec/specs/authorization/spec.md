@@ -13,16 +13,15 @@ The system SHALL expose an ``AuthorizationPort`` Protocol — now in ``src/featu
 - **THEN** the use case takes an ``AuthorizationPort`` as a constructor dependency
 - **AND** no module under ``application/`` of any feature imports from ``adapters/outbound/`` of any feature
 
-#### Scenario: Two adapters implement the port
+#### Scenario: The SQLModel adapter implements the port
 
 - **WHEN** the codebase is loaded
 - **THEN** ``SQLModelAuthorizationAdapter`` (under ``src/features/authorization/adapters/outbound/sqlmodel/``) implements ``AuthorizationPort``
-- **AND** ``SpiceDBAuthorizationAdapter`` (under ``src/features/authorization/adapters/outbound/spicedb/``) implements ``AuthorizationPort``
-- **AND** the SpiceDB adapter raises ``NotImplementedError`` from each method with a message pointing to its README
+- **AND** it is the only shipped ``AuthorizationPort`` implementation; the port remains the single swap boundary so a future ReBAC backend can be introduced as one new adapter without an application-layer rewrite
 
 ### Requirement: Authorization is a self-contained feature slice
 
-The system SHALL host authorization concerns in a dedicated feature slice at ``src/features/authorization/``. The slice SHALL contain the ``AuthorizationPort``, the ``AuthorizationRegistry``, the SQLModel adapter, the SpiceDB stub, and the ``BootstrapSystemAdmin`` use case. The slice SHALL NOT import from any other feature.
+The system SHALL host authorization concerns in a dedicated feature slice at ``src/features/authorization/``. The slice SHALL contain the ``AuthorizationPort``, the ``AuthorizationRegistry``, the SQLModel adapter, and the ``BootstrapSystemAdmin`` use case. The slice SHALL NOT import from any other feature.
 
 #### Scenario: Authorization owns the engine code
 
@@ -424,25 +423,9 @@ A single Alembic revision SHALL drop the `roles`, `permissions`, `role_permissio
 - **WHEN** `alembic downgrade -1` runs and then `alembic upgrade head` runs
 - **THEN** the schema after the round-trip is byte-equivalent to the schema before
 
-### Requirement: SpiceDB adapter is a structural placeholder
-
-The `SpiceDBAuthorizationAdapter` SHALL implement `AuthorizationPort` with the same five methods. Each method SHALL raise `NotImplementedError`. The adapter SHALL ship a README documenting which SpiceDB API maps to each port method and providing a `.zed` schema for the kanban and system resources. The adapter SHALL be excluded from coverage with `# pragma: no cover`.
-
-#### Scenario: Stub raises with a helpful message
-
-- **WHEN** any method on `SpiceDBAuthorizationAdapter` is called
-- **THEN** the call raises `NotImplementedError`
-- **AND** the message points to the adapter's README
-
-#### Scenario: README documents the API and schema mapping
-
-- **WHEN** the file `adapters/outbound/authorization/spicedb/README.md` is read
-- **THEN** it lists the SpiceDB API call corresponding to each port method (`CheckPermission` → `check`, `LookupResources` → `lookup_resources`, `LookupSubjects` → `lookup_subjects`, `WriteRelationships` → `write_relationships`, `DeleteRelationships` → `delete_relationships`)
-- **AND** it includes a `.zed` schema covering the `kanban` and `system` resource types
-
 ### Requirement: Authorization config is registered programmatically per feature
 
-The system SHALL expose an ``AuthorizationRegistry`` whose ``register_resource_type`` and ``register_parent`` methods are the only mechanism by which a feature contributes resource types, actions, and parent-walk callables to the authorization engine. The registry SHALL refuse duplicate registrations, SHALL raise after ``seal()`` is called, and SHALL be the single source of truth read by the SQLModel adapter and any future adapter (SpiceDB, OpenFGA).
+The system SHALL expose an ``AuthorizationRegistry`` whose ``register_resource_type`` and ``register_parent`` methods are the only mechanism by which a feature contributes resource types, actions, and parent-walk callables to the authorization engine. The registry SHALL refuse duplicate registrations, SHALL raise after ``seal()`` is called, and SHALL be the single source of truth read by the SQLModel adapter and any future ``AuthorizationPort`` adapter.
 
 #### Scenario: A feature registers a leaf resource type
 

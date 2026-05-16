@@ -38,6 +38,25 @@ removal changes touch only the removed backend's lines + minimal honest
 restatement. See [[openspec-convention]] for the MODIFY targets (email,
 project-layout, quality-automation, authentication validator-surface).
 
+**Step 6 (SpiceDB stub) is categorically SMALLER than 3/4/5 — pure dead-code
+deletion, NO production-validator involvement.** Unlike email/jobs backends,
+there is NO authz backend selector setting, NO env var, NO `Literal`, NO
+`validate_production` arm naming SpiceDB anywhere. `build_authorization_container`
+constructs only `SQLModelAuthorizationAdapter`; the stub is imported by nothing
+but its own `__init__.py`. So the "keep the prod refusal honest" stance does
+NOT apply here — no validator wording change, no `_VALID_PROD_ENV` repoint, no
+migration. `CONTRIBUTING.md` and `pyproject.toml` have ZERO SpiceDB refs
+(verified); `src/**/tests/` has ZERO SpiceDB refs (no stub test to delete).
+Delta target: `authorization` capability only — REMOVE `SpiceDB adapter is a
+structural placeholder`; MODIFY `AuthorizationPort defines the application-side
+authorization contract` (Two-adapters scenario → single SQLModel-adapter
+scenario), `Authorization is a self-contained feature slice` (drop ", the
+SpiceDB stub" from SHALL text), `Authorization config is registered
+programmatically per feature` (drop "(SpiceDB, OpenFGA)" from SHALL text).
+Reword docstrings to be backend-neutral (port stays the swap boundary; just
+stop naming a deleted stub + the out-of-scope SpiceDB/AuthZed vendor list).
+AVP/Cedar is ROADMAP step 53 — out of scope. Change: `remove-spicedb-stub`.
+
 **Step 5 (arq) is categorically bigger than 3/4 — it removes a RUNTIME, not
 a port leaf.** `src/worker.py` IS arq (`run_worker`/`WorkerSettings`/`CronJob`);
 the outbox relay + auth token-purge cron only run as arq crons; jobs AND

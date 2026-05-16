@@ -2,8 +2,8 @@
 
 The feature owns the ``AuthorizationPort`` Protocol, the runtime
 ``AuthorizationRegistry`` that lets other features contribute their
-resource types, the SQLModel-backed engine adapter, the SpiceDB stub,
-and the ``BootstrapSystemAdmin`` use case. It depends on the auth
+resource types, the SQLModel-backed engine adapter, and the
+``BootstrapSystemAdmin`` use case. It depends on the auth
 feature only through the three small outbound ports defined under
 ``application/ports/outbound/`` (``UserAuthzVersionPort``,
 ``UserRegistrarPort``, ``AuditPort``).

@@ -1,18 +1,19 @@
 """Application-side authorization port (Zanzibar-flavored API).
 
 The port is the single boundary between the application layer and any
-authorization engine. The two adapters that ship with the template
-(in-repo SQLModel default; SpiceDB stub) implement this Protocol.
+authorization engine. The in-repo SQLModel adapter implements this
+Protocol, and it remains the single swap boundary so a future ReBAC
+backend can be introduced as one new adapter.
 
-The five methods mirror the SpiceDB / OpenFGA public API so a reader
-who learns this port can read either system's documentation without
-retraining:
+The five methods mirror the Zanzibar / OpenFGA public API so a reader
+who learns this port can read a Zanzibar-style system's documentation
+without retraining:
 
-* ``check`` ↔ SpiceDB ``CheckPermission``
-* ``lookup_resources`` ↔ SpiceDB ``LookupResources``
-* ``lookup_subjects`` ↔ SpiceDB ``LookupSubjects``
-* ``write_relationships`` ↔ SpiceDB ``WriteRelationships``
-* ``delete_relationships`` ↔ SpiceDB ``DeleteRelationships``
+* ``check`` ↔ Zanzibar ``Check`` / OpenFGA ``Check``
+* ``lookup_resources`` ↔ Zanzibar ``LookupResources``
+* ``lookup_subjects`` ↔ Zanzibar ``LookupSubjects``
+* ``write_relationships`` ↔ Zanzibar ``Write`` relationships
+* ``delete_relationships`` ↔ Zanzibar ``Delete`` relationships
 """
 
 from __future__ import annotations

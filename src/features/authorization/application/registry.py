@@ -13,7 +13,7 @@ callable for the lifetime of the registry.
 Zanzibar parallel
 =================
 ``register_resource_type`` is the rough equivalent of a ``definition`` in
-a SpiceDB ``.zed`` schema: a resource type with its actions (permissions)
+a Zanzibar-style schema: a resource type with its actions (permissions)
 and the relation hierarchy that satisfies them. ``register_parent``
 expresses computed userset rewrites — an inherited resource type
 borrows its permissions from a parent type and exposes a callable that
