@@ -321,6 +321,53 @@ migrations or the worker.
 | `make clean-reports` | Remove generated report artifacts. |
 | `make ci` | Run the full local gate. |
 
+## Operational Commands
+
+Two project-level composition-root CLIs live under `src/cli/` (peers of
+`main.py` and `worker.py`; features must not import them). They are not
+covered by the `make`-target table above because each carries
+"when to use it / which env vars" semantics a one-line table cannot.
+
+### Create or promote the first system admin
+
+```bash
+PYTHONPATH=src uv run python -m cli.create_super_admin create-super-admin \
+    --email <email> --password-env <ENVVAR>
+```
+
+Creates or promotes the first `system:main#admin`. It exists as a CLI
+rather than an HTTP endpoint so bootstrapping the first admin does not
+require an admin JWT to already exist — it is the on-demand alternative
+to the `APP_AUTH_SEED_ON_STARTUP` /
+`APP_AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL`/`APP_AUTH_BOOTSTRAP_PASSWORD`
+startup-bootstrap path (see the auth env-var reference in `CLAUDE.md`
+and `docs/operations.md`). Use it once, when no admin exists yet.
+
+| Flag / env var | Notes |
+| --- | --- |
+| `create-super-admin` | Required subcommand. |
+| `--email` | Required; the admin account's email. |
+| `--password-env` | Names the env var holding the password (default `AUTH_BOOTSTRAP_PASSWORD`); the password is read from that variable to keep it out of shell history and process listings. A missing or empty value aborts. |
+| `APP_*` | Database and auth configuration are read via `AppSettings`. |
+| `APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING` | Promoting an **existing** account requires this set to `true` plus the account's real password; default-deny — it exits non-zero otherwise. |
+
+### Prune the outbox once
+
+```bash
+make outbox-prune          # = PYTHONPATH=src uv run python -m cli.outbox_prune
+```
+
+A one-shot prune (no flags) that deletes terminal (`delivered` /
+`failed`) outbox rows and stale dedup marks past their retention, in
+batches. It runs the same `PruneOutbox` use case as the worker's hourly
+prune cron, so operator-driven and scheduled prunes cannot drift. Use it
+for an on-demand sweep without waiting for the worker cron.
+
+| Env var | Notes |
+| --- | --- |
+| `APP_OUTBOX_*` | Retention windows and batch size come from these settings via `AppSettings`. |
+| `APP_OUTBOX_ENABLED` | **Intentionally ignored** — an operator running the one-shot has already decided to prune. |
+
 ## Troubleshooting
 
 | Symptom | Check |

@@ -36,6 +36,11 @@ make ci                                   # full gate: quality + cov + integrati
 uv run alembic revision --autogenerate -m "describe change"
 uv run alembic upgrade head
 
+# Operational CLI (src/cli/ — composition-root peers of main.py/worker.py)
+PYTHONPATH=src uv run python -m cli.create_super_admin create-super-admin --email <e> --password-env <ENVVAR>
+                                          # create/promote the first system:main#admin; on-demand alternative to the APP_AUTH_SEED_ON_STARTUP bootstrap (--password-env names the var holding the password; promoting an existing account needs APP_AUTH_BOOTSTRAP_PROMOTE_EXISTING=true)
+make outbox-prune                         # one-shot prune of terminal outbox rows + stale dedup marks (same PruneOutbox code path as the worker prune cron; ignores APP_OUTBOX_ENABLED)
+
 # Run single test file
 uv run pytest src/features/authentication/tests/e2e/test_auth_flow.py
 uv run pytest src/features/users/tests/unit/test_user_authz_version_adapter.py
