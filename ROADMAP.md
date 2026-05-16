@@ -49,7 +49,7 @@ Yo lanzo `spec-writer` con el alcance exacto de ese paso, esperamos tu aprobaci�
 
 - [x] **8. Actualizar `docs/api.md`**: borrar todas las referencias a endpoints Kanban (`/api/boards`, `/api/columns`, `/api/cards`). No existen en el c처digo.
 
-- [ ] **9. Actualizar `README.md`** con el nuevo tagline AWS-first. Quitar la matriz de features que promete SMTP/Resend/arq/SpiceDB. Quitar la menci처n al scaffold recuperable.
+- [x] **9. Actualizar `README.md`** con el nuevo tagline AWS-first. Quitar la matriz de features que promete SMTP/Resend/arq/SpiceDB. Quitar la menci처n al scaffold recuperable.
 
 - [ ] **10. Actualizar `CLAUDE.md`** con el mismo encuadre: matriz de features post-limpieza, secci처n "Adding a new feature" (sin `_template`), reglas de producci처n actualizadas.
 

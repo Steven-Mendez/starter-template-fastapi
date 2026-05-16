@@ -33,10 +33,35 @@ repoint it to the dev value and isolate the now-always-present refusal in
 every test that reuses the baseline to assert a *different* refusal.
 
 Do NOT pre-empt later doc-rewrite steps: step 9=README, 10=CLAUDE,
-11=`docs/operations.md` "production refuses to start if…" narrative. Adapter-
-removal changes touch only the removed backend's lines + minimal honest
-restatement. See [[openspec-convention]] for the MODIFY targets (email,
-project-layout, quality-automation, authentication validator-surface).
+11=`docs/operations.md` "production refuses to start if…" narrative,
+12=`src/cli/` docs in README+CLAUDE. Adapter-removal changes touch only the
+removed backend's lines + minimal honest restatement. See
+[[openspec-convention]] for the MODIFY targets (email, project-layout,
+quality-automation, authentication validator-surface).
+
+**Step 9 (README AWS-first) — change `readme-aws-first`, drafted 2026-05-16.**
+ONLY `README.md` + OpenSpec artifacts. Audited reality: scaffold-recovery
+mention ALREADY removed by step 1 (zero `_template`/`recoverable` hits in
+README) — step 9 only VERIFIES + guards it, does NOT fabricate work. The
+ONLY false adapter claim is `README.md:53` "`s3` stub" (step 7's deferred
+README propagation — fix to "real `boto3` `s3` adapter"). No
+SMTP/Resend/arq/SpiceDB rows ever existed in the matrix (it was never
+adapter-level). Two extra stale claims found beyond the brief: README omits
+the `outbox` feature entirely (lists 6, code ships 7) in both Feature
+Inventory AND Project Structure tree, and "four pieces of infrastructure"
+intro framing pre-dates `outbox`+AWS-first; and the "What's New" section
+links the now-broken `openspec/changes/starter-template-foundation/` (404 —
+archived to `archive/2026-05-13-...`). Deferred-found (NOT fixed, flagged):
+the `src/platform/`→`src/app_platform/` tree label (governed by step 1's
+already-satisfied scenario) and the "run at least one worker per Redis
+deployment" Deployment-Notes line (closer to step 11). Single delta target:
+`project-layout` MODIFY `Documentation reflects the new layout` — restate
+VERBATIM (now 5 paragraphs + 5 scenarios after step 7 folded in the
+S3-adapter paragraph at canonical spec.md:99 + S3 scenario at :130-136), ADD
+one scenario "README presents the AWS-first framing and a code-true feature
+inventory". **Reconciliation hazard:** step 7 (`fix-s3-stub-drift`) is
+in-flight on the SAME requirement — archive step MUST re-copy the canonical
+block at archive time if step 7 lands first. Archive WITHOUT `--skip-specs`.
 
 **Step 6 (SpiceDB stub) is categorically SMALLER than 3/4/5 — pure dead-code
 deletion, NO production-validator involvement.** Unlike email/jobs backends,

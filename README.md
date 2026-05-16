@@ -1,10 +1,22 @@
 # starter-template-fastapi
 
-`starter-template-fastapi` is a production-shaped starter for FastAPI
-services. It bundles the four pieces of infrastructure every real backend
-needs — authentication, users, authorization, transactional email — plus
-ports for background jobs and file storage, all sitting on a feature-first
-hexagonal layout enforced by Import Linter.
+`starter-template-fastapi` is an **AWS-first FastAPI starter**. Local
+development needs no infrastructure beyond a single Postgres container;
+production targets AWS. The project deliberately ships **one opinionated
+option rather than several half-built ones** — its production direction is
+AWS-managed building blocks (Cognito, SES, SQS, S3, RDS, ElastiCache),
+wired in over later roadmap steps rather than as a grab-bag of partial
+integrations.
+
+Today the codebase ships seven feature packages — `authentication`,
+`users`, `authorization`, `email`, `background_jobs`, `file_storage`, and
+`outbox` — on a feature-first hexagonal layout enforced by Import Linter.
+The AWS-managed adapters are the project's **production direction**: the
+production email backend (AWS SES), the production job runtime (AWS SQS + a
+Lambda worker), and the rest of the AWS surface each arrive at a later
+roadmap step. Nothing in this README claims an AWS adapter, endpoint, or
+configuration that is not in the code today; see [`ROADMAP.md`](ROADMAP.md)
+for the sequence.
 
 The intended first move on a new project is **clone, run, then build your
 first feature from scratch** following the documented hexagonal layout
@@ -14,12 +26,9 @@ bundled features.
 
 ## What's New
 
-The `starter-template-foundation` change reshaped the repository: the
-`auth` feature split into `authentication` + `users`, and three
-infrastructure features (`email`, `background_jobs`, `file_storage`) were
-added. See
-[`openspec/changes/starter-template-foundation/`](openspec/changes/starter-template-foundation/)
-for the full proposal.
+See [`ROADMAP.md`](ROADMAP.md) for the project's direction and
+[`openspec/changes/archive/`](openspec/changes/archive/) for the full
+change history.
 
 ## Documentation
 
@@ -49,8 +58,9 @@ for the full proposal.
 | `users` | The `User` entity, registration, profile read/update, deactivation, admin user listing. Owns the `UserPort` consumed by `authentication`. |
 | `authorization` | ReBAC engine. Owns `AuthorizationPort`, the runtime registry, and the SQLModel adapter. |
 | `email` | `EmailPort` plus the `console` adapter (dev/test; production email arrives with AWS SES at a later roadmap step). Owns the template registry features contribute to. |
-| `background_jobs` | `JobQueuePort` plus the `in_process` adapter (dev/test; the production job runtime, AWS SQS + a Lambda worker, arrives at a later roadmap step). Worker scaffold at `python -m worker`. |
-| `file_storage` | `FileStoragePort` plus `local` adapter and `s3` stub. |
+| `background_jobs` | `JobQueuePort` plus the `in_process` adapter (dev/test; the production job runtime, AWS SQS + a Lambda worker, arrives at a later roadmap step). Runtime-agnostic worker scaffold at `python -m worker`. |
+| `file_storage` | `FileStoragePort` plus a `local` filesystem adapter (dev/test) and a real `boto3`-backed `s3` adapter selected with `APP_STORAGE_BACKEND=s3`. |
+| `outbox` | `OutboxPort`, the `outbox_messages` table, the `SessionSQLModelOutboxAdapter`, and the `DispatchPending` relay use case that runs in the worker only. |
 
 Cross-feature communication goes through ports only; Import Linter
 contracts forbid direct imports (e.g. `authentication ↛ authorization`,
@@ -80,7 +90,7 @@ contracts forbid direct imports (e.g. `authentication ↛ authorization`,
 ├── openspec/                           # Active and archived change proposals
 ├── src/
 │   ├── main.py                         # API composition entrypoint
-│   ├── worker.py                       # Background-jobs worker entrypoint
+│   ├── worker.py                       # Runtime-agnostic worker scaffold (logs handlers/cron, exits non-zero; no job runtime wired until a later roadmap step)
 │   ├── platform/                       # Feature-agnostic platform code
 │   │   ├── api/                        # App factory, middleware, error handlers
 │   │   ├── config/                     # AppSettings + per-feature sub-settings
@@ -92,7 +102,8 @@ contracts forbid direct imports (e.g. `authentication ↛ authorization`,
 │       ├── authorization/              # ReBAC engine, AuthorizationPort, registry
 │       ├── email/                      # EmailPort, console adapter, templates
 │       ├── background_jobs/            # JobQueuePort, in-process adapter, worker scaffold
-│       └── file_storage/               # FileStoragePort, local/S3 adapters
+│       ├── file_storage/               # FileStoragePort, local + boto3 S3 adapters
+│       └── outbox/                     # OutboxPort, outbox_messages table, DispatchPending relay
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
@@ -147,8 +158,8 @@ curl -s -X POST http://localhost:8000/auth/register \
    `uv run alembic revision --autogenerate -m "add <your-feature>"`.
 
 You now have authentication, users, authorization, email, background
-jobs, and file storage wired in — your first PR should be your domain
-code, not the infrastructure it sits on.
+jobs, file storage, and the transactional outbox wired in — your first
+PR should be your domain code, not the infrastructure it sits on.
 
 ## Installation
 

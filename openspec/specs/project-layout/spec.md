@@ -134,6 +134,16 @@ The `docs/api.md` API reference SHALL document only HTTP routes that exist in th
 - **AND** any prose that names the S3 file-storage adapter describes it as a real `boto3`-backed `FileStoragePort` implementation selectable via `APP_STORAGE_BACKEND=s3`
 - **AND** the only S3/file-storage "scaffolding" wording that remains is the accurate statement that the `file_storage` *feature* ships unwired by any consumer (not a claim that the adapter itself is incomplete)
 
+#### Scenario: README presents the AWS-first framing and a code-true feature inventory
+
+- **WHEN** a contributor reads `README.md`
+- **THEN** the introduction frames the project as an AWS-first FastAPI starter — local development needs no infrastructure beyond a Postgres container, production targets AWS, and the project ships one opinionated option rather than several half-built ones
+- **AND** any AWS service named in the introduction (Cognito, SES, SQS, S3, RDS, ElastiCache) is presented as the project's production direction at a later roadmap step, not as an already-shipped adapter, endpoint, or configuration
+- **AND** the Feature Inventory and Project Structure list all seven features present in the source tree — `authentication`, `users`, `authorization`, `email`, `background_jobs`, `file_storage`, and `outbox` — with no row or tree entry omitted
+- **AND** no prose, table row, or tree entry references a removed adapter (`smtp`, `resend`, `arq`, `spicedb`/SpiceDB) or describes the S3 file-storage adapter as a "stub"
+- **AND** the `file_storage` row describes a `local` adapter and a real `boto3`-backed `s3` adapter selectable via `APP_STORAGE_BACKEND=s3`
+- **AND** the README contains no broken link to `openspec/changes/starter-template-foundation/` and no `src/cli/` command-reference section (the latter is owned by a later roadmap step)
+
 ### Requirement: Destructive migrations raise on downgrade and are scanned in CI
 
 Migrations whose `upgrade()` performs destructive operations (column drops, table drops, index drops, or `op.execute` running a `DROP` / `ALTER TABLE ... DROP`) SHALL have a `downgrade()` whose first executable statement is `raise NotImplementedError("...")` and whose message references `docs/operations.md#migration-policy`. Narrowing `alter_column` (e.g., `String(length=255)` → `String(length=64)`) is destructive but cannot be detected statically; operators MUST opt in by hand to the same convention.
