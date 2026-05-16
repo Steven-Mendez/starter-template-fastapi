@@ -35,7 +35,7 @@ Yo lanzo `spec-writer` con el alcance exacto de ese paso, esperamos tu aprobaci�
 
 - [x] **1. Eliminar el scaffold `_template`** de todo: `README.md`, `CLAUDE.md`, `docs/feature-template.md`, `docs/architecture.md`, secci처n "Adding a new feature". No documentarlo, no recuperarlo de git history. Borrar `docs/feature-template.md`.
 
-- [ ] **2. Eliminar variables `APP_AUTH_OAUTH_*` y c처digo muerto asociado** en `.env.example`, `AuthenticationSettings`, validators de producci처n. Auditar si hay referencias en docs.
+- [x] **2. Eliminar variables `APP_AUTH_OAUTH_*` y c처digo muerto asociado** en `.env.example`, `AuthenticationSettings`, validators de producci처n. Auditar si hay referencias en docs.
 
 - [ ] **3. Eliminar adaptador SMTP** (`src/features/email/adapters/outbound/smtp/`), sus settings, env vars `APP_EMAIL_SMTP_*`, tests, contract tests parametrizados, servicio `mailpit` en `docker-compose`, menci처n en docs.
 

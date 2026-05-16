@@ -42,10 +42,6 @@ class AuthenticationSettings:
     bootstrap_promote_existing: bool
     default_user_role: str
     super_admin_role: str
-    oauth_enabled: bool
-    oauth_google_client_id: str | None
-    oauth_google_client_secret: str | None
-    oauth_google_redirect_uri: str | None
     return_internal_tokens: bool
     auth_token_retention_days: int
     auth_token_purge_interval_minutes: int
@@ -91,10 +87,6 @@ class AuthenticationSettings:
             bootstrap_promote_existing=app.auth_bootstrap_promote_existing,
             default_user_role=app.auth_default_user_role,
             super_admin_role=app.auth_super_admin_role,
-            oauth_enabled=app.auth_oauth_enabled,
-            oauth_google_client_id=app.auth_oauth_google_client_id,
-            oauth_google_client_secret=app.auth_oauth_google_client_secret,
-            oauth_google_redirect_uri=app.auth_oauth_google_redirect_uri,
             return_internal_tokens=app.auth_return_internal_tokens,
             auth_token_retention_days=app.auth_token_retention_days,
             auth_token_purge_interval_minutes=app.auth_token_purge_interval_minutes,

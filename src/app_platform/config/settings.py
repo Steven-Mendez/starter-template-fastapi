@@ -145,12 +145,6 @@ class AppSettings(BaseSettings):
     auth_bootstrap_promote_existing: bool = False
     auth_default_user_role: str = "user"
     auth_super_admin_role: str = "super_admin"
-    # TODO: OAuth login is not implemented yet. These settings only reserve
-    # names for future work; startup logs a warning if any are configured.
-    auth_oauth_enabled: bool = False
-    auth_oauth_google_client_id: str | None = None
-    auth_oauth_google_client_secret: str | None = None
-    auth_oauth_google_redirect_uri: str | None = None
     # MUST stay False in production: enabling it surfaces single-use
     # password-reset / email-verify tokens in API responses, which is
     # only acceptable for local development and e2e tests.

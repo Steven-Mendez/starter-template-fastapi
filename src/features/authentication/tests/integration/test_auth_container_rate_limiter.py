@@ -63,28 +63,6 @@ def test_build_auth_container_rejects_invalid_jwt_algorithm(
         )
 
 
-def test_build_auth_container_warns_for_unimplemented_oauth_settings(
-    test_settings: AppSettings,
-    sqlite_auth_repository: SQLModelAuthRepository,
-    users_for_auth: SQLModelUserRepository,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    caplog.set_level(
-        logging.WARNING, logger="features.authentication.composition.container"
-    )
-    settings = test_settings.model_copy(update={"auth_oauth_enabled": True})
-
-    container = build_auth_container(
-        settings=settings,
-        users=users_for_auth,
-        outbox_uow=_noop_outbox_uow(),
-        repository=sqlite_auth_repository,
-    )
-
-    assert "event=auth.oauth.unimplemented" in caplog.text
-    container.shutdown()
-
-
 def test_build_auth_container_uses_fixed_limiter_without_redis_url(
     test_settings: AppSettings,
     sqlite_auth_repository: SQLModelAuthRepository,

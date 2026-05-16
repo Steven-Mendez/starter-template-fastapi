@@ -187,7 +187,6 @@ def build_auth_container(
         raise RuntimeError("APP_AUTH_JWT_SECRET_KEY is required at startup")
 
     token_service = AccessTokenService(settings)
-    _warn_unused_oauth_settings(settings)
     _check_internal_token_exposure(settings)
 
     limiter: RateLimiter
@@ -367,22 +366,6 @@ def build_auth_container(
         ),
         list_audit_events=ListAuditEvents(_repository=repo),
     )
-
-
-def _warn_unused_oauth_settings(settings: AppSettings) -> None:
-    """Warn when OAuth config is present even though OAuth is not implemented."""
-    if any(
-        (
-            settings.auth_oauth_enabled,
-            settings.auth_oauth_google_client_id,
-            settings.auth_oauth_google_client_secret,
-            settings.auth_oauth_google_redirect_uri,
-        )
-    ):
-        _logger.warning(
-            "event=auth.oauth.unimplemented message=OAuth settings are configured "
-            "but OAuth login is not implemented"
-        )
 
 
 def _check_internal_token_exposure(settings: AppSettings) -> None:

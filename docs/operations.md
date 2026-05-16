@@ -363,19 +363,6 @@ principals in the process handling the request. In multi-process or multi-replic
 deployments, access-token authorization should still be treated as taking effect
 within the documented cache window.
 
-### OAuth Preparation
-
-The service exposes configuration placeholders for a future OAuth provider
-integration:
-
-- `APP_AUTH_OAUTH_ENABLED`
-- `APP_AUTH_OAUTH_GOOGLE_CLIENT_ID`
-- `APP_AUTH_OAUTH_GOOGLE_CLIENT_SECRET`
-- `APP_AUTH_OAUTH_GOOGLE_REDIRECT_URI`
-
-OAuth browser/provider flows are not implemented yet; current authentication
-is first-party email/password login that returns JWT bearer tokens.
-
 ## Rate Limiting
 
 Auth endpoints (login, register, password reset, email verification) are rate-limited
@@ -803,10 +790,6 @@ violated and `APP_ENVIRONMENT=production`.
 | `APP_AUTH_BOOTSTRAP_SUPER_ADMIN_PASSWORD` | unset | Set with `..._EMAIL` to bootstrap. |
 | `APP_AUTH_DEFAULT_USER_ROLE` | `user` | Role assigned on registration. |
 | `APP_AUTH_SUPER_ADMIN_ROLE` | `super_admin` | Marker role for system-admin bootstrap. |
-| `APP_AUTH_OAUTH_ENABLED` | `false` | Reserved for future OAuth wiring. |
-| `APP_AUTH_OAUTH_GOOGLE_CLIENT_ID` | unset | Reserved for future OAuth wiring. |
-| `APP_AUTH_OAUTH_GOOGLE_CLIENT_SECRET` | unset | Reserved for future OAuth wiring. |
-| `APP_AUTH_OAUTH_GOOGLE_REDIRECT_URI` | unset | Reserved for future OAuth wiring. |
 | `APP_AUTH_RETURN_INTERNAL_TOKENS` | `false` | Exposes single-use reset/verify tokens in API responses. **Must be `false` in production.** |
 | `APP_AUTH_TOKEN_RETENTION_DAYS` | `7` | Retention window (days) for the worker's `auth-purge-tokens` cron. Refresh-token rows past `expires_at`/`revoked_at` older than the cutoff and `auth_internal_tokens` rows past `used_at`/`expires_at` older than the cutoff are deleted in 10000-row batches. Tune up if ops needs a longer evidence window after logout; tune down to keep tables smaller. |
 | `APP_AUTH_TOKEN_PURGE_INTERVAL_MINUTES` | `60` | Cadence of the `auth-purge-tokens` cron, snapped to the nearest divisor of 60 (1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60). **Set to `0` to disable the cron entirely** — operator kill switch when a sweep is undesired (e.g. during an investigation). The use case is never scheduled and tokens stay on disk until the value is restored. |
