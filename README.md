@@ -33,7 +33,7 @@ for the full proposal.
   health checks, **the env-var reference table**, rollback notes.
 - [Observability Guide](docs/observability.md) — Prometheus, OTel
   tracing, structured logs.
-- [Email](docs/email.md) — `EmailPort`, console/Resend adapters,
+- [Email](docs/email.md) — `EmailPort`, the `console` adapter,
   templates.
 - [Background Jobs](docs/background-jobs.md) — `JobQueuePort`,
   in-process/`arq` adapters, the worker process.
@@ -47,7 +47,7 @@ for the full proposal.
 | `authentication` | JWT issuance, login/logout, refresh, password reset, email verify, rate limiting, principal resolution, credential storage. |
 | `users` | The `User` entity, registration, profile read/update, deactivation, admin user listing. Owns the `UserPort` consumed by `authentication`. |
 | `authorization` | ReBAC engine. Owns `AuthorizationPort`, the runtime registry, the SQLModel adapter, and the SpiceDB stub. |
-| `email` | `EmailPort` plus `console` and `resend` adapters. Owns the template registry features contribute to. |
+| `email` | `EmailPort` plus the `console` adapter (dev/test; production email arrives with AWS SES at a later roadmap step). Owns the template registry features contribute to. |
 | `background_jobs` | `JobQueuePort` plus `in_process` and `arq` adapters. Worker entrypoint at `python -m worker`. |
 | `file_storage` | `FileStoragePort` plus `local` adapter and `s3` stub. |
 
@@ -89,7 +89,7 @@ contracts forbid direct imports (e.g. `authentication ↛ authorization`,
 │       ├── authentication/             # Tokens, login, refresh, password reset, credentials
 │       ├── users/                      # User entity + lifecycle, UserPort
 │       ├── authorization/              # ReBAC engine, AuthorizationPort, registry
-│       ├── email/                      # EmailPort, console/Resend adapters, templates
+│       ├── email/                      # EmailPort, console adapter, templates
 │       ├── background_jobs/            # JobQueuePort, in-process/arq adapters
 │       └── file_storage/               # FileStoragePort, local/S3 adapters
 ├── Dockerfile
@@ -181,7 +181,7 @@ common ones to know up front:
 | `APP_POSTGRESQL_DSN` | `postgresql+psycopg://postgres:postgres@localhost:5432/starter` | Database DSN. |
 | `APP_AUTH_JWT_SECRET_KEY` | unset | **Required in production.** |
 | `APP_AUTH_REDIS_URL` | unset | Redis URL for distributed rate limiting and the principal cache. |
-| `APP_EMAIL_BACKEND` | `console` | `resend` in production. |
+| `APP_EMAIL_BACKEND` | `console` | Only `console` (dev/test); production email not yet available (AWS SES at a later roadmap step). |
 | `APP_JOBS_BACKEND` | `in_process` | `arq` in production. |
 
 ## Running Locally

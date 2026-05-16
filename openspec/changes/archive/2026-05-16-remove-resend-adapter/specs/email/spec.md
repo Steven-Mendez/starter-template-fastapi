@@ -1,39 +1,25 @@
-# email Specification
+## REMOVED Requirements
 
-## Purpose
-TBD - created by archiving change add-s3-and-resend-adapters. Update Purpose after archive.
-## Requirements
-### Requirement: EmailPort contract
+### Requirement: Resend adapter is a real HTTP implementation
 
-The system SHALL expose an `EmailPort` Protocol in `src.features.email.application.ports.email_port` with a single method `send(*, to: str, template_name: str, context: dict[str, Any]) -> Result[None, EmailError]`. Adapters SHALL render the template via the wired `EmailTemplateRegistry` and SHALL NOT raise application-level errors through `send`; failure paths SHALL be returned as `Err(EmailError-subclass)` values.
+**Reason**: ROADMAP ETAPA I step 4 removes the Resend email adapter. The
+starter is AWS-first; the real production email backend is AWS SES, added at
+ROADMAP step 25. The `ResendEmailAdapter`, its `httpx` dependency, and its
+config surface are deleted with no replacement in this change.
 
-#### Scenario: Sending a registered template returns Ok
+**Migration**: Deployments must not set `APP_EMAIL_BACKEND=resend` — the only
+accepted value is `console` (dev/test). Production email is unavailable until
+ROADMAP step 25 ships `aws_ses`. Stale `APP_EMAIL_RESEND_*` env vars are
+silently ignored (`AppSettings.model_config` uses `extra="ignore"`).
 
-- **GIVEN** a wired `EmailPort` whose registry has a template `"contract/msg"` with subject `"hi"` and body `"Hi {{ name }}\n"`
-- **WHEN** `port.send(to="a@example.com", template_name="contract/msg", context={"name": "A"})` is called
-- **THEN** the call returns `Ok(None)`
+### Requirement: Resend base URL is configurable
 
-#### Scenario: Sending an unregistered template returns Err
+**Reason**: ROADMAP ETAPA I step 4 deletes the Resend adapter; there is no
+adapter to configure a base URL for. `APP_EMAIL_RESEND_BASE_URL` is removed.
 
-- **GIVEN** a wired `EmailPort` whose registry does not contain `"never-registered"`
-- **WHEN** `port.send(to="a@example.com", template_name="never-registered", context={})` is called
-- **THEN** the call returns `Err(UnknownTemplateError(template_name="never-registered"))`
+**Migration**: No action — the env var is silently ignored if still set.
 
-### Requirement: EmailTemplateRegistry seal lifecycle
-
-The `EmailTemplateRegistry` SHALL accept template registrations until `seal()` is called, and SHALL raise on any registration attempt after sealing. It SHALL reject duplicate template names. The composition root SHALL call `seal()` after every feature has contributed its templates and before the application accepts traffic.
-
-#### Scenario: Duplicate registration raises
-
-- **GIVEN** a fresh `EmailTemplateRegistry`
-- **WHEN** `register_template("welcome", subject="...", body_path=path)` is called twice with the same name
-- **THEN** the second call raises a registry error
-
-#### Scenario: Registration after seal raises
-
-- **GIVEN** an `EmailTemplateRegistry` on which `seal()` has been called
-- **WHEN** `register_template("late", ...)` is called
-- **THEN** the call raises a registry error
+## MODIFIED Requirements
 
 ### Requirement: Email backend selection
 

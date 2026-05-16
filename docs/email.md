@@ -1,8 +1,9 @@
 # Email
 
 The `email` feature owns transactional mail dispatch. It ships with a port,
-two adapters (console, Resend), and a template registry features
-contribute to at composition time.
+one adapter (`console`), and a template registry features contribute to at
+composition time. `console` is a dev/test backend; production email arrives
+with AWS SES at a later roadmap step.
 
 ## At A Glance
 
@@ -11,7 +12,6 @@ contribute to at composition time.
 | Port | `src/features/email/application/ports/email_port.py` — `EmailPort.send(to, template_name, context) -> Result[None, EmailError]` |
 | Registry | `src/features/email/application/registry.py` — `EmailTemplateRegistry.register_template(name, path)` |
 | Console adapter | `src/features/email/adapters/outbound/console/` |
-| Resend adapter | `src/features/email/adapters/outbound/resend/` (HTTP API) |
 | Settings | `src/features/email/composition/settings.py` (`EmailSettings`) |
 | Container | `src/features/email/composition/container.py` (`build_email_container`) |
 
@@ -19,14 +19,8 @@ contribute to at composition time.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `APP_EMAIL_BACKEND` | `console` | One of `console`, `resend`. **Production refuses `console`.** |
-| `APP_EMAIL_FROM` | unset | Required when backend is `resend`. |
-| `APP_EMAIL_RESEND_API_KEY` | unset | Required when backend is `resend`. |
-| `APP_EMAIL_RESEND_BASE_URL` | `https://api.resend.com` | Switch to `https://api.eu.resend.com` for the EU data plane or point at a Resend-compatible host. |
-
-The settings validator refuses to start when:
-
-- `APP_EMAIL_BACKEND=resend` and either `APP_EMAIL_RESEND_API_KEY` or `APP_EMAIL_FROM` is missing.
+| `APP_EMAIL_BACKEND` | `console` | Only `console` is accepted (dev/test). **Production refuses `console`** — there is no production email backend until AWS SES arrives at a later roadmap step. |
+| `APP_EMAIL_FROM` | unset | Sender address used by the rendered message. |
 
 ## How To Send Mail
 
@@ -90,47 +84,11 @@ Logs the rendered email at `INFO` with structured fields:
 ```
 
 Used in development, tests, and CI. Production refuses to start with this
-backend selected.
+backend selected; production email arrives with AWS SES at a later roadmap
+step.
 
 The contract test suite (`src/features/email/tests/contracts/`) runs the
 same assertions against every adapter.
-
-### Resend (`ResendEmailAdapter`)
-
-POSTs the rendered email to Resend's `/emails` endpoint over `httpx`.
-Status-code mapping:
-
-- `2xx` → `Ok(None)`
-- `4xx` → `Err(DeliveryError(reason="resend rejected: <status> <message>"))`,
-  reading `message` from the JSON body when present, falling back to
-  the raw response text.
-- `5xx` → `Err(DeliveryError(reason="resend transient error: <status> ..."))`
-- `httpx.HTTPError` (timeout, connect error) → `Err(DeliveryError(reason=str(exc)))`
-
-The adapter does **not** retry. For at-least-once delivery, enqueue the
-`send_email` background job (see `docs/background-jobs.md`) and let the
-job-queue retry policy handle transient failures — retrying inside the
-adapter risks double-sends because Resend's API is not idempotent on the
-client side.
-
-#### Acquiring an API key
-
-Create an account at <https://resend.com>, verify the sending domain
-(SPF + DKIM records are issued in the dashboard), and create an API
-key under *API Keys*. Free tier today is 100 emails/day with a 10
-emails/second cap — keep `APP_EMAIL_BACKEND=console` in development
-unless you specifically want to spend the quota.
-
-#### Region (EU vs US)
-
-Resend's EU data plane is reachable at `https://api.eu.resend.com`.
-Set `APP_EMAIL_RESEND_BASE_URL` to switch — no other change is needed.
-
-The same setting can also point at a Resend-compatible self-hosted
-service.
-
-The Resend contract path is exercised by `respx`-mocked HTTP transport;
-no real Resend account is touched in CI.
 
 ## Extending The Feature
 

@@ -22,13 +22,40 @@ _VALID_PROD_ENV = {
     "APP_APP_PUBLIC_URL": "https://example.com",
     "APP_AUTH_COOKIE_SECURE": "true",
     "APP_AUTH_REDIS_URL": "redis://localhost:6379/0",
-    "APP_EMAIL_BACKEND": "resend",
-    "APP_EMAIL_RESEND_API_KEY": "re_test_key",
+    "APP_EMAIL_BACKEND": "console",
     "APP_EMAIL_FROM": "no-reply@example.com",
     "APP_JOBS_BACKEND": "arq",
     "APP_JOBS_REDIS_URL": "redis://localhost:6379/0",
     "APP_OUTBOX_ENABLED": "true",
 }
+
+# After ROADMAP ETAPA I step 4 (Resend removed, AWS SES not yet added)
+# there is no production-capable email backend: ``console`` is the only
+# value and the production validator refuses it. Every ``_VALID_PROD_ENV``
+# environment therefore *always* carries this one email-backend error.
+# Tests that target a *different* refusal still match their own env var
+# in the aggregated message; tests that previously expected a fully-valid
+# production construction now assert that the email-backend refusal is
+# the *only* remaining error (i.e. the axis under test added none).
+_EMAIL_BACKEND_PROD_REFUSAL = "APP_EMAIL_BACKEND must not be 'console' in production"
+
+
+def _assert_only_email_backend_refusal(exc: ValidationError) -> None:
+    """Assert the lone production error is the always-present email refusal.
+
+    Used by the former "accepts X in production" tests: production no
+    longer boots (no email transport until AWS SES), so the strongest
+    honest assertion is that the value under test contributed no error
+    of its own — only the email-backend refusal remains.
+    """
+    message = str(exc)
+    assert _EMAIL_BACKEND_PROD_REFUSAL in message, message
+    # The aggregated message lists one bullet per error. Exactly one
+    # bullet — the email-backend refusal — must be present.
+    bullets = [line for line in message.splitlines() if line.lstrip().startswith("- ")]
+    assert len(bullets) == 1, (
+        f"expected only the email-backend refusal; got bullets: {bullets}"
+    )
 
 
 def test_defaults_in_development(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -46,10 +73,24 @@ def test_defaults_in_development(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Env parsing of the production baseline works for every field.
+
+    Production no longer boots on this baseline (no email transport
+    until AWS SES), so construction raises the lone email-backend
+    refusal. Field parsing itself is exercised under a non-production
+    environment where the production validator does not run.
+    """
     for k, v in _VALID_PROD_ENV.items():
         monkeypatch.setenv(k, v)
+    with pytest.raises(ValidationError) as exc_info:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    _assert_only_email_backend_refusal(exc_info.value)
+
+    # Parsing the same overrides under a non-production environment
+    # bypasses the production validator and confirms the fields load.
+    monkeypatch.setenv("APP_ENVIRONMENT", "test")
     s = AppSettings(_env_file=None)  # type: ignore[call-arg]
-    assert s.environment == "production"
+    assert s.environment == "test"
     assert s.enable_docs is False
     assert s.auth_jwt_secret_key == "a-secret-at-least-32-chars-long!!"
     assert s.auth_cookie_secure is True
@@ -154,12 +195,19 @@ def test_production_rejects_samesite_none(monkeypatch: pytest.MonkeyPatch) -> No
 def test_production_accepts_samesite_lax_or_strict(
     monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
-    """``lax`` and ``strict`` remain valid in production — only ``none`` is refused."""
+    """``lax`` and ``strict`` add no production error — only ``none`` is refused.
+
+    Production no longer boots (no email transport until AWS SES), so the
+    lone remaining error must be the email-backend refusal: ``lax`` /
+    ``strict`` contribute none of their own.
+    """
     for k, v in _VALID_PROD_ENV.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("APP_AUTH_COOKIE_SAMESITE", value)
-    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
-    assert settings.auth_cookie_samesite == value
+    with pytest.raises(ValidationError) as exc_info:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    _assert_only_email_backend_refusal(exc_info.value)
+    assert "APP_AUTH_COOKIE_SAMESITE" not in str(exc_info.value)
 
 
 def test_production_rejects_enabled_docs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -223,30 +271,56 @@ def test_arq_backend_requires_redis_url(monkeypatch: pytest.MonkeyPatch) -> None
         AppSettings(_env_file=None)  # type: ignore[call-arg]
 
 
-def test_resend_backend_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resend_backend_value_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``APP_EMAIL_BACKEND=resend`` is no longer an accepted value.
+
+    The Resend adapter was removed at ROADMAP ETAPA I step 4; the only
+    accepted backend is ``console``. ``email_backend`` is now
+    ``Literal["console"]``, so the stale ``resend`` value is rejected at
+    field validation with a message stating only ``console`` is allowed.
+    """
     monkeypatch.setenv("APP_EMAIL_BACKEND", "resend")
     monkeypatch.setenv("APP_EMAIL_FROM", "no-reply@example.com")
-    monkeypatch.delenv("APP_EMAIL_RESEND_API_KEY", raising=False)
-    with pytest.raises(ValidationError, match="APP_EMAIL_RESEND_API_KEY"):
+    with pytest.raises(ValidationError) as exc_info:
         AppSettings(_env_file=None)  # type: ignore[call-arg]
+    message = str(exc_info.value)
+    assert "email_backend" in message, message
+    assert "'console'" in message, message
 
 
-def test_resend_backend_requires_from(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_EMAIL_BACKEND", "resend")
-    monkeypatch.setenv("APP_EMAIL_RESEND_API_KEY", "re_test_key")
-    monkeypatch.delenv("APP_EMAIL_FROM", raising=False)
-    with pytest.raises(ValidationError, match="APP_EMAIL_FROM"):
+def test_smtp_backend_value_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``APP_EMAIL_BACKEND=smtp`` is still not an accepted value."""
+    monkeypatch.setenv("APP_EMAIL_BACKEND", "smtp")
+    with pytest.raises(ValidationError) as exc_info:
         AppSettings(_env_file=None)  # type: ignore[call-arg]
+    message = str(exc_info.value)
+    assert "email_backend" in message, message
+    assert "'console'" in message, message
 
 
-def test_production_accepts_resend_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_email_backend_accepted_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """There is no production-capable email backend after step 4.
+
+    ``console`` is the only value and the production validator refuses
+    it; the message must name no removed backend (no ``resend`` / no
+    ``smtp`` instruction). Production-with-email is intentionally not
+    bootable until AWS SES arrives at a later roadmap step.
+    """
     for k, v in _VALID_PROD_ENV.items():
         monkeypatch.setenv(k, v)
-    monkeypatch.setenv("APP_EMAIL_BACKEND", "resend")
-    monkeypatch.setenv("APP_EMAIL_RESEND_API_KEY", "re_test_key")
-    # Resend only needs FROM + key — construct should succeed without raising.
-    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
-    assert settings.email_backend == "resend"
+    monkeypatch.setenv("APP_EMAIL_BACKEND", "console")
+    with pytest.raises(ValidationError, match="APP_EMAIL_BACKEND") as exc_info:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    message = str(exc_info.value)
+    lowered = message.lower()
+    assert "resend" not in lowered, (
+        f"the refusal must not name the removed resend backend; got: {message}"
+    )
+    assert "smtp" not in lowered, (
+        f"the refusal must not name the removed smtp backend; got: {message}"
+    )
 
 
 def test_production_rejects_disabled_outbox(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -258,11 +332,19 @@ def test_production_rejects_disabled_outbox(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_production_accepts_enabled_outbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``APP_OUTBOX_ENABLED=true`` adds no production error.
+
+    Production no longer boots (no email transport until AWS SES); the
+    lone remaining error must be the email-backend refusal, proving the
+    outbox-enabled axis is accepted.
+    """
     for k, v in _VALID_PROD_ENV.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("APP_OUTBOX_ENABLED", "true")
-    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
-    assert settings.outbox_enabled is True
+    with pytest.raises(ValidationError) as exc_info:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    _assert_only_email_backend_refusal(exc_info.value)
+    assert "APP_OUTBOX_ENABLED" not in str(exc_info.value)
 
 
 def test_outbox_relay_interval_must_be_positive(
@@ -320,17 +402,21 @@ def test_production_rejects_empty_trusted_proxy_ips(
 def test_production_accepts_non_empty_trusted_proxy_ips(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A non-empty CIDR list satisfies the validator.
+    """A non-empty CIDR list adds no production error.
 
-    Sanity check that the validator does NOT also reject a correct
-    configuration — without this the previous test could pass on a
-    validator that always raises.
+    Sanity check that the validator does NOT reject a correct proxy-IP
+    list — the only remaining error must be the always-present
+    email-backend refusal (no production email transport until AWS SES),
+    not ``APP_TRUSTED_PROXY_IPS``. Without this the empty-list test could
+    pass on a validator that always raises.
     """
     for k, v in _VALID_PROD_ENV.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("APP_TRUSTED_PROXY_IPS", '["10.0.0.0/8", "192.168.0.0/16"]')
-    settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
-    assert settings.trusted_proxy_ips == ["10.0.0.0/8", "192.168.0.0/16"]
+    with pytest.raises(ValidationError) as exc_info:
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
+    _assert_only_email_backend_refusal(exc_info.value)
+    assert "APP_TRUSTED_PROXY_IPS" not in str(exc_info.value)
 
 
 def test_production_requires_redis_for_principal_cache(

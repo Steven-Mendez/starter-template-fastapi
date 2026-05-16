@@ -21,7 +21,6 @@ keeps a single fat install via the `dev` dependency-group.
 | `uv sync --extra api` | + `fastapi[standard]` (uvicorn, starlette extras, `python-multipart`) | API host |
 | `uv sync --extra worker` | + `arq`, `redis` | Background-jobs worker host |
 | `uv sync --extra api --extra worker` | + both of the above | Single-host deployments running both roles in one venv |
-| `uv sync --extra resend` | + `httpx` | Any host that sets `APP_EMAIL_BACKEND=resend` |
 | `uv sync --extra s3` | + `boto3` | Any host that sets `APP_STORAGE_BACKEND=s3` |
 | `uv sync` (with the `dev` group) | everything above + test/lint tooling | Local development (`uv sync` reads `[dependency-groups] dev` by default) |
 
@@ -33,7 +32,6 @@ Redis-backed limiter / cache is selected.
 If the wrong extra is missing the app fails loudly at startup naming the extra,
 for example:
 
-- `APP_EMAIL_BACKEND=resend` without `--extra resend` → `httpx is not installed; the Resend email adapter requires it. Install with: uv sync --extra resend`
 - `APP_STORAGE_BACKEND=s3` without `--extra s3` → `boto3 is not installed; the S3 file-storage adapter requires it. Install with: uv sync --extra s3`
 
 > **Backwards-compatibility note.** Deployments that previously ran a bare
@@ -813,10 +811,8 @@ violated and `APP_ENVIRONMENT=production`.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `APP_EMAIL_BACKEND` | `console` | One of `console`, `resend`. **Must be `resend` in production.** |
-| `APP_EMAIL_FROM` | unset | Required when `APP_EMAIL_BACKEND=resend`. |
-| `APP_EMAIL_RESEND_API_KEY` | unset | Required when `APP_EMAIL_BACKEND=resend`. |
-| `APP_EMAIL_RESEND_BASE_URL` | `https://api.resend.com` | Resend API base URL. Use `https://api.eu.resend.com` for the EU data plane. |
+| `APP_EMAIL_BACKEND` | `console` | Only `console` is accepted (dev/test). Production refuses `console`; there is no production email backend until AWS SES arrives at a later roadmap step. |
+| `APP_EMAIL_FROM` | unset | Sender address used by the rendered message. |
 
 ### Background jobs (`JobsSettings`)
 

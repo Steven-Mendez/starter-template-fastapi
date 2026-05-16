@@ -31,7 +31,7 @@ HTTP client
 | `authentication` | JWT tokens, login/logout/refresh, password reset, email verify, rate limiting, the `credentials` table, principal resolution. | `UserPort` (from `users`), `EmailPort`, `JobQueuePort`, `AuthorizationPort`. |
 | `users` | The `User` entity, the `users` table, registration, profile read/update, deactivation, admin user listing. | Authorization's outbound ports (`UserRegistrarPort`, `UserAuthzVersionPort`). |
 | `authorization` | `AuthorizationPort`, the runtime `AuthorizationRegistry`, the SQLModel adapter, the SpiceDB stub, `BootstrapSystemAdmin`. | `UserRegistrarPort`, `UserAuthzVersionPort` (implemented by `users`), `AuditPort` (implemented by `authentication`). |
-| `email` | `EmailPort`, console + Resend adapters, the `EmailTemplateRegistry`. | Nothing. |
+| `email` | `EmailPort`, the `console` adapter (dev/test; production email arrives with AWS SES at a later roadmap step), the `EmailTemplateRegistry`. | Nothing. |
 | `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, the `JobHandlerRegistry`, the worker entrypoint. | Nothing. |
 | `file_storage` | `FileStoragePort`, local adapter, S3 stub. | Nothing. |
 | `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, the `DispatchPending` relay use case. | `JobQueuePort` (the relay's destination). |

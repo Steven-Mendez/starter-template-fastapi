@@ -173,17 +173,13 @@ class AppSettings(BaseSettings):
     # ---------------------------------------------------------------------------
     # Email
     # ---------------------------------------------------------------------------
-    # ``console`` logs the rendered email (dev/test default). ``resend``
-    # POSTs to Resend's HTTP API. The production validator refuses
-    # ``console`` when ``APP_ENVIRONMENT=production``.
-    email_backend: Literal["console", "resend"] = "console"
+    # ``console`` logs the rendered email and is the only backend the
+    # system ships (dev/test). There is no production-capable email
+    # transport yet: the production validator refuses ``console`` when
+    # ``APP_ENVIRONMENT=production``, and the real production backend
+    # (AWS SES) arrives at a later roadmap step.
+    email_backend: Literal["console"] = "console"
     email_from: str | None = None
-    # Resend HTTP backend. ``email_resend_api_key`` is required when
-    # ``email_backend=resend``. ``email_resend_base_url`` defaults to the
-    # US endpoint; switch to ``https://api.eu.resend.com`` for the EU
-    # data plane or point at a self-hosted Resend-compatible service.
-    email_resend_api_key: str | None = None
-    email_resend_base_url: str = "https://api.resend.com"
     # When True AND ``APP_ENVIRONMENT=development``, the console email
     # adapter additionally logs the full rendered body at INFO. The
     # default-off posture exists because rendered bodies for
@@ -338,8 +334,8 @@ class AppSettings(BaseSettings):
         if not (0 <= self.auth_jwt_leeway_seconds <= MAX_JWT_LEEWAY_SECONDS):
             errors.append("APP_AUTH_JWT_LEEWAY_SECONDS must be between 0 and 60")
         # Email/jobs/storage need to validate their own backend-specific
-        # combinations (e.g. ``resend`` requires an API key). Importing the
-        # classes lazily keeps :mod:`app_platform.config.settings` free
+        # combinations. Importing the classes lazily keeps
+        # :mod:`app_platform.config.settings` free
         # of compile-time dependencies on feature packages so the
         # platform-isolation Import Linter contract stays clean.
         from features.background_jobs.composition.settings import JobsSettings

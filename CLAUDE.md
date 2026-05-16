@@ -55,7 +55,7 @@ following the layer stack and per-feature conventions documented below.
 | `authentication` | JWT issuance, login/logout/refresh, password reset, email verify, rate limiting, principal resolution, `credentials` table |
 | `users` | The `User` entity, registration, profile, deactivation, admin user listing, `UserPort` |
 | `authorization` | ReBAC engine, `AuthorizationPort`, `AuthorizationRegistry`, SQLModel adapter, SpiceDB stub, `BootstrapSystemAdmin` |
-| `email` | `EmailPort`, console + Resend adapters, `EmailTemplateRegistry` |
+| `email` | `EmailPort`, console adapter (dev/test; production email arrives with AWS SES at a later roadmap step), `EmailTemplateRegistry` |
 | `background_jobs` | `JobQueuePort`, in-process + `arq` adapters, `JobHandlerRegistry`, worker entrypoint |
 | `file_storage` | `FileStoragePort`, local + S3 (`boto3`) adapters |
 | `outbox` | `OutboxPort`, the `outbox_messages` table, `SessionSQLModelOutboxAdapter`, `DispatchPending` relay use case (runs in the worker only) |
@@ -237,7 +237,7 @@ The settings validator refuses to start when `APP_ENVIRONMENT=production` and an
 - `APP_AUTH_COOKIE_SECURE=false`
 - `APP_ENABLE_DOCS=true`
 - `APP_AUTH_RBAC_ENABLED=false`
-- `APP_EMAIL_BACKEND=console` (must be `resend` in production, with the matching credentials set)
+- `APP_EMAIL_BACKEND=console` (the only accepted value; production refuses `console` and there is no production email backend yet — AWS SES arrives at a later roadmap step)
 - `APP_JOBS_BACKEND=in_process`
 - `APP_AUTH_RETURN_INTERNAL_TOKENS=true`
 - `APP_STORAGE_ENABLED=true` with `APP_STORAGE_BACKEND=local`
@@ -267,9 +267,7 @@ See `docs/operations.md` for the full env-var reference.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `APP_EMAIL_BACKEND` | `console` | `console` for dev/test, `resend` in production |
-| `APP_EMAIL_RESEND_API_KEY` | unset | Required when `APP_EMAIL_BACKEND=resend` |
-| `APP_EMAIL_RESEND_BASE_URL` | `https://api.resend.com` | Use `https://api.eu.resend.com` for the EU data plane |
+| `APP_EMAIL_BACKEND` | `console` | Only `console` (dev/test); production refuses it and has no email backend until AWS SES at a later roadmap step |
 | `APP_JOBS_BACKEND` | `in_process` | `in_process` for dev/test, `arq` in production |
 | `APP_JOBS_REDIS_URL` | unset | Required for `arq`; falls back to `APP_AUTH_REDIS_URL` |
 | `APP_STORAGE_BACKEND` | `local` | `local` for dev/test, `s3` in production when `APP_STORAGE_ENABLED=true` |

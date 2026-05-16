@@ -82,35 +82,29 @@ def test_redis_instrumentor_runs_when_jobs_redis_url_set() -> None:
 
 
 def test_production_ratio_one_emits_warning(caplog: pytest.LogCaptureFixture) -> None:
-    settings = AppSettings(
+    # NOTE: after ROADMAP ETAPA I step 4 (Resend removed, AWS SES not yet
+    # added) there is no production-capable email backend — the only
+    # value, ``console``, is refused by the production validator. A
+    # *validated* production ``AppSettings`` is therefore not constructible
+    # until AWS SES lands. This test asserts a tracing-warning branch, not
+    # a boot, so it builds the instance via ``model_construct`` (skipping
+    # the production validator) with exactly the attributes
+    # ``configure_tracing`` reads. ``email_backend="console"`` is set per
+    # the change spec; the production validator is deliberately not the
+    # path under test here.
+    settings = AppSettings.model_construct(
         environment="production",
-        auth_jwt_secret_key="test-secret-key-with-at-least-32-bytes",
-        auth_jwt_issuer="issuer",
-        auth_jwt_audience="aud",
-        cors_origins=["https://example.com"],
-        enable_docs=False,
-        auth_cookie_secure=True,
-        auth_rbac_enabled=True,
-        email_backend="resend",
+        email_backend="console",
         email_from="noreply@example.com",
-        email_resend_api_key="re_test_key",
-        jobs_backend="arq",
-        jobs_redis_url="redis://localhost:6379",
-        # ``harden-rate-limiting`` made both of these required in
-        # production — Redis backs the rate limiter and principal cache,
-        # and trusted proxy IPs are required so the rate limiter sees
-        # real client IPs.
-        auth_redis_url="redis://localhost:6379",
-        trusted_proxy_ips=["10.0.0.0/8"],
-        # ``strengthen-production-validators`` (Wave 4): wildcard
-        # trusted hosts are refused in production, and ``app_public_url``
-        # must be set to an HTTPS URL whose host appears in
-        # ``cors_origins``.
-        trusted_hosts=["example.com"],
-        app_public_url="https://example.com",
-        outbox_enabled=True,
         otel_exporter_endpoint="http://collector:4318/v1/traces",
         otel_traces_sampler_ratio=1.0,
+        otel_service_name="starter-template-fastapi",
+        otel_service_version="0.1.0",
+        otel_instrument_sqlalchemy=False,
+        otel_instrument_httpx=False,
+        otel_instrument_redis=False,
+        auth_redis_url=None,
+        jobs_redis_url=None,
     )
 
     with caplog.at_level("WARNING", logger="app_platform.observability.tracing"):

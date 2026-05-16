@@ -227,7 +227,7 @@ Project-wide `extend-ignore` SHALL document the rationale for any rule it silenc
 
 ### Requirement: docker-compose provides an SMTP catcher for dev
 
-`docker-compose.yml` SHALL NOT ship a `mailpit` (or any other SMTP-catcher) service: the SMTP email backend no longer exists, so a local SMTP sink would catch traffic the default `console` backend never sends. `.env.example` SHALL NOT include `APP_EMAIL_SMTP_*` keys or a mailpit how-to comment block.
+`docker-compose.yml` SHALL NOT ship a `mailpit` (or any other SMTP-catcher) service: no SMTP or Resend email backend exists, so a local SMTP sink would catch traffic the default `console` backend never sends. `.env.example` SHALL NOT include `APP_EMAIL_SMTP_*` keys, `APP_EMAIL_RESEND_*` keys, or a mailpit how-to comment block.
 
 The `app` service SHALL declare `restart: unless-stopped` and a `healthcheck` hitting `/health/live`.
 
@@ -250,7 +250,7 @@ The `app` service SHALL declare `restart: unless-stopped` and a `healthcheck` hi
 - **GIVEN** a developer runs `docker compose up` without overriding `APP_EMAIL_BACKEND`
 - **WHEN** the API sends an email
 - **THEN** the email is routed via the console backend (printed to stdout)
-- **AND** no outbound SMTP connection is attempted by any code path
+- **AND** no outbound SMTP or HTTP email-provider connection is attempted by any code path
 
 ### Requirement: CI scans the built container image and produces an SBOM
 
@@ -322,18 +322,17 @@ The `_principal_from_user` helper in `src/features/authentication/application/us
 
 - `api` — `fastapi[standard]` and anything else only the API process needs.
 - `worker` — `arq`, `redis`, and anything else only the background worker needs.
-- `resend` — `httpx` for the Resend email adapter.
 - `s3` — `boto3` for the S3 file-storage adapter.
 
-`python-multipart` SHALL appear in exactly one place (transitively via `fastapi[standard]` in the `api` extra), not as a direct dependency.
+There SHALL be no `resend` optional-dependency extra and no `httpx` runtime/test dependency declared for an email adapter: the Resend email adapter is removed and the only email adapter (`console`) has no third-party HTTP dependency. `python-multipart` SHALL appear in exactly one place (transitively via `fastapi[standard]` in the `api` extra), not as a direct dependency.
 
-The Resend adapter's composition SHALL raise a clear startup error referencing the `resend` extra when `httpx` is missing. The S3 adapter SHALL do the same for `boto3` and the `s3` extra.
+The S3 adapter's composition SHALL raise a clear startup error referencing the `s3` extra when `boto3` is missing.
 
 #### Scenario: Default install lacks role-specific deps
 
 - **GIVEN** a fresh `uv sync` with no extras
 - **WHEN** the user inspects `uv pip list`
-- **THEN** `httpx`, `fastapi`, `arq`, and `boto3` are all absent
+- **THEN** `fastapi`, `arq`, and `boto3` are all absent
 - **AND** `uv.lock` resolves successfully (the core set installs cleanly)
 
 #### Scenario: API role install brings only the API deps
@@ -350,19 +349,19 @@ The Resend adapter's composition SHALL raise a clear startup error referencing t
 - **THEN** `arq` and `redis` are present
 - **AND** `fastapi[standard]` is absent
 
-#### Scenario: Resend extra brings httpx
+#### Scenario: No resend extra is declared
 
-- **GIVEN** `uv sync --extra api --extra resend`
-- **WHEN** the API process starts with `APP_EMAIL_BACKEND=resend`
-- **THEN** `httpx` is in the resolved install
-- **AND** the Resend adapter composes successfully
+- **GIVEN** the repository's `pyproject.toml`
+- **WHEN** `[project.optional-dependencies]` is inspected
+- **THEN** there is no `resend` key
+- **AND** no `httpx` entry exists for an email adapter (neither in an extra nor in the `dev` dependency group)
 
-#### Scenario: Missing extra produces a clear startup error
+#### Scenario: Missing s3 extra produces a clear startup error
 
-- **GIVEN** `uv sync --extra api` (no `resend` extra) and `APP_EMAIL_BACKEND=resend`
+- **GIVEN** `uv sync --extra api` (no `s3` extra) and `APP_STORAGE_BACKEND=s3` with `APP_STORAGE_ENABLED=true`
 - **WHEN** the app starts
-- **THEN** composition fails with an error message naming the `resend` extra (e.g. `"install with: uv sync --extra resend"`)
-- **AND** the app does not silently start without an email transport
+- **THEN** composition fails with an error message naming the `s3` extra
+- **AND** the app does not silently start without a file-storage backend
 
 ### Requirement: CI caches uv installs and publishes coverage artifacts
 

@@ -39,7 +39,7 @@ Yo lanzo `spec-writer` con el alcance exacto de ese paso, esperamos tu aprobaci√
 
 - [x] **3. Eliminar adaptador SMTP** (`src/features/email/adapters/outbound/smtp/`), sus settings, env vars `APP_EMAIL_SMTP_*`, tests, contract tests parametrizados, servicio `mailpit` en `docker-compose`, menci√≥n en docs.
 
-- [ ] **4. Eliminar adaptador Resend** (`src/features/email/adapters/outbound/resend/`), sus settings, env vars `APP_EMAIL_RESEND_*`, extra `resend` en `pyproject.toml`, tests, docs.
+- [x] **4. Eliminar adaptador Resend** (`src/features/email/adapters/outbound/resend/`), sus settings, env vars `APP_EMAIL_RESEND_*`, extra `resend` en `pyproject.toml`, tests, docs.
 
 - [ ] **5. Eliminar adaptador arq** (`src/features/background_jobs/adapters/outbound/arq/`), sus settings, env vars asociadas, rama del extra `worker` en `pyproject.toml`, tests, docs.
 
