@@ -155,6 +155,15 @@ The `docs/api.md` API reference SHALL document only HTTP routes that exist in th
 - **AND** `CLAUDE.md` contains no `src/cli/` command-reference section (that is owned by a later roadmap step)
 - **AND** the only `arq` references that remain state that `arq` was removed in ROADMAP ETAPA I step 5
 
+#### Scenario: operations.md production narrative matches the live settings validators
+
+- **WHEN** a contributor reads `docs/operations.md`
+- **THEN** the Deployment Checklist contains no instruction to set `APP_WRITE_API_KEY` (or any other shared-key write-route setting), because no `composition/settings.py` projection or `src/app_platform/config/sub_settings.py` projection defines such a setting and write routes are authorized via `require_authorization`, not a shared API key
+- **AND** the consolidated "the settings validator refuses to start when any of them are violated and `APP_ENVIRONMENT=production`" Environment Variable Reference lists only env vars that exist on a settings class, and every production-refusal it documents matches the four infrastructure `composition/settings.py:validate_production` validators (`email` refuses `console`, `background_jobs` refuses `in_process`, `file_storage` refuses `local` when `APP_STORAGE_ENABLED=true`, `outbox` must be enabled in production) and `AppSettings._validate_production_settings` (JWT secret/issuer/audience required, CORS no `*`, trusted hosts no wildcard, trusted proxies non-empty and never `0.0.0.0/0`, cookie secure and not `samesite=none`, docs disabled, RBAC enabled, return-internal-tokens false, Redis URL set)
+- **AND** no surviving production-refusal statement or backend env-var row references a removed adapter (`smtp`, `resend`, `arq`, `spicedb`/SpiceDB) as a selectable backend, and the S3 file-storage adapter is described as the real `boto3`-backed production backend selectable via `APP_STORAGE_BACKEND=s3` (no "stub" / `NotImplementedError` / "placeholder" wording for the S3 adapter)
+- **AND** the only `arq` references that remain state that `arq` was removed in ROADMAP ETAPA I step 5, and `docs/operations.md` contains no `src/cli/` command-reference catalogue (the incidental `python -m cli.create_super_admin` bootstrap-runbook mentions are operational prose, not a command catalogue, and remain unchanged)
+- **AND** the destructive-migration `downgrade()` / `NotImplementedError` guard prose is unrelated to the S3 adapter and remains unchanged
+
 ### Requirement: Destructive migrations raise on downgrade and are scanned in CI
 
 Migrations whose `upgrade()` performs destructive operations (column drops, table drops, index drops, or `op.execute` running a `DROP` / `ALTER TABLE ... DROP`) SHALL have a `downgrade()` whose first executable statement is `raise NotImplementedError("...")` and whose message references `docs/operations.md#migration-policy`. Narrowing `alter_column` (e.g., `String(length=255)` → `String(length=64)`) is destructive but cannot be detected statically; operators MUST opt in by hand to the same convention.

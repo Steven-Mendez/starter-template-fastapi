@@ -53,7 +53,7 @@ Yo lanzo `spec-writer` con el alcance exacto de ese paso, esperamos tu aprobaci�
 
 - [x] **10. Actualizar `CLAUDE.md`** con el mismo encuadre: matriz de features post-limpieza, sección "Adding a new feature" (sin `_template`), reglas de producción actualizadas.
 
-- [ ] **11. Actualizar `docs/operations.md`**: quitar de "producción rechaza arrancar si…" todas las reglas relacionadas a backends eliminados (`APP_EMAIL_BACKEND=console` ahora será la única no-AWS, etc.). Recortar la lista a la realidad post-limpieza.
+- [x] **11. Actualizar `docs/operations.md`**: quitar de "producción rechaza arrancar si…" todas las reglas relacionadas a backends eliminados (`APP_EMAIL_BACKEND=console` ahora será la única no-AWS, etc.). Recortar la lista a la realidad post-limpieza.
 
 - [ ] **12. Documentar `src/cli/`** en `README.md` + `CLAUDE.md`: qué comandos existen, cómo se invocan, cuándo se usan.
 

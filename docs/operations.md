@@ -170,7 +170,6 @@ to match (always `+5` slack).
 - Set `APP_TRUSTED_HOSTS` to the public hostnames accepted by the app. **Wildcard entries (`*` or `*.example.com`) are refused in production** — list the explicit public hostnames.
 - Set `APP_CORS_ORIGINS` to explicit browser origins if browsers call the API.
 - Set `APP_ENABLE_DOCS=false` so Swagger UI, ReDoc, and `/openapi.json` are not exposed.
-- Set `APP_WRITE_API_KEY` if write routes should require a shared key.
 - Configure liveness checks against `/health/live` and traffic readiness checks
   against `/health/ready`.
 - Provision Redis and set `APP_AUTH_REDIS_URL` if the deployment runs more than one replica (see [Rate Limiting](#rate-limiting)).

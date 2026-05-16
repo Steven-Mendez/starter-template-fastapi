@@ -91,6 +91,39 @@ SAME requirement) — archiver MUST re-copy canonical block at archive time.
 Archive WITHOUT `--skip-specs`. Step 12 (`src/cli/` docs) explicitly
 deferred — NO cli section added.
 
+**Step 11 (docs/operations.md reconcile) — change `operations-md-reconcile`,
+drafted 2026-05-16.** ONLY `docs/operations.md` + OpenSpec artifacts.
+operations.md is 939 lines and ALREADY substantially post-cleanup-accurate
+(steps 3–7 edited incrementally). Full-file audit found EXACTLY ONE genuine
+defect, no second: `docs/operations.md:173` Deployment Checklist bullet
+"Set `APP_WRITE_API_KEY` if write routes should require a shared key" — PHANTOM
+(`rg WRITE_API_KEY src/` = 0 hits; no settings class defines it; write routes
+use `require_authorization`, not a shared key). SAME phantom canonical
+`project-layout` spec.md:125 already prohibits for `docs/api.md`. Fix = DELETE
+the bullet, no replacement. EVERYTHING ELSE verified validator-true, NOT
+churned: the consolidated production-refusal master list IS the Environment
+Variable Reference (`:708–842`), per-feature tables match the 4 infra
+`validate_production` + `AppSettings._validate_production_settings`; Email row
+:806 (console-only/SES-later), Background Jobs :583–604 + :813
+(in_process-only/SQS+Lambda-later/arq removed step 5), File Storage :838–842 +
+S3 prose :24/:35/:881 (real boto3 s3, NO stub wording), Outbox :823
+(must be true), Redis-URL :387–390, trusted-proxy :404–411, trusted-hosts
+:170/:726 — all already correct. Zero SMTP/Resend/SpiceDB/mailpit/`_template`
+hits. The `NotImplementedError` hits :231/:236/:245/:259 are the destructive-
+migration `downgrade()` guard (unrelated, OUT OF SCOPE, untouched — incl. its
+"template-only schema" DB-lifetime phrase). The `python -m cli.create_super_admin`
+mentions :300–305/:331 are accurate bootstrap-runbook prose, NOT a `src/cli/`
+catalogue (step 12 owns that — explicitly deferred, no cli section added).
+Single delta target: `project-layout` MODIFY `Documentation reflects the new
+layout` — restate VERBATIM (canonical block as read 2026-05-16 = 4 SHALL
+paragraphs + 7 scenarios: step 7 S3 paragraph spec.md:99 + S3 scenario :130,
+step 9 README scenario :137, step 10 CLAUDE scenario :147 ALL already folded
+into canonical), ADD one scenario "operations.md production narrative matches
+the live settings validators". **Reconciliation hazard:** step 7
+(`fix-s3-stub-drift`) change dir still exists in working tree (may be in
+flight on SAME requirement) — archiver MUST re-copy canonical block at archive
+time. Archive WITHOUT `--skip-specs`.
+
 **Step 6 (SpiceDB stub) is categorically SMALLER than 3/4/5 — pure dead-code
 deletion, NO production-validator involvement.** Unlike email/jobs backends,
 there is NO authz backend selector setting, NO env var, NO `Literal`, NO
